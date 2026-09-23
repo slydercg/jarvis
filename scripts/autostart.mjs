@@ -181,12 +181,14 @@ function updaterPlist({ node, path }) {
     args: [node, join(ROOT, 'scripts', 'update.mjs')],
     env: { PATH: path, JARVIS_LOG_FILE: UPDATE_LOG },
     log: UPDATE_LOG,
+    // Standard, not Background: a check is one cheap fetch either way, but an
+    // update installs dependencies, and under Background's CPU and disk
+    // throttling that crawled for so long it never finished — leaving him
+    // stopped on a half-installed node_modules.
     extra: `\t<key>StartInterval</key>
 \t<integer>${UPDATE_EVERY}</integer>
 \t<key>ProcessType</key>
-\t<string>Background</string>
-\t<key>LowPriorityIO</key>
-\t<true/>`,
+\t<string>Standard</string>`,
   })
 }
 

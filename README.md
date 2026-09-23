@@ -116,8 +116,8 @@ job checks GitHub every five minutes. When something new has been merged to
    said for 15 minutes (`JARVIS_UPDATE_IDLE_MIN`). An update reloads the page,
    and a reloaded page needs a click on INITIALISE before the microphone works
    again.
-2. stops him, pulls the new version, and runs `npm ci` if the dependencies
-   changed.
+2. stops him, pulls the new version, and installs any new dependencies. Only
+   what changed is installed, so this takes seconds.
 3. starts him again and checks that he actually came up. The page you had
    open reloads by itself, and a macOS notification says what changed.
 4. **if the new version doesn't start, puts the old one back** and skips that
@@ -128,8 +128,8 @@ It only ever fast-forwards `main`. It leaves the folder alone, and
 commits that aren't on GitHub, or has edited files. If you have stopped him
 with `autostart:stop`, it pulls the new version but doesn't start him.
 `JARVIS_AUTO_UPDATE=off` in `.env.local` turns it off, and
-`npm run autostart:update` applies an update immediately. Its log is
-`~/.jarvis/logs/update.log`.
+`npm run autostart:update` applies an update immediately. Only one update
+runs at a time. Its log is `~/.jarvis/logs/update.log`, and it names each step.
 
 A login item does not read your `~/.zshrc`, so **put settings in `.env.local`,
 not in shell exports**. The installer names any `JARVIS_*`, `ELEVENLABS_*` or
