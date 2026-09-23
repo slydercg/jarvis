@@ -415,6 +415,7 @@ Restart `npm start` after changing it.
 | `VITE_TTS_ENGINE` | `system` or `kokoro` |
 | `VITE_KOKORO_VOICE` | Voice for the Kokoro engine |
 | `VITE_USE_ELEVENLABS` | Force the ElevenLabs voice on |
+| `VITE_FOLLOW_UP_SECONDS` | How long he keeps listening after an answer without "hey Jarvis" (default `6`, `0` = always say it) |
 | `VITE_WAKE_SENSITIVITY` | `0`–`1`. Higher catches more and false-triggers more (see below) |
 | `VITE_WAKE_MODEL` | An openWakeWord `.onnx` in `public/` for a name other than Jarvis |
 | `VITE_PICOVOICE_ACCESS_KEY` | Use Porcupine for the wake word instead (optional) |

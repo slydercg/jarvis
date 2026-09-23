@@ -339,56 +339,6 @@ export function Hud() {
         )}
       </AnimatePresence>
 
-      {/* Conversation log — last few turns, fading upward */}
-      {ui.chrome.transcript && (
-        <div className="log" role="log" aria-live="polite" aria-label="Conversation">
-          <AnimatePresence initial={false}>
-            {turns.slice(-4).map((t) => (
-              <motion.div
-                key={t.id}
-                className={`log-line log-${t.role}`}
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-              >
-                <span className="log-who">{t.role === 'user' ? 'YOU' : NAME.toUpperCase()}</span>
-                {/* Only his half decodes. What the user said was never
-                    transmitted from anywhere — dressing it up as machine
-                    output would be a lie about where the words came from. */}
-                <span className="log-text">
-                  {t.role === 'jarvis' ? (
-                    <>
-                      {/* The scramble is for the eye; a screen reader gets the
-                          words themselves, not a stream of glyph noise. */}
-                      <span aria-hidden="true">
-                        <DecodeText text={t.text} />
-                      </span>
-                      <span className="sr-only">{t.text}</span>
-                    </>
-                  ) : (
-                    t.text
-                  )}
-                </span>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-      )}
-
-      <AnimatePresence>
-        {caption && (
-          <motion.div
-            className="caption"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            {caption}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* The one surface. Panels used to sit alongside this as a second place
           for things to appear, which meant two places to look and a decision
           the model had to make on grounds it could not know. Everything renders
@@ -396,14 +346,71 @@ export function Hud() {
           system it documents stays findable. */}
       <Blades />
 
-      {/* The error takes the suggestion's slot rather than printing over it. */}
-      {ui.chrome.suggestions && !error && <Suggestions />}
-
-      {error && (
-        <div className="error" role="alert">
-          {error}
+      {/* Everything that reads as a line of text above the command bar, in one
+          column anchored to the bottom, so each pushes the others up rather
+          than printing over them: a two-line caption used to run into the
+          error, and a wrapped error into the caption. */}
+      <div className="lower">
+        {/* Conversation log — last few turns, fading upward */}
+        {ui.chrome.transcript && (
+          <div className="log" role="log" aria-live="polite" aria-label="Conversation">
+            <AnimatePresence initial={false}>
+              {turns.slice(-4).map((t) => (
+                <motion.div
+                  key={t.id}
+                  className={`log-line log-${t.role}`}
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+                >
+                  <span className="log-who">{t.role === 'user' ? 'YOU' : NAME.toUpperCase()}</span>
+                  {/* Only his half decodes. What the user said was never
+                      transmitted from anywhere — dressing it up as machine
+                      output would be a lie about where the words came from. */}
+                  <span className="log-text">
+                    {t.role === 'jarvis' ? (
+                      <>
+                        {/* The scramble is for the eye; a screen reader gets the
+                            words themselves, not a stream of glyph noise. */}
+                        <span aria-hidden="true">
+                          <DecodeText text={t.text} />
+                        </span>
+                        <span className="sr-only">{t.text}</span>
+                      </>
+                    ) : (
+                      t.text
+                    )}
+                  </span>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+        {/* One reserved line, so the transcript above does not jump each time
+            a caption comes and goes; only a longer one pushes it up. */}
+        <div className="lower-line">
+          {error && (
+            <div className="error" role="alert" title={error}>
+              {error}
+            </div>
+          )}
+          <AnimatePresence>
+            {caption && (
+              <motion.div
+                className="caption"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                {caption}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          {/* The error takes the suggestion's place rather than sitting under it. */}
+          {ui.chrome.suggestions && !error && <Suggestions />}
         </div>
-      )}
+      </div>
 
       <CommandBar />
 

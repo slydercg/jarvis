@@ -46,12 +46,20 @@ type Speaker = {
 // ---------------------------------------------------------------------------
 
 let speaking = ''
-let recent = ''
-let recentUntil = 0
+/** Sentences he finished recently, each with when it stops counting. */
+const recent: { text: string; until: number }[] = []
 
-/** Recognition lags the speakers by a few hundred milliseconds, so a sentence
- *  keeps arriving at the microphone well after it has finished playing. */
-const ECHO_TAIL_MS = 1800
+/**
+ * How long a finished sentence is still treated as possible echo.
+ *
+ * This was 1.8 s and covered only the last sentence, which measured the wrong
+ * thing: what matters is not when the echo reaches the microphone but when its
+ * transcript comes back. That is a speech segment closing, a round trip to
+ * the transcriber and back — often two or three seconds after he stopped — by
+ * which time the tail had expired and "Yes, one thirteen, sir." was accepted
+ * as something you said. Eight seconds, and every sentence in that window.
+ */
+const ECHO_MEMORY_MS = 8000
 
 /**
  * Why you cannot hear him.
@@ -118,8 +126,8 @@ function setSpeaking(text: string) {
     return
   }
   if (speaking) {
-    recent = speaking
-    recentUntil = Date.now() + ECHO_TAIL_MS
+    recent.push({ text: speaking, until: Date.now() + ECHO_MEMORY_MS })
+    if (recent.length > 12) recent.shift()
   }
   speaking = ''
 }
@@ -134,8 +142,9 @@ function setSpeaking(text: string) {
  * one lands. See `isEcho` in voice.ts.
  */
 export function speakingNow(): string {
-  const tail = Date.now() < recentUntil ? recent : ''
-  return `${speaking} ${tail}`.trim()
+  const now = Date.now()
+  while (recent.length && recent[0].until < now) recent.shift()
+  return [speaking, ...recent.map((r) => r.text)].join(' ').trim()
 }
 
 // ---------------------------------------------------------------------------

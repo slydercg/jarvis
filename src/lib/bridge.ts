@@ -366,12 +366,16 @@ function connect(): Promise<WebSocket> {
        * So say both, and put the actual port in front of them, since that is
        * the fact that distinguishes the two cases at a glance.
        */
+      // The full explanation goes to the console; the screen gets one line.
+      console.warn(
+        `[bridge] cannot reach ${BRIDGE_WS_URL}: either it is not running, or this ` +
+          `page's port (${location.port || '80'}) is outside the 5173-5199 / ` +
+          '4173-4199 range it accepts.',
+      )
       settle(
         new Error(
-          `Cannot reach the bridge at ${BRIDGE_WS_URL}. Either it is not ` +
-            'running (start it with `npm start`), or this page is on a port it ' +
-            `refuses — it accepts localhost:5173-5199 and 4173-4199, and this ` +
-            `page is on ${location.port || '80'}.`,
+          "Can't reach the bridge — run npm run autostart:restart" +
+            (/^(51(7[3-9]|[89]\d)|41(7[3-9]|[89]\d))$/.test(location.port) ? '' : ` (this page's port ${location.port} is refused)`),
         ),
       )
     }

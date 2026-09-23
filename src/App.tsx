@@ -56,10 +56,20 @@ import { env } from './config'
  *  people say his name and *then* think about what they wanted. */
 const AWAIT_SPEECH_MS = 14000
 
-/** After an answer, how long the mic stays open for a follow-up before he
- *  drops back to standby. Long enough that you don't have to say the name
- *  again to continue a thought. */
-const FOLLOW_UP_MS = 11000
+/**
+ * After an answer, how long he keeps listening for a follow-up without his
+ * name before dropping back to standby.
+ *
+ * It was 11 s, which in a room with other people in it meant he took whatever
+ * anyone said next as a question. Six is enough to carry on a thought.
+ * VITE_FOLLOW_UP_SECONDS changes it; 0 means every question starts with
+ * "hey Jarvis".
+ */
+const FOLLOW_UP_MS = (() => {
+  const raw = String(import.meta.env.VITE_FOLLOW_UP_SECONDS ?? '').trim()
+  const n = Number(raw)
+  return raw && Number.isFinite(n) && n >= 0 ? n * 1000 : 6000
+})()
 
 /** crypto.randomUUID needs a secure context, which a LAN address over plain
  *  http is not. Not worth failing a whole turn over an id. */
@@ -296,8 +306,10 @@ export default function App() {
         store.getState().setActiveTool(null)
         music.working(false)
         // Stay open. Having to say his name again to add one more sentence is
-        // the difference between a conversation and a vending machine.
-        listen(FOLLOW_UP_MS)
+        // the difference between a conversation and a vending machine —
+        // unless it has been set to 0, and then that is what was asked for.
+        if (FOLLOW_UP_MS > 0) listen(FOLLOW_UP_MS)
+        else goDormant()
       }
     }
   }
