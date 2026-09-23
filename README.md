@@ -486,6 +486,14 @@ while it's open.
 - **Listening:** how long he keeps listening after an answer before needing
   "hey Jarvis" again, from 0 (always say it) to 15 seconds, plus the wake
   word's status.
+- **Display:** how the conversation reads.
+  - **Clear** (the default) puts it on a solid panel in the Mac's own reading
+    font, dims the reactor and scanlines behind it, and makes the lighter lines
+    in the brief and alert cards easier to read. Anything Jarvis puts on
+    screen opens in the space above the conversation, never over it.
+  - **Cinematic** is the original look.
+  - **Large text** scales up the conversation, the cards and what he shows.
+  - These are remembered in this browser.
 - **About:** the version that's actually running. Check this first when a fix
   "didn't work": auto-update may not have applied it yet.
 
