@@ -290,6 +290,8 @@ type State = {
   setUsage: (cost: number | null, tier: string | null) => void
   setConfirm: (c: PendingConfirm | null) => void
   pushTurn: (t: Turn) => void
+  /** Replace the transcript: a restored conversation, or a fresh start. */
+  setTurns: (turns: Turn[]) => void
   appendToLastTurn: (text: string) => void
 
   applyUi: (patch: UiPatch) => void
@@ -391,6 +393,7 @@ export const useStore = create<State>((set) => ({
   setUsage: (sessionCost, tier) => set({ sessionCost, tier }),
   setConfirm: (confirm) => set({ confirm }),
   pushTurn: (turn) => set((s) => ({ turns: [...s.turns.slice(-40), turn] })),
+  setTurns: (turns) => set({ turns }),
   appendToLastTurn: (text) =>
     set((s) => {
       const turns = [...s.turns]

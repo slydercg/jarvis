@@ -25,6 +25,8 @@ import {
   watchPanels,
   watchBlades,
   watchConfirm,
+  watchHistory,
+  resetConversation,
   watchCapture,
   watchUi,
   watchConnection,
@@ -80,6 +82,10 @@ const YES =
 const NO =
   /^(no|nope|nah|cancel|stop|undo|don'?t|do not|abort|wait|hold on|never ?mind|negative|scratch that)\b/i
 
+/** "Start fresh", "new conversation", "clear the chat", "start over". */
+const FRESH =
+  /^(let'?s )?(start (a )?(new|fresh)( conversation| chat)?|new (conversation|chat)|clear (the |this )?(conversation|chat)|start over|fresh start)[.!]?$/i
+
 /** true, false, or null when the reply is neither. "No" wins a tie. */
 function yesOrNo(said: string): boolean | null {
   const s = said.replace(/^[\s,.!?-]+/, '')
@@ -116,6 +122,8 @@ export default function App() {
   const booting = useRef(false)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const voicePoll = useRef<ReturnType<typeof setInterval> | null>(null)
+  /** Set while a "start fresh" reconnect is in flight, so it is not reported as a fault. */
+  const resetting = useRef(false)
   /** Ends the boot sequence early. Set only while it is playing. */
   const skipBoot = useRef<(() => void) | null>(null)
 
@@ -365,10 +373,32 @@ export default function App() {
     return true
   }
 
+  /**
+   * "Start fresh". Conversations now survive a reload, so there has to be a
+   * way to end one on purpose: the bridge forgets it and reconnects to a new
+   * session, and the screen is cleared to match. Lasting notes are kept.
+   */
+  const startFresh = (raw: string): boolean => {
+    if (!usingBridge || !FRESH.test(raw.replace(LEADING_NAME, '').trim())) return false
+    resetting.current = true
+    turn.current++
+    silence()
+    const st = store.getState()
+    st.setTurns([])
+    st.clearPanels()
+    st.clearBlades()
+    st.setUsage(null, null)
+    resetConversation()
+    say('Fresh start, sir.')
+    listen(AWAIT_SPEECH_MS)
+    return true
+  }
+
   const onUtterance = (text: string) => {
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot' || phase === 'dormant') return
     if (answerConfirm(text)) return
+    if (startFresh(text)) return
 
     // People keep using his name as a vocative once they're already talking to
     // him. Strip it rather than sending "jarvis" to the model as a question.
@@ -395,6 +425,7 @@ export default function App() {
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot') return
     if (answerConfirm(raw)) return
+    if (startFresh(raw)) return
     const said = raw.replace(LEADING_NAME, '').trim()
     if (!said) return
     if (phase === 'thinking' || phase === 'tooling' || phase === 'speaking') onSpeechStart()
@@ -601,13 +632,24 @@ export default function App() {
     // to the socket — so a drop silently wipes his memory while the transcript
     // on screen still shows it. Better to say so than to let him quietly forget.
     watchConnection((state) => {
+      // A fresh start closes the socket on purpose; that is not a fault.
+      if (resetting.current) {
+        if (state === 'reconnected') resetting.current = false
+        return
+      }
       if (state === 'lost') {
         store.getState().setError('Bridge connection lost — reconnecting.')
       } else if (state === 'reconnected') {
-        store
-          .getState()
-          .setError('Bridge reconnected. The previous conversation was not kept.')
+        // The bridge resumes the conversation, so nothing to apologise for.
+        store.getState().setError(null)
       }
+    })
+
+    // A conversation resumed after a reload: put its last exchanges back on
+    // screen, unless something has already been said in this page.
+    watchHistory((turns) => {
+      if (store.getState().turns.length) return
+      store.getState().setTurns(turns.map((t) => ({ id: newId(), role: t.role, text: t.text })))
     })
     const warming = warm().catch((err: Error) => s.setError(err.message))
 

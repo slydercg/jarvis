@@ -42,6 +42,7 @@ type Frame = {
   summary?: string
   details?: Array<{ label: string; value: string }>
   money?: boolean
+  turns?: Array<{ role: 'user' | 'jarvis'; text: string }>
 }
 
 /** An action the bridge wants the user to approve before it runs. */
@@ -104,6 +105,20 @@ export type CaptureRequest = {
   when: 'now' | 'past'
 }
 export type CaptureResult = { data?: string; mimeType?: string; error?: string }
+
+/** The last few exchanges of a resumed conversation, sent once on connect. */
+let onHistory: ((turns: Array<{ role: 'user' | 'jarvis'; text: string }>) => void) | null = null
+export function watchHistory(fn: (turns: Array<{ role: 'user' | 'jarvis'; text: string }>) => void) {
+  onHistory = fn
+}
+
+/**
+ * Start a fresh conversation. The bridge forgets the saved session and closes
+ * the socket; the reconnect that follows opens a new one.
+ */
+export function resetConversation() {
+  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'reset' }))
+}
 
 /** The bridge asking for a yes or no. The answer goes back as a `reply`. */
 let onConfirm: ((req: ConfirmRequest) => Promise<{ ok: boolean }>) | null = null
@@ -242,6 +257,8 @@ function dispatch(ws: WebSocket) {
           .then(reply)
           .catch((err) => reply({ error: String(err?.message ?? err) }))
       }
+    } else if (msg.type === 'history' && Array.isArray(msg.turns)) {
+      onHistory?.(msg.turns)
     } else if (msg.type === 'confirm' && msg.id) {
       const id = msg.id
       const reply = (payload: Record<string, unknown>) => {

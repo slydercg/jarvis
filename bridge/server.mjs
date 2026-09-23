@@ -18,7 +18,16 @@
 // First, so .env.local is in process.env before anything below reads it.
 import { envSource } from './env.mjs'
 import { WebSocketServer } from 'ws'
-import { query } from '@anthropic-ai/claude-agent-sdk'
+import { query, getSessionMessages } from '@anthropic-ai/claude-agent-sdk'
+import {
+  forgetSession,
+  MEMORY_FILE,
+  memoryPrompt,
+  memoryServer,
+  recentTurns,
+  saveSession,
+  sessionOptions,
+} from './memory.mjs'
 import { displayServer } from './panels.mjs'
 import { uiServer } from './ui.mjs'
 import { chromeAvailable, chromeServer } from './chrome.mjs'
@@ -215,7 +224,7 @@ const displayName = (name) =>
  * The interface's own in-process servers. They are how JARVIS draws on the
  * screen, not systems he is linked to, so the SYSTEMS rail leaves them out.
  */
-const INTERNAL_SERVERS = new Set(['jarvis', 'jarvis_ui', 'jarvis_chrome', 'jarvis_eyes'])
+const INTERNAL_SERVERS = new Set(['jarvis', 'jarvis_ui', 'jarvis_chrome', 'jarvis_eyes', 'jarvis_memory'])
 
 /**
  * The SDK's status words, as the rail shows them. A server that needs signing
@@ -455,6 +464,10 @@ function decideTool(name) {
     // indicator the user can see for as long as it is live.
     if (server === 'jarvis_eyes') return 'allow'
 
+    // Memory writes one Markdown file in ~/.jarvis and refuses anything that
+    // looks like a secret; remembering is the point of it, so it never asks.
+    if (server === 'jarvis_memory') return 'allow'
+
     const tool = mcpToolOf(name)
     const key = serverKey(server)
     if (DRAFT_TOOL.test(tool)) return 'allow'
@@ -655,6 +668,16 @@ Their accounts — the connectors:
   is confirmed by the user before it runs. Reading
   balances, positions and prices is always fine. Figures, not advice, unless
   they ask for an opinion.
+
+Memory — you remember across conversations:
+- When the user says "remember…", or states something plainly meant to last —
+  a preference, who someone is, a standing arrangement — call \`remember\` with
+  one short third-person fact, and acknowledge it in two or three words.
+- Never remember passing details of today, and never passwords, codes, account
+  or card numbers, even when asked; say you will not keep those.
+- "Forget…" calls \`forget\`. "What do you know about me?" calls \`recall\`.
+- What you already know is at the end of these instructions. Use it quietly
+  where it helps; never recite it back unprompted.
 
 The briefing — when asked to "brief me", for a briefing, or how the day looks:
 - Gather in parallel: mail that needs a reply (every mail connector you have),
@@ -1349,6 +1372,13 @@ if (process.env.ANTHROPIC_API_KEY) {
       ' Calendar, …) will not load. Unset it to use your subscription login.',
   )
 }
+{
+  const notes = memoryPrompt().split('\n').filter((l) => l.startsWith('- ')).length
+  console.log(
+    `[jarvis] memory: ${notes} note${notes === 1 ? '' : 's'} in ${MEMORY_FILE}` +
+      (process.env.JARVIS_RESUME === 'off' ? '; conversations start fresh' : '; recent conversations resume after a reload'),
+  )
+}
 if (ALLOW_MONEY) {
   console.warn('[jarvis] MONEY ENABLED — orders, payments and transfers are possible, each confirmed with you first')
 }
@@ -1439,6 +1469,11 @@ function localNow() {
 
 wss.on('connection', (socket) => {
   console.log('[jarvis] client connected')
+
+  // Resume the recent conversation if there is one, or start a new one with an
+  // id we choose, so it can be resumed after the next reload.
+  const convo = sessionOptions()
+  let answered = false
 
   // Answer the HUD straight away rather than making it wait for the agent's
   // first turn. Refined later by the real init message.
@@ -1603,6 +1638,9 @@ wss.on('connection', (socket) => {
     // interface is the interface talking about itself, not work being done for
     // the user, and the badge would be describing the very thing they can see.
     if (name.startsWith('mcp__jarvis_ui__')) return
+    // Saving a note is instant and he acknowledges it himself; a badge and a
+    // "working on it" line for it would be louder than the thing itself.
+    if (name.startsWith('mcp__jarvis_memory__')) return
     if (decideTool(name) === 'allow') return sendTurn({ type: 'tool', name })
     if (id) heldTools.set(id, name)
   }
@@ -1617,6 +1655,7 @@ wss.on('connection', (socket) => {
   const session = query({
     prompt: userMessages(),
     options: {
+      ...convo.options,
       // Everything Claude Code has configured, plus the HUD as an in-process
       // server. The HUD's handler closes over this socket, so a `display` call
       // lands on screen directly — which is also why this object is built per
@@ -1638,12 +1677,16 @@ wss.on('connection', (socket) => {
         jarvis_chrome: chromeServer({ allowWrites: ALLOW_WRITES }),
         // The camera, which unlike everything else here has to ask and wait.
         jarvis_eyes: visionServer(ask),
+        // Lasting notes about the user, in ~/.jarvis/memory.md.
+        jarvis_memory: memoryServer(),
       },
       // A plain system prompt, not the claude_code preset. The preset is
       // tuned for a coding agent — verbose, file-oriented, and a large chunk
       // of input tokens on every turn. Replacing it makes the persona stick,
       // keeps answers short enough to speak, and cuts cost per turn.
-      systemPrompt: SYSTEM_PROMPT,
+      // Read per connection, so a note remembered (or edited by hand) in one
+      // conversation is known in the next.
+      systemPrompt: SYSTEM_PROMPT + memoryPrompt(),
       // Run from the home directory so project-scoped MCP servers don't shadow
       // the global ones, and so file tools have a sane root.
       cwd: homedir(),
@@ -1771,6 +1814,18 @@ wss.on('connection', (socket) => {
     }
   })()
 
+  // Put the last few exchanges back on screen, so a reload does not look like
+  // amnesia when it is not.
+  if (convo.resumed) {
+    void getSessionMessages(convo.id, { dir: homedir() })
+      .then((messages) => {
+        const turns = recentTurns(messages)
+        if (turns.length) send({ type: 'history', turns })
+        console.log(`[jarvis] resumed the conversation (${messages.length} messages)`)
+      })
+      .catch(() => {})
+  }
+
   // Pump the session's output stream to the browser for as long as it lives.
   ;(async () => {
     try {
@@ -1879,6 +1934,9 @@ wss.on('connection', (socket) => {
             finishTurn = null
             turnFailed = false
             spoke = false
+            // Keep an active conversation resumable after a reload.
+            answered = true
+            saveSession(convo.id)
             // One turn's tool ids are never referred to again, and these
             // otherwise grow for as long as the socket is open.
             seenTools.clear()
@@ -1911,6 +1969,13 @@ wss.on('connection', (socket) => {
       }
     } catch (err) {
       console.error('[jarvis] session error:', err)
+      // A resume that fails before anything was said — the transcript was
+      // deleted, or is from an older version — must not fail every reconnect
+      // after it. Forget it; the page reconnects to a fresh conversation.
+      if (convo.resumed && !answered) {
+        console.warn('[jarvis] could not resume the earlier conversation; starting a fresh one')
+        forgetSession()
+      }
       send({ type: 'error', message: String(err?.message ?? err) })
       // The stream is finished either way — nothing will ever be read from it
       // again. Leaving the socket open would leave the client believing it has
@@ -1980,6 +2045,18 @@ wss.on('connection', (socket) => {
         clearTimeout(slot.timer)
         slot.resolve(msg)
       }
+    }
+
+    // "Start fresh": drop the conversation. Closing the socket makes the page
+    // reconnect, and the next connection opens a new session.
+    if (msg.type === 'reset') {
+      console.log('[jarvis] starting a fresh conversation')
+      forgetSession()
+      closed = true
+      deliver?.(null)
+      session.close?.()
+      socket.close()
+      return
     }
 
     if (msg.type === 'interrupt') {
