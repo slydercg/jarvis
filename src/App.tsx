@@ -26,6 +26,7 @@ import {
   watchBlades,
   watchConfirm,
   watchHistory,
+  watchAlerts,
   resetConversation,
   watchCapture,
   watchUi,
@@ -85,6 +86,23 @@ const NO =
 /** "Start fresh", "new conversation", "clear the chat", "start over". */
 const FRESH =
   /^(let'?s )?(start (a )?(new|fresh)( conversation| chat)?|new (conversation|chat)|clear (the |this )?(conversation|chat)|start over|fresh start)[.!]?$/i
+
+/** "Mute alerts", "do not disturb" — and the way back. */
+const MUTE =
+  /^((mute|pause|silence|stop|hold) (the |my )?(alerts|notifications)|do not disturb|don'?t disturb( me)?)[.!]?$/i
+const UNMUTE =
+  /^((unmute|resume|restart|turn on) (the |my )?(alerts|notifications)|alerts on)[.!]?$/i
+
+/** What he says for an alert. Fronted "Sir": it is an interruption, not an answer. */
+function alertLine(a: { kind: 'meeting' | 'mail'; title: string; detail: string; at: number }): string {
+  if (a.kind === 'meeting') {
+    const mins = Math.round((a.at - Date.now()) / 60_000)
+    const when = mins <= 1 ? 'is starting now' : `starts in ${mins} minutes`
+    return `Sir, ${a.title} ${when}.`
+  }
+  const subject = a.detail.split(' — ')[0]
+  return `Sir, ${a.title} has written${subject ? ` about ${subject}` : ''}. It looks like it needs you.`
+}
 
 /** true, false, or null when the reply is neither. "No" wins a tie. */
 function yesOrNo(said: string): boolean | null {
@@ -394,11 +412,23 @@ export default function App() {
     return true
   }
 
+  /** "Mute alerts" / "resume alerts". Cards still appear while muted. */
+  const toggleAlerts = (raw: string): boolean => {
+    const said = raw.replace(LEADING_NAME, '').trim()
+    const mute = MUTE.test(said)
+    if (!mute && !UNMUTE.test(said)) return false
+    store.getState().setAlertsMuted(mute)
+    say(mute ? 'Alerts muted, sir.' : 'Alerts back on, sir.')
+    listen(AWAIT_SPEECH_MS)
+    return true
+  }
+
   const onUtterance = (text: string) => {
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot' || phase === 'dormant') return
     if (answerConfirm(text)) return
     if (startFresh(text)) return
+    if (toggleAlerts(text)) return
 
     // People keep using his name as a vocative once they're already talking to
     // him. Strip it rather than sending "jarvis" to the model as a question.
@@ -426,6 +456,7 @@ export default function App() {
     if (phase === 'offline' || phase === 'boot') return
     if (answerConfirm(raw)) return
     if (startFresh(raw)) return
+    if (toggleAlerts(raw)) return
     const said = raw.replace(LEADING_NAME, '').trim()
     if (!said) return
     if (phase === 'thinking' || phase === 'tooling' || phase === 'speaking') onSpeechStart()
@@ -643,6 +674,45 @@ export default function App() {
         // The bridge resumes the conversation, so nothing to apologise for.
         store.getState().setError(null)
       }
+    })
+
+    /**
+     * A proactive alert. The card goes up at once; the spoken line waits until
+     * he is free — never over his own answer or across a confirmation — and is
+     * skipped entirely while alerts are muted. A meeting whose moment has
+     * passed by the time he is free is not announced late.
+     */
+    watchAlerts((raw) => {
+      const alert = {
+        id: `${raw.kind}:${raw.title}:${raw.at}`,
+        kind: raw.kind,
+        title: raw.title,
+        detail: raw.detail,
+        at: Date.parse(raw.at) || Date.now(),
+      }
+      store.getState().pushAlert(alert)
+      if (store.getState().alertsMuted) return
+      const busy = () => {
+        const st = store.getState()
+        return (
+          !!st.confirm ||
+          st.phase === 'thinking' ||
+          st.phase === 'tooling' ||
+          st.phase === 'speaking' ||
+          st.phase === 'boot' ||
+          st.phase === 'offline'
+        )
+      }
+      const deadline = Date.now() + 5 * 60_000
+      const announce = () => {
+        if (store.getState().alertsMuted) return
+        if (!store.getState().alerts.some((a) => a.id === alert.id)) return // dismissed
+        if (busy() && Date.now() < deadline) return void setTimeout(announce, 1500)
+        if (alert.kind === 'meeting' && alert.at < Date.now() - 60_000) return
+        sfx.play('wake')
+        void afterSpeech().then(() => say(alertLine(alert)))
+      }
+      announce()
     })
 
     // A conversation resumed after a reload: put its last exchanges back on

@@ -1,5 +1,24 @@
 import { create } from 'zustand'
 
+/** A heads-up the watcher raised: a meeting about to start, or mail that needs you. */
+export type Alert = {
+  id: string
+  kind: 'meeting' | 'mail'
+  title: string
+  detail: string
+  /** Meeting start, or when the mail was flagged, as a Date.now() value. */
+  at: number
+}
+
+const MUTED_KEY = 'jarvis.alertsMuted'
+function readMuted(): boolean {
+  try {
+    return localStorage.getItem(MUTED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 /** How long a confirmed action can still be taken back before it runs. */
 export const UNDO_MS = 4000
 
@@ -248,6 +267,10 @@ type State = {
   tier: string | null
   /** An action waiting on the user's yes or no, or counting down to run. */
   confirm: PendingConfirm | null
+  /** Recent proactive alerts, newest first. */
+  alerts: Alert[]
+  /** Alerts still show, but are not spoken. Remembered per browser. */
+  alertsMuted: boolean
   /** Name of the speech-synthesis voice in use, shown in the HUD. */
   voice: string
   /** Whether the camera is on and hands are being tracked. Store-backed rather
@@ -289,6 +312,9 @@ type State = {
   setHealth: (h: Record<string, 'live' | 'pending' | 'auth' | 'failed'>) => void
   setUsage: (cost: number | null, tier: string | null) => void
   setConfirm: (c: PendingConfirm | null) => void
+  pushAlert: (a: Alert) => void
+  dismissAlert: (id: string) => void
+  setAlertsMuted: (muted: boolean) => void
   pushTurn: (t: Turn) => void
   /** Replace the transcript: a restored conversation, or a fresh start. */
   setTurns: (turns: Turn[]) => void
@@ -315,6 +341,8 @@ export const useStore = create<State>((set) => ({
   sessionCost: null,
   tier: null,
   confirm: null,
+  alerts: [],
+  alertsMuted: readMuted(),
   voice: '',
   gestures: false,
   looking: null,
@@ -392,6 +420,16 @@ export const useStore = create<State>((set) => ({
   setHealth: (health) => set({ health }),
   setUsage: (sessionCost, tier) => set({ sessionCost, tier }),
   setConfirm: (confirm) => set({ confirm }),
+  pushAlert: (a) => set((s) => ({ alerts: [a, ...s.alerts.filter((x) => x.id !== a.id)].slice(0, 3) })),
+  dismissAlert: (id) => set((s) => ({ alerts: s.alerts.filter((a) => a.id !== id) })),
+  setAlertsMuted: (alertsMuted) => {
+    try {
+      localStorage.setItem(MUTED_KEY, alertsMuted ? '1' : '0')
+    } catch {
+      // Private window or blocked storage: muting still works for this page.
+    }
+    set({ alertsMuted })
+  },
   pushTurn: (turn) => set((s) => ({ turns: [...s.turns.slice(-40), turn] })),
   setTurns: (turns) => set({ turns }),
   appendToLastTurn: (text) =>

@@ -19,6 +19,7 @@
 import { envSource } from './env.mjs'
 import { WebSocketServer } from 'ws'
 import { query, getSessionMessages } from '@anthropic-ai/claude-agent-sdk'
+import { alertsSummary, startAlerts } from './alerts.mjs'
 import {
   forgetSession,
   MEMORY_FILE,
@@ -1379,6 +1380,7 @@ if (process.env.ANTHROPIC_API_KEY) {
       (process.env.JARVIS_RESUME === 'off' ? '; conversations start fresh' : '; recent conversations resume after a reload'),
   )
 }
+console.log(`[jarvis] ${alertsSummary()}`)
 if (ALLOW_MONEY) {
   console.warn('[jarvis] MONEY ENABLED — orders, payments and transfers are possible, each confirmed with you first')
 }
@@ -1467,6 +1469,30 @@ function localNow() {
   return `${when} (${zone})`
 }
 
+/**
+ * Every open page, so an alert reaches whichever one is listening. The watcher
+ * behind the alerts starts with the first page and then stays up: its session
+ * is what keeps each check cheap.
+ */
+const pages = new Set()
+let watcher = null
+function ensureWatcher() {
+  watcher ??= startAlerts({
+    mcpServers: MCP_SERVERS,
+    // Exactly what the conversation may do without asking, and nothing else:
+    // no confirmations, no writes, ever.
+    isReadOnly: (name) => decideTool(name) === 'allow',
+    broadcast: (alert) => {
+      console.log(`[jarvis] alert: ${alert.kind} — ${alert.title}`)
+      for (const deliver of pages) deliver({ type: 'alert', alert })
+    },
+    listening: () => pages.size > 0,
+    localNow,
+    model: FAST_MODEL,
+    effort: FAST_EFFORT,
+  })
+}
+
 wss.on('connection', (socket) => {
   console.log('[jarvis] client connected')
 
@@ -1508,6 +1534,8 @@ wss.on('connection', (socket) => {
   const send = (msg) => {
     if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(msg))
   }
+  pages.add(send)
+  ensureWatcher()
 
   /**
    * Which question the agent is currently answering.
@@ -2074,6 +2102,7 @@ wss.on('connection', (socket) => {
   })
 
   socket.on('close', () => {
+    pages.delete(send)
     console.log('[jarvis] client disconnected')
     closed = true
     deliver?.(null)
