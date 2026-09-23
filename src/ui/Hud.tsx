@@ -175,6 +175,7 @@ function DecodeText({ text }: { text: string }) {
 /* --------------------------------------------------------------------- hud */
 
 export function Hud() {
+  const lower = useLowerEdge()
   const phase = useStore((s) => s.phase)
   const caption = useStore((s) => s.caption)
   const turns = useStore((s) => s.turns)
@@ -350,7 +351,7 @@ export function Hud() {
           column anchored to the bottom, so each pushes the others up rather
           than printing over them: a two-line caption used to run into the
           error, and a wrapped error into the caption. */}
-      <div className="lower">
+      <div className="lower" ref={lower}>
         {/* Conversation log — last few turns, fading upward */}
         {ui.chrome.transcript && (
           <div className="log" role="log" aria-live="polite" aria-label="Conversation">
@@ -448,4 +449,45 @@ export function Hud() {
       <GestureGuide live={gestures} />
     </div>
   )
+}
+
+/**
+ * Where the conversation column starts, as --lower-top on <html>. In the
+ * Clear reading mode the blades lay themselves out above that line rather
+ * than over the conversation (see index.css).
+ */
+function useLowerEdge() {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const root = document.documentElement
+    const update = () => {
+      // The column is bottom-anchored and grows upward; its first child with
+      // any height is where the text begins.
+      const first = [...el.children].find((c) => c.getBoundingClientRect().height > 0)
+      const top = (first ?? el).getBoundingClientRect().top
+      root.style.setProperty('--lower-top', `${Math.round(top)}px`)
+      // When the conversation panel scrolls (Clear mode caps its height),
+      // the newest line is the one to see.
+      const log = el.querySelector('.log')
+      if (log) log.scrollTop = log.scrollHeight
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    for (const c of el.children) ro.observe(c)
+    const mo = new MutationObserver(() => {
+      for (const c of el.children) ro.observe(c)
+      update()
+    })
+    mo.observe(el, { childList: true, subtree: true })
+    window.addEventListener('resize', update)
+    return () => {
+      ro.disconnect()
+      mo.disconnect()
+      window.removeEventListener('resize', update)
+    }
+  }, [])
+  return ref
 }

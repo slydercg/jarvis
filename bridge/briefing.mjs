@@ -1,9 +1,10 @@
-import { query, createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
+import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { JARVIS_HOME } from './memory.mjs'
-import { protectiveServer, protectiveConfigured } from './protective.mjs'
+import { askReadOnly } from './agent.mjs'
+import { recordDay } from './days.mjs'
 
 /**
  * The brief: what needs doing today, ranked, from every mailbox and calendar.
@@ -18,7 +19,6 @@ import { protectiveServer, protectiveConfigured } from './protective.mjs'
 
 const BRIEF_FILE = join(JARVIS_HOME, 'brief.json')
 const MAX_AGE_MS = Number(process.env.JARVIS_BRIEF_MAX_AGE_MIN ?? 90) * 60_000
-const BUILD_TIMEOUT_MS = 5 * 60_000
 /** Morning window for the unprompted offer, local hours. */
 const [OFFER_FROM, OFFER_TO] = (process.env.JARVIS_BRIEF_HOURS ?? '5-11').split('-').map(Number)
 
@@ -79,62 +79,24 @@ function save(patch) {
   }
 }
 
-function parseJson(text) {
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start < 0 || end <= start) return null
-  try {
-    return JSON.parse(text.slice(start, end + 1))
-  } catch {
-    return null
-  }
+/**
+ * This morning's brief, even after a restart: what the end-of-day wrap
+ * compares the day against. Null when none was built today.
+ */
+export function todaysBrief() {
+  if (cached?.day === today()) return cached
+  const saved = readSaved().last
+  return saved?.day === today() ? saved : null
 }
 
-/**
- * Build a brief now. `mcpServers` are the configured servers (claude.ai
- * connectors arrive with the login on their own); `isReadOnly` is the
- * bridge's own gate, so the builder may only do what needs no confirmation,
- * and drafts are refused on top of that.
- */
-async function build({ mcpServers, isReadOnly, localNow, model }) {
-  const servers = { ...mcpServers }
-  if (protectiveConfigured()) servers.protective = protectiveServer({ readOnly: true })
-  const session = query({
-    prompt: `It is ${localNow()}. Prepare today's brief.`,
-    options: {
-      mcpServers: servers,
-      systemPrompt: PROMPT,
-      settingSources: [],
-      strictMcpConfig: false,
-      model,
-      effort: 'medium',
-      maxTurns: 30,
-      permissionMode: 'default',
-      canUseTool: async (name) =>
-        isReadOnly(name) && !/draft|send|create|add/i.test(name.split('__').pop() ?? '')
-          ? { behavior: 'allow' }
-          : { behavior: 'deny', message: 'The brief only reads. Do not change anything.' },
-    },
+async function build(deps) {
+  const brief = await askReadOnly(deps, {
+    system: PROMPT,
+    question: `It is ${deps.localNow()}. Prepare today's brief.`,
+    label: 'brief',
   })
-  const timer = setTimeout(() => session.close?.(), BUILD_TIMEOUT_MS)
-  let result = ''
-  let cost = 0
-  try {
-    for await (const msg of session) {
-      if (msg.type === 'result') {
-        result = msg.subtype === 'success' ? (msg.result ?? '') : ''
-        cost = msg.total_cost_usd ?? 0
-        break
-      }
-    }
-  } finally {
-    clearTimeout(timer)
-    session.close?.()
-  }
-  const brief = parseJson(result)
   if (!brief?.focus) throw new Error('the brief did not come back as expected')
   brief.items = (brief.items ?? []).slice(0, 8)
-  console.log(`[jarvis] brief built: ${brief.items.length} items ($${cost.toFixed(3)})`)
   return brief
 }
 
@@ -149,6 +111,8 @@ export function getBrief(deps, { refresh = false } = {}) {
   building = build(deps)
     .then((brief) => {
       cached = { day: today(), builtAt: Date.now(), brief }
+      save({ last: cached })
+      recordDay({ brief })
       lastError = ''
       return cached
     })

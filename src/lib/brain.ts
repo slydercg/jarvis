@@ -45,6 +45,11 @@ export function watchAlerts(fn: (a: bridge.AlertFrame) => void): void {
   if (usingBridge) bridge.watchAlerts(fn)
 }
 
+/** Heads-down state from the bridge; nothing without one. */
+export function watchFocus(fn: (f: bridge.FocusFrame) => void): void {
+  if (usingBridge) bridge.watchFocus(fn)
+}
+
 /** A resumed conversation's last exchanges, to put back on screen. */
 export function watchHistory(
   fn: (turns: Array<{ role: 'user' | 'jarvis'; text: string }>) => void,

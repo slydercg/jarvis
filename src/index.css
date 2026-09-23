@@ -260,7 +260,10 @@ body::after {
   border-left: 2px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 6%, rgba(1, 8, 14, 0.88));
 }
-.alert-mail { border-left-color: var(--attention); }
+.alert-mail,
+.alert-overdue,
+.alert-portfolio { border-left-color: var(--attention); }
+.alerts-focus { color: var(--accent); }
 .alert-head {
   display: flex;
   align-items: center;
@@ -270,7 +273,9 @@ body::after {
   text-transform: uppercase;
 }
 .alert-kind { color: var(--accent); }
-.alert-mail .alert-kind { color: var(--attention); }
+.alert-mail .alert-kind,
+.alert-overdue .alert-kind,
+.alert-portfolio .alert-kind { color: var(--attention); }
 .alert-when { opacity: 0.8; }
 .alert-dismiss {
   margin-left: auto;
@@ -2426,3 +2431,75 @@ kbd {
   text-transform: none;
 }
 .alert-prep li + li { margin-top: 2px; }
+
+/* ------------------------------------------------------------- Reading
+   Settings → Display. "Clear" is for reading: the transcript sits on a solid
+   panel in the system's own reading face, the reactor and scanlines step back
+   behind it, and the secondary lines in blades and cards are lifted to a
+   contrast you can read at a glance. "Large" scales the text the eye has to
+   follow. Cinematic leaves the original look untouched. */
+:root[data-read='clear'] {
+  --read-face: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+}
+
+:root[data-read='clear'] .scene {
+  opacity: 0.5;
+  transition: opacity 0.6s ease;
+}
+:root[data-read='clear'] body::after { opacity: 0.35; }
+
+:root[data-read='clear'] .log {
+  padding: 16px 22px;
+  background: rgba(2, 9, 15, 0.92);
+  border: 1px solid color-mix(in srgb, var(--interface) 22%, transparent);
+  border-radius: 6px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+:root[data-read='clear'] .log:empty { display: none; }
+:root[data-read='clear'] .log-line {
+  font-family: var(--read-face);
+  font-size: 16.5px;
+  line-height: 1.6;
+}
+:root[data-read='clear'] .log-who {
+  font-family: 'Chakra Petch', system-ui, sans-serif;
+  color: var(--interface);
+  opacity: 1;
+}
+:root[data-read='clear'] .log-user .log-text { opacity: 1; color: #bcd9e4; }
+:root[data-read='clear'] .log-jarvis .log-text { color: #ffffff; text-shadow: none; }
+:root[data-read='clear'] .caption {
+  font-family: var(--read-face);
+  padding: 4px 12px;
+  background: rgba(2, 9, 15, 0.88);
+  border-radius: 4px;
+  opacity: 1;
+}
+
+:root[data-read='clear'] .bl { background: rgba(3, 10, 16, 0.97); }
+:root[data-read='clear'] .bl-markup { font-family: var(--read-face); }
+:root[data-read='clear'] .bl-markup :is(.hud-sub, .hud-tag, .hud-idx, .hud-unit) { opacity: 0.85; }
+:root[data-read='clear'] .bl-markup .hud-label { font-size: 14px; color: #ffffff; }
+:root[data-read='clear'] .bl-markup .hud-sub { font-size: 13px; }
+:root[data-read='clear'] .alert { background: rgba(2, 9, 15, 0.95); }
+:root[data-read='clear'] :is(.alert-detail, .alert-prep) { opacity: 1; font-family: var(--read-face); }
+
+:root[data-size='large'] .lower { width: min(920px, 64vw); }
+:root[data-size='large'] .log-line { font-size: 19.5px; }
+:root[data-size='large'] .caption { font-size: 19px; }
+:root[data-size='large'] .bl-markup { zoom: 1.18; }
+:root[data-size='large'] .alert-title { font-size: 17px; }
+:root[data-size='large'] :is(.alert-detail, .alert-prep) { font-size: 15px; }
+
+/* Clear mode: blades use the space above the conversation, never over it.
+   --lower-top is where the conversation column begins (Hud.tsx). */
+:root[data-read='clear'] .blades-stack:not(.blades-stack-full) {
+  top: 96px;
+  bottom: calc(100vh - var(--lower-top, 100vh) + 14px);
+}
+:root[data-read='clear'] .blades-stack:not(.blades-stack-full) .bl:not(.bl-expanded) {
+  max-height: max(150px, calc(var(--lower-top, 100vh) - 120px));
+}

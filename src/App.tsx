@@ -29,6 +29,7 @@ import {
   watchConfirm,
   watchHistory,
   watchAlerts,
+  watchFocus,
   resetConversation,
   watchCapture,
   watchUi,
@@ -112,6 +113,7 @@ const UNMUTE =
 
 /** What he says for an alert. Fronted "Sir": it is an interruption, not an answer. */
 function alertLine(a: Alert): string {
+  if (a.say) return a.say
   if (a.kind === 'brief') {
     // Offered, not read out: it may land while he is on a call.
     return "Good morning, sir. Your brief is ready when you are — say 'brief me'."
@@ -738,6 +740,8 @@ export default function App() {
      * skipped entirely while alerts are muted. A meeting whose moment has
      * passed by the time he is free is not announced late.
      */
+    watchFocus((focus) => store.getState().setFocus(focus))
+
     watchAlerts((raw) => {
       const alert: Alert = {
         id: `${raw.kind}:${raw.title}:${raw.at}`,
@@ -746,6 +750,9 @@ export default function App() {
         detail: raw.detail,
         at: Date.parse(raw.at) || Date.now(),
         ...(raw.prep ? { prep: raw.prep } : {}),
+        ...(raw.label ? { label: raw.label } : {}),
+        ...(raw.say ? { say: raw.say } : {}),
+        ...(raw.items ? { items: raw.items } : {}),
       }
       store.getState().pushAlert(alert)
       if (store.getState().alertsMuted) return

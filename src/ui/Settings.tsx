@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { BRIDGE_HTTP_URL } from '../config'
 import { useStore } from '../store'
 import { probeCapabilities } from '../lib/capabilities'
-import { prefs, setPrefs, type VoiceEngine } from '../lib/prefs'
+import { applyDisplay, prefs, setPrefs, type ReadMode, type TextSize, type VoiceEngine } from '../lib/prefs'
 import {
   currentVoiceName,
   previewVoice,
@@ -19,7 +19,8 @@ import { NAME } from '../lib/identity'
  * Opened with the gear at the bottom right or the comma key. Voice: which
  * engine speaks, the ElevenLabs key (checked with ElevenLabs before it is
  * saved, and never shown back), and which voice. Listening: how long he keeps
- * listening after an answer. About: which version is actually running, which
+ * listening after an answer. Display: the Clear or Cinematic look and the
+ * text size. About: which version is actually running, which
  * is the first question whenever a fix "didn't work".
  *
  * He stands down while this is open, so a preview is never heard as a question.
@@ -73,6 +74,14 @@ export function Settings() {
   const [voiceId, setVoiceId] = useState('')
   const [macVoice, setMacVoice] = useState(systemVoiceName())
   const [followUp, setFollowUp] = useState<number>(prefs().followUpSeconds ?? 6)
+  const [readMode, setReadMode] = useState<ReadMode>(prefs().readMode)
+  const [textSize, setTextSize] = useState<TextSize>(prefs().textSize)
+  const chooseDisplay = (patch: { readMode?: ReadMode; textSize?: TextSize }) => {
+    const next = setPrefs(patch)
+    setReadMode(next.readMode)
+    setTextSize(next.textSize)
+    applyDisplay(next)
+  }
   const [needsReload, setNeedsReload] = useState(false)
 
   const configured = Boolean(bridge?.eleven.configured)
@@ -384,6 +393,52 @@ export function Settings() {
               <div className="settings-row">
                 <span className="settings-label">Wake word</span>
                 <span className="settings-value">{wakeWord}</span>
+              </div>
+            </section>
+
+            <section aria-labelledby="set-display">
+              <h3 id="set-display">Display</h3>
+              <div className="settings-seg" role="radiogroup" aria-label="Conversation look">
+                {(
+                  [
+                    ['clear', 'Clear'],
+                    ['cinematic', 'Cinematic'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={readMode === value}
+                    className={readMode === value ? 'on' : ''}
+                    onClick={() => chooseDisplay({ readMode: value })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="settings-hint">
+                Clear puts the conversation on a solid panel in an easy-reading font and dims the reactor
+                behind it. Cinematic is the original look.
+              </p>
+              <div className="settings-seg" role="radiogroup" aria-label="Text size">
+                {(
+                  [
+                    ['normal', 'Normal text'],
+                    ['large', 'Large text'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={textSize === value}
+                    className={textSize === value ? 'on' : ''}
+                    onClick={() => chooseDisplay({ textSize: value })}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </section>
 

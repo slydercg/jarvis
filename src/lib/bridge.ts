@@ -44,18 +44,35 @@ type Frame = {
   money?: boolean
   turns?: Array<{ role: 'user' | 'jarvis'; text: string }>
   alert?: AlertFrame
+  focus?: FocusFrame
+}
+
+/** Heads-down: alerts held until `until`, except VIPs and meetings. */
+export type FocusFrame = { active: boolean; until?: string; reason?: string; held?: number }
+
+let onFocus: ((f: FocusFrame) => void) | null = null
+export function watchFocus(fn: (f: FocusFrame) => void) {
+  onFocus = fn
 }
 
 /** A proactive heads-up from the bridge's watcher. */
 export type AlertFrame = {
-  kind: 'meeting' | 'mail' | 'brief'
+  kind: AlertKind
   title: string
   detail: string
   /** Meeting start, or when the mail was flagged. ISO 8601. */
   at: string
   /** Meetings only: where things stand, when it could be gathered in time. */
   prep?: { summary: string; points: string[] }
+  /** The card's label, when the kind alone does not say it ("Overdue"). */
+  label?: string
+  /** The line to speak, composed by the bridge. */
+  say?: string
+  /** A focus digest: what was held back. */
+  items?: Array<{ title: string; detail: string }>
 }
+
+export type AlertKind = 'meeting' | 'mail' | 'brief' | 'wrap' | 'review' | 'promise' | 'portfolio' | 'digest'
 
 let onAlert: ((a: AlertFrame) => void) | null = null
 export function watchAlerts(fn: (a: AlertFrame) => void) {
@@ -285,6 +302,8 @@ function dispatch(ws: WebSocket) {
       }
     } else if (msg.type === 'alert' && msg.alert) {
       onAlert?.(msg.alert)
+    } else if (msg.type === 'focus' && msg.focus) {
+      onFocus?.(msg.focus)
     } else if (msg.type === 'history' && Array.isArray(msg.turns)) {
       onHistory?.(msg.turns)
     } else if (msg.type === 'confirm' && msg.id) {
