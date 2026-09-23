@@ -347,7 +347,8 @@ chmod 600 ~/.jarvis/power-automate.json
 To let him add meeting action items to To Do, add `"todo_add"` (Daily Meeting
 Actions) and `"todo_waiting"` (Waiting On Others) to that file. Their values
 are the two To Do flow links from the Daily Meeting Recap task. Only the eight
-known flows are read from the file; anything else in it, such as the
+known flows are read from the file (plus an optional `"sent_email"`, see
+below); anything else in it, such as the
 briefing's Jira credentials, is ignored. After changing the file, run
 `npm run autostart:restart`.
 
@@ -376,6 +377,95 @@ turns off the morning offer.
 - **After:** "what did we agree?" reads the meeting from Granola. He then offers
   to add the action items to To Do: your own go to Daily Meeting Actions, and
   what others owe you goes to Waiting On Others.
+
+- **Who you're meeting:** "who am I meeting at two?", "tell me about Chris".
+  For each person he gives their role, your last three interactions (Granola,
+  mail), what you owe them, what they owe you and what's open. Meeting prep
+  now includes what's owed either way too.
+
+## Closing the loop: end of day and promises
+
+- **Wrap-up.** Say "wrap up my day" and he compares the day against this
+  morning's brief: what got done, what slipped, the replies you still owe and
+  the first thing for tomorrow. He then offers to put the loose ends on To Do,
+  as one confirmed batch. On weekday evenings (17–20, `JARVIS_WRAP_HOURS`) he
+  builds it in the background and says it's ready. `JARVIS_WRAP=off` turns off
+  that offer.
+- **Promises.** Jarvis keeps a ledger in `~/.jarvis/commitments.json` of what
+  you said you'd do ("I'll send you the roadmap by Friday") and what others
+  said they'd do for you. Every few hours (`JARVIS_COMMIT_SCAN_HOURS`, 4) he
+  scans Granola notes, sent mail and Waiting On Others for new promises, and
+  for ones that have been kept.
+  - The day before one of yours is due, he reminds you once.
+  - When one of theirs is a day late, he asks whether to draft a nudge.
+    "Yes" saves the draft.
+  - You can tell him directly: "I told Chris I'd send the roadmap by Friday",
+    "what do I owe Chris?", "who owes me what?", "that's done".
+  - `JARVIS_COMMITMENTS=off` turns the ledger's scans and nudges off.
+- **Protective sent mail (optional).** Promises you made by email at SCG are
+  read through the Microsoft 365 connector. For Protective, add a
+  `"sent_email"` flow to `~/.jarvis/power-automate.json`: a copy of the Inbox
+  flow pointed at Sent Items. Without it, Protective promises are still picked
+  up from meeting notes.
+
+## Focus
+
+"I'm heads-down until two" or "focus for ninety minutes" holds alerts back. A
+calendar block titled Focus time, Heads down, Deep work or Do not book does the
+same on its own.
+
+- **What still gets through:** mail from your VIPs, production incidents and
+  meeting heads-ups.
+- **The rest:** held, then read back as one digest when you say "I'm back" or
+  the block ends.
+- **VIPs:** "add Chris to my VIPs" adds someone. The list is stored in
+  `~/.jarvis/settings.json` and can also be set with `JARVIS_FOCUS_VIPS`.
+- **Meetings too:** set `JARVIS_FOCUS_HOLD_MEETINGS=on` to hold meeting
+  heads-ups as well.
+- **Teams status:** the Microsoft 365 connector can't set presence, so Jarvis
+  doesn't change it.
+
+## The portfolio pulse
+
+Ask "what's blocked across the portfolio?", "which team is behind?" or "what
+changed since yesterday?". Jarvis reads two sources:
+
+- **Jira, live,** through the Atlassian connector, for projects NI and RPT
+  (`JARVIS_JIRA_PROJECTS`).
+- **The portfolio dashboards saved on this Mac,** which carry both Jira and
+  Azure DevOps data, pipelines included. That is how Azure DevOps gets in
+  without any new credentials. He finds `*dashboard*.html` files in the folders
+  under `~/Claude Code Applications` and `portfolio_dashboard*.html` in
+  Downloads, Desktop or Documents. Set `JARVIS_PORTFOLIO_FILES` (paths
+  separated by `;`) to choose them instead.
+
+Each pulse is saved as that day's snapshot, so he can say what changed since
+yesterday.
+
+While a page is open, the watcher checks Jira every hour
+(`JARVIS_PORTFOLIO_ALERT_MIN`, 0 turns it off):
+
+- A newly blocked high-priority item is said once.
+- A sprint whose time has run well ahead of its work (25 points by default,
+  `JARVIS_SPRINT_SLIP_PCT`) is flagged once a day.
+
+## The weekly review
+
+"Weekly review" (or "how did the week go?") covers:
+
+- wins, slips and risks;
+- promises kept and late;
+- where the week's meeting hours went, compared with your stated priorities;
+- a draft weekly update for leadership, in Progress / Plans / Problems form.
+  Say yes and it goes to your Protective Drafts.
+
+Tell him your priorities once: "remember my priorities this quarter are the
+APD rollout, vendor spend and hiring". On Friday afternoons (14–18,
+`JARVIS_REVIEW_HOURS`) he builds the review in the background and says it's
+ready. `JARVIS_REVIEW=off` turns off that offer.
+
+The review draws on what the week left behind: each day's brief, wrap-up and
+Protective meetings, kept for five weeks in `~/.jarvis/days`.
 
 ## Reports saved on this Mac
 

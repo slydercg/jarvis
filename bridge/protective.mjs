@@ -16,7 +16,7 @@ import { JARVIS_HOME } from './memory.mjs'
  * The URLs carry a signature and are credentials. They are read from a local
  * file — never the repository — in this order:
  *   1. JARVIS_PA_ENDPOINTS, a path;
- *   2. ~/.jarvis/power-automate.json (what Settings → Protective imports);
+ *   2. ~/.jarvis/power-automate.json, a private copy;
  *   3. the daily briefing's own pa_endpoints.json, if OneDrive syncs it here.
  * Only the flows below are kept from the file; anything else in it (the
  * briefing also stores Jira credentials there) is ignored.
@@ -28,6 +28,7 @@ export const FLOWS = {
   calendar: 'Calendar',
   todo: 'To Do',
   flagged_email: 'Flagged mail',
+  sent_email: 'Sent mail',
   draft_email: 'Save a draft',
   send_email: 'Send mail',
   todo_add: 'Add to Daily Meeting Actions',
@@ -89,7 +90,7 @@ export function loadFlows() {
     try {
       const flows = pickFlows(JSON.parse(readFileSync(path, 'utf8')))
       if (Object.keys(flows).length) {
-        const source = path === SAVED ? 'imported in Settings' : path.replace(homedir(), '~')
+        const source = path.replace(homedir(), '~')
         cache = { flows, source }
         return cache
       }
@@ -103,7 +104,7 @@ export function loadFlows() {
 
 export const protectiveConfigured = () => Object.keys((cache ?? loadFlows()).flows).length > 0
 
-/** Save flows imported from Settings, merged over what was there. Mode 600. */
+/** Save flows to the private copy, merged over what was there. Mode 600. */
 export function saveFlows(flows) {
   mkdirSync(JARVIS_HOME, { recursive: true })
   let prior = {}
@@ -132,7 +133,11 @@ export function forgetFlows() {
 
 async function callFlow(key, body = {}, timeoutMs = 60_000) {
   const url = (cache ?? loadFlows()).flows[key]
-  if (!url) throw new Error(`the ${FLOWS[key] ?? key} flow is not set up (Settings → Protective)`)
+  if (!url) {
+    throw new Error(
+      `the ${FLOWS[key] ?? key} flow is not set up — add "${key}" to ~/.jarvis/power-automate.json`,
+    )
+  }
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -251,6 +256,23 @@ export const protective = {
   async flagged() {
     return list(await callFlow('flagged_email')).map(normaliseMail)
   },
+  /** Optional: only when a "sent_email" flow has been added. */
+  async sent(limit = 25) {
+    return list(await callFlow('sent_email')).map(normaliseSent).slice(0, limit)
+  },
+}
+
+export const hasFlow = (key) => Boolean((cache ?? loadFlows()).flows[key])
+
+export function normaliseSent(m) {
+  const to = m.toRecipients ?? m.to ?? []
+  return {
+    id: m.id ?? '',
+    to: Array.isArray(to) ? to.map(addr).filter(Boolean).slice(0, 8) : String(to),
+    subject: m.subject ?? '',
+    preview: (m.bodyPreview ?? m.preview ?? '').slice(0, 400),
+    sent: m.sentDateTime ?? m.sent ?? m.receivedDateTime ?? '',
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +342,23 @@ export function protectiveServer({ readOnly = false } = {}) {
       },
     ),
   ]
+  if (hasFlow('sent_email')) {
+    tools.push(
+      tool(
+        'protective_get_sent',
+        'Mail Mark sent from the Protective account, newest first: recipients, subject and a preview. ' +
+          'Use it for what he promised people and replies he already made.',
+        { limit: z.number().int().min(1).max(25).optional() },
+        async ({ limit }) => {
+          try {
+            return text(await protective.sent(limit ?? 25))
+          } catch (err) {
+            return failed(err)
+          }
+        },
+      ),
+    )
+  }
   if (!readOnly) {
     tools.push(
       tool(

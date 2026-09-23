@@ -260,7 +260,10 @@ body::after {
   border-left: 2px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 6%, rgba(1, 8, 14, 0.88));
 }
-.alert-mail { border-left-color: var(--attention); }
+.alert-mail,
+.alert-overdue,
+.alert-portfolio { border-left-color: var(--attention); }
+.alerts-focus { color: var(--accent); }
 .alert-head {
   display: flex;
   align-items: center;
@@ -270,7 +273,9 @@ body::after {
   text-transform: uppercase;
 }
 .alert-kind { color: var(--accent); }
-.alert-mail .alert-kind { color: var(--attention); }
+.alert-mail .alert-kind,
+.alert-overdue .alert-kind,
+.alert-portfolio .alert-kind { color: var(--attention); }
 .alert-when { opacity: 0.8; }
 .alert-dismiss {
   margin-left: auto;

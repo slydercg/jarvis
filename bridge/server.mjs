@@ -34,6 +34,12 @@ import { displayServer } from './panels.mjs'
 import { protectiveConfigured, protectiveServer } from './protective.mjs'
 import { briefServer, maybeOfferBrief } from './briefing.mjs'
 import { localFilesServer } from './localfiles.mjs'
+import { loopServer, logMeetings, maybeOfferWrap } from './loop.mjs'
+import { commitmentsEnabled, dueNudges, scanCommitments, scanDue } from './commitments.mjs'
+import { focusGate, focusServer, focusState, startFocus, vips } from './focus.mjs'
+import { portfolioServer } from './portfolio.mjs'
+import { maybeOfferReview, reviewServer } from './review.mjs'
+import { firstToday, inWindow } from './days.mjs'
 import {
   VERSION,
   checkElevenKey,
@@ -241,7 +247,10 @@ const displayName = (name) =>
  * The interface's own in-process servers. They are how JARVIS draws on the
  * screen, not systems he is linked to, so the SYSTEMS rail leaves them out.
  */
-const INTERNAL_SERVERS = new Set(['jarvis', 'jarvis_ui', 'jarvis_chrome', 'jarvis_eyes', 'jarvis_memory', 'jarvis_brief', 'jarvis_files'])
+const INTERNAL_SERVERS = new Set([
+  'jarvis', 'jarvis_ui', 'jarvis_chrome', 'jarvis_eyes', 'jarvis_memory', 'jarvis_brief', 'jarvis_files',
+  'jarvis_loop', 'jarvis_focus', 'jarvis_portfolio', 'jarvis_review',
+])
 
 /**
  * The SDK's status words, as the rail shows them. A server that needs signing
@@ -491,6 +500,11 @@ function decideTool(name) {
 
     // Reading documents in the home folder; it cannot write or leave home.
     if (server === 'jarvis_files') return 'allow'
+
+    // The wrap, dossiers, portfolio pulse and weekly review are built by
+    // read-only sessions; the promise ledger and the focus state are files in
+    // ~/.jarvis, like memory. Nothing here reaches another person.
+    if (['jarvis_loop', 'jarvis_focus', 'jarvis_portfolio', 'jarvis_review'].includes(server)) return 'allow'
 
     const tool = mcpToolOf(name)
     const key = serverKey(server)
@@ -753,6 +767,58 @@ Meetings — prep and follow-through:
   as kind "me", things other people owe him as kind "waiting" ("Chris — send the
   revised estimate"), each with the meeting name, and a due date as YYYY-MM-DD
   only when one was actually stated. The interface confirms the batch once.
+
+- "Who am I meeting", "tell me about Chris", "what's open with Cathrene": call
+  \`get_dossier\` with the people (and the meeting title when there is one). Say
+  the one thing worth knowing walking in, and anything owed either way; the rest
+  on a blade.
+
+Recent alerts. A message may begin with a second bracket listing alerts you
+spoke in the last few minutes. "Yes", "do it", "draft it" right after one of
+them answers it: an overdue promise's "Shall I draft a nudge?" means draft a
+short, courteous nudge to that person — Protective unless it is clearly SCG —
+with \`protective_create_draft\`, and say it is in Drafts. If you cannot find
+their address, say so and ask for it; never say a draft exists until it is saved.
+
+The end of the day — "wrap up my day", "shut down", "how did today go":
+- Call \`get_day_wrap\`. Put it on screen once with \`display\`: done, slipped,
+  replies owed, and the first thing for tomorrow.
+- Speak two sentences: its summary, then tomorrow's first thing. Then ask once
+  whether to add its tasks to To Do; on yes, ONE \`protective_create_tasks\` call
+  with all of them. Offer to draft the owed replies; drafts need no asking.
+
+Promises — the ledger of what he owes and what is owed to him:
+- "What did I promise?", "what do I owe Chris?", "who owes me what?", "what's
+  late?": \`get_commitments\`, filtered as asked. Late ones first; say who and what
+  and how late, in a clause each.
+- When he states one — "I told Chris I'd send the roadmap by Friday", "Sam owes
+  me the estimate" — record it with \`commitment_add\`, due as a date if one was
+  said, and acknowledge in a few words. "That's done", "drop that one":
+  \`commitment_close\`. It scans meetings and sent mail by itself every few hours;
+  call \`scan_commitments\` only when asked to check now.
+
+Focus — "I'm heads-down until two", "focus for ninety minutes", "I'm back":
+- \`focus_start\` with minutes or a clock time; \`focus_end\` when he is back.
+  While it holds, only VIPs, incidents and meeting heads-ups get through, and the
+  rest comes back as one digest. Acknowledge in one short line with the end time.
+- If memory has a focus playlist, start it on the speakers as well. His Teams
+  status cannot be set from here; do not offer.
+- "Add Chris to my VIPs": \`focus_vips\`.
+
+The portfolio — "what's blocked across the portfolio?", "which team is behind?",
+"what changed since yesterday?", "how's delivery?":
+- Call \`get_portfolio_pulse\` (pass \`question\` for anything specific). It reads
+  Jira live and the Jira and Azure DevOps dashboards on this Mac. Speak the
+  summary; blocked items and slipping sprints on a blade with their keys as tags.
+
+The weekly review — "weekly review", "how did the week go", "draft my weekly
+update":
+- Call \`get_weekly_review\`. Show it once with \`display\`: wins, slips, risks,
+  where the meeting hours went, promises kept and late. Speak the headline and
+  the time-versus-priorities line.
+- Then offer the leadership update as a draft; on yes, \`protective_create_draft\`
+  with its subject and html, to Mark.Slyder@protective.com unless he names who.
+- If no priorities are on record, say so once and suggest he tell you them.
 
 Files on this Mac — a file:// link, or a path like ~/Documents/report.html:
 - Use \`read_local_page\` with the link exactly as given. NEVER the browser: a
@@ -1674,6 +1740,33 @@ const backgroundServers = () => ({
   ...(protectiveConfigured() ? { protective: protectiveServer({ readOnly: true }) } : {}),
 })
 
+/**
+ * Alerts to every open page, through the focus guard: while he is heads-down
+ * only VIPs, incidents and meeting heads-ups get through; the rest waits for
+ * the digest.
+ */
+const toPages = (alert) => {
+  console.log(`[jarvis] alert: ${alert.kind} — ${alert.title}`)
+  recentAlerts.push({ at: Date.now(), line: alert.say ?? `${alert.title}${alert.detail ? ` — ${alert.detail}` : ''}` })
+  while (recentAlerts.length > 10) recentAlerts.shift()
+  for (const deliver of pages) deliver({ type: 'alert', alert })
+}
+/**
+ * What was said unprompted lately, so "yes, draft it" straight after "Shall I
+ * draft a nudge?" means something to the conversation, which did not hear it.
+ */
+const recentAlerts = []
+const RECENT_ALERT_MS = 10 * 60_000
+function alertContext(since) {
+  const lines = recentAlerts.filter((a) => a.at > since && a.at > Date.now() - RECENT_ALERT_MS).map((a) => a.line)
+  return lines.length ? `[Alerts you just spoke: ${lines.join(' | ')}]\n` : ''
+}
+const focusToPages = (focus) => {
+  for (const deliver of pages) deliver({ type: 'focus', focus })
+}
+const focus = focusGate(toPages, focusToPages)
+const broadcastAlert = focus.deliver
+
 /** Everything the brief builder needs; see briefing.mjs. */
 const briefDeps = () => ({
   mcpServers: MCP_SERVERS,
@@ -1688,16 +1781,43 @@ function ensureWatcher() {
     // Exactly what the conversation may do without asking, and nothing else:
     // no confirmations, no writes, ever.
     isReadOnly: readOnlyTool,
-    broadcast: (alert) => {
-      console.log(`[jarvis] alert: ${alert.kind} — ${alert.title}`)
-      for (const deliver of pages) deliver({ type: 'alert', alert })
-    },
+    broadcast: broadcastAlert,
     listening: () => pages.size > 0,
     localNow,
+    vips,
+    // A focus block on the calendar starts focus on its own, quietly.
+    onFocusBlock: (title, start, end) => {
+      try {
+        focusToPages(startFocus({ until: end, reason: title, source: 'calendar' }))
+        console.log(`[jarvis] focus: calendar block "${title}" until ${new Date(end).toLocaleTimeString()}`)
+      } catch {
+        // Already over.
+      }
+    },
     model: FAST_MODEL,
     effort: FAST_EFFORT,
   })
 }
+
+/**
+ * The minute clock for everything proactive that needs no model to decide:
+ * focus ending on time, the evening wrap and Friday review offers, promise
+ * nudges, the promise scan every few hours, and the day's meetings into the
+ * log. Only while a page is open, and nudges only within alert hours.
+ */
+const ALERT_HOURS = process.env.JARVIS_ALERT_HOURS ?? '8-19'
+const ALERT_DAYS = process.env.JARVIS_ALERT_WEEKENDS === 'on' ? 'every' : 'weekdays'
+setInterval(() => {
+  focus.tick()
+  if (!pages.size) return
+  const deps = briefDeps()
+  maybeOfferWrap(deps, broadcastAlert)
+  maybeOfferReview(deps, broadcastAlert)
+  if (inWindow('16-24', 'every') && firstToday('meeting-log')) void logMeetings()
+  if (!commitmentsEnabled() || !inWindow(ALERT_HOURS, ALERT_DAYS)) return
+  for (const nudge of dueNudges()) broadcastAlert(nudge)
+  if (scanDue()) scanCommitments(deps).catch((err) => console.warn(`[jarvis] commitments: ${err.message}`))
+}, 60_000).unref()
 
 wss.on('connection', (socket) => {
   console.log('[jarvis] client connected')
@@ -1716,6 +1836,9 @@ wss.on('connection', (socket) => {
     }),
   )
 
+  /** Alerts before this were already passed to this conversation. */
+  let alertsSeen = 0
+
   /** Resolves the pending user message into the SDK's input generator. */
   let deliver = null
   let closed = false
@@ -1729,9 +1852,11 @@ wss.on('connection', (socket) => {
           deliver = resolve
         }))
       if (closed || text == null) return
+      const context = alertContext(alertsSeen)
+      alertsSeen = Date.now()
       yield {
         type: 'user',
-        message: { role: 'user', content: `[${localNow()}]\n${text}` },
+        message: { role: 'user', content: `[${localNow()}]\n${context}${text}` },
         parent_tool_use_id: null,
       }
     }
@@ -1745,11 +1870,9 @@ wss.on('connection', (socket) => {
   // The first page of the morning builds the day's brief and offers it.
   maybeOfferBrief(briefDeps(), {
     weekends: process.env.JARVIS_ALERT_WEEKENDS === 'on',
-    broadcast: (alert) => {
-      console.log(`[jarvis] alert: ${alert.kind} — ${alert.title}`)
-      for (const deliver of pages) deliver({ type: 'alert', alert })
-    },
+    broadcast: broadcastAlert,
   })
+  send({ type: 'focus', focus: focusState() })
 
   /**
    * Which question the agent is currently answering.
@@ -1925,6 +2048,14 @@ wss.on('connection', (socket) => {
         jarvis_brief: briefServer(briefDeps()),
         // Reports and dashboards saved on this Mac, file:// links included.
         jarvis_files: localFilesServer(),
+        // Closing the loop: the evening wrap, dossiers, the promise ledger.
+        jarvis_loop: loopServer(briefDeps()),
+        // Heads-down: hold alerts except VIPs, then one digest.
+        jarvis_focus: focusServer(focusToPages),
+        // Jira and Azure DevOps, by voice.
+        jarvis_portfolio: portfolioServer(briefDeps()),
+        // Friday's review and the weekly update for leadership.
+        jarvis_review: reviewServer(briefDeps()),
         // The Protective mailbox, calendar and To Do, via Power Automate —
         // present only once its flows are set up.
         ...(protectiveConfigured() ? { protective: protectiveServer() } : {}),

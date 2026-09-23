@@ -1,4 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
+import { commitmentsWith } from './commitments.mjs'
+import { readJsonFile, writeJsonFile } from './days.mjs'
 
 /**
  * Proactive alerts: a heads-up before a meeting, and a word when mail arrives
@@ -43,6 +45,16 @@ const HORIZON_MIN = Math.max(120, CAL_MIN * 3)
  */
 const PREP = process.env.JARVIS_MEETING_PREP !== 'off'
 const PREP_AHEAD_MIN = 5
+/**
+ * Portfolio pulse: every JARVIS_PORTFOLIO_ALERT_MIN (60), ask Jira (and Azure
+ * DevOps if connected) for blocked high-priority work and how each open
+ * sprint is tracking. A newly blocked P1, or a sprint whose time has run well
+ * ahead of its work, is said once. 0 turns it off.
+ */
+const PORTFOLIO_MIN = Number(process.env.JARVIS_PORTFOLIO_ALERT_MIN ?? 60)
+const JIRA_PROJECTS = (process.env.JARVIS_JIRA_PROJECTS ?? 'NI,RPT').split(',').map((s) => s.trim()).filter(Boolean)
+/** Time elapsed minus work done, in points of percent, before a sprint counts as slipping. */
+const SLIP_PCT = Number(process.env.JARVIS_SPRINT_SLIP_PCT ?? 25)
 /** A check that has not answered in this long is abandoned; the next tick tries again. */
 const CHECK_TIMEOUT_MS = 180_000
 
@@ -66,6 +78,7 @@ export function alertsSummary() {
   return (
     `alerts: meetings ${LEAD_MIN} min ahead (calendar checked every ${CAL_MIN} min)` +
     (MAIL_MIN > 0 ? `, urgent mail every ${MAIL_MIN} min` : ', mail off') +
+    (PORTFOLIO_MIN > 0 ? `, portfolio every ${PORTFOLIO_MIN} min (${JIRA_PROJECTS.join(', ')})` : '') +
     `; ${FROM_H}:00–${TO_H}:00 ${days}`
   )
 }
@@ -98,9 +111,21 @@ function parseJson(text) {
  *   broadcast   (alert) => void — delivers to every open page
  *   listening   () => boolean — whether any page is open
  *   localNow    () => string — "Tuesday, 23 September 2026, 4:41 pm (Zone)"
+ *   vips        () => string[] — people whose mail gets through focus
+ *   onFocusBlock (title, startMs, endMs) => void — a focus block on the calendar
  *   model, effort
  */
-export function startAlerts({ mcpServers, isReadOnly, broadcast, listening, localNow, model, effort }) {
+export function startAlerts({
+  mcpServers,
+  isReadOnly,
+  broadcast,
+  listening,
+  localNow,
+  vips = () => [],
+  onFocusBlock = () => {},
+  model,
+  effort,
+}) {
   if (!ENABLED) return { stop() {} }
 
   // --- one session, fed a question at a time -------------------------------
@@ -184,9 +209,11 @@ export function startAlerts({ mcpServers, isReadOnly, broadcast, listening, loca
     const { text, spent } = await ask(
       `It is ${localNow()}. List events on every calendar that start between now and ` +
         `${HORIZON_MIN} minutes from now. Skip all-day events and events the user ` +
-        `declined, and list a meeting that appears on two calendars once. Answer exactly: ` +
-        `{"events":[{"id":"...","title":"...","start":"<ISO 8601 with offset>",` +
-        `"where":"<room, link or empty>","who":["<up to 8 attendee names or addresses>"]}]}`,
+        `declined, and list a meeting that appears on two calendars once. Mark "focus": true ` +
+        `on blocks he set aside for himself — Focus time, Heads down, Deep work, Do not book, ` +
+        `no other attendees and a title that says so. Answer exactly: ` +
+        `{"events":[{"id":"...","title":"...","start":"<ISO 8601 with offset>","end":"<ISO 8601 with offset>",` +
+        `"where":"<room, link or empty>","who":["<up to 8 attendee names or addresses>"],"focus":false}]}`,
     )
     const events = parseJson(text)?.events
     if (!Array.isArray(events)) {
@@ -199,6 +226,21 @@ export function startAlerts({ mcpServers, isReadOnly, broadcast, listening, loca
       if (!e?.title || Number.isNaN(start)) continue
       const key = `${e.id ?? e.title}|${start}`
       if (scheduled.has(key)) continue
+      // A focus block is not a meeting: it starts focus, and says nothing.
+      if (e.focus === true) {
+        const end = Date.parse(e?.end)
+        if (Number.isNaN(end) || end <= Date.now()) continue
+        const timer = setTimeout(
+          () => {
+            scheduled.delete(key)
+            onFocusBlock(String(e.title), start, end)
+          },
+          Math.max(0, start - Date.now()),
+        )
+        scheduled.set(key, { timer, prepTimer: null, prep: null })
+        added++
+        continue
+      }
       // Already started: too late for a heads-up.
       if (start <= Date.now()) continue
       // Inside the lead window but not yet started: the delay is negative, so
@@ -247,27 +289,33 @@ export function startAlerts({ mcpServers, isReadOnly, broadcast, listening, loca
 
   // --- meeting prep ---------------------------------------------------------------
   /**
-   * Where things stand before a meeting: the last notes with these people or
-   * on this subject, the latest mail thread with them, open Jira items. Two
-   * spoken sentences and up to three points; null when there is nothing.
+   * Where things stand before a meeting — on the subject and with the people:
+   * the last notes with them or on this, the latest mail thread, open Jira
+   * items, and what is owed either way (from the promise ledger and what the
+   * notes say). Two spoken sentences and up to four points; null when there
+   * is nothing.
    */
   async function prepMeeting(title, start, who) {
     const when = new Date(start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    const owed = who.length ? commitmentsWith(who) : []
     const { text, spent } = await ask(
       `It is ${localNow()}. Prepare Mark for "${title}" at ${when}` +
         (who.length ? ` with ${who.join(', ')}` : '') +
         '. Look at: the most recent Granola meeting notes with these people or on this ' +
         'subject; the latest email thread with them in any mailbox; open Jira issues those ' +
-        'notes or emails mention. Answer exactly {"summary":"<one or two spoken sentences: ' +
-        'where things stand and what he needs to do or decide in this meeting>","points":' +
-        '["<up to 3 short points>"]}. If nothing relevant turns up, {"summary":"","points":[]}.',
+        'notes or emails mention. For the people: what he promised them and what they owe him.' +
+        (owed.length ? ` Already on record: ${JSON.stringify(owed.map(({ direction, who, what, due }) => ({ direction, who, what, due })))}.` : '') +
+        ' Answer exactly {"summary":"<one or two spoken sentences: where things stand, anything ' +
+        'owed either way, and what he needs to do or decide in this meeting>","points":' +
+        '["<up to 4 short points; owed items as \'You owe Chris: …\' or \'Chris owes you: …\'>"]}. ' +
+        'If nothing relevant turns up, {"summary":"","points":[]}.',
     )
     const prep = parseJson(text)
     console.log(`[jarvis] alerts: prepared "${title}" ($${spent.toFixed(3)})`)
     if (!prep?.summary) return null
     return {
       summary: String(prep.summary).slice(0, 400),
-      points: (Array.isArray(prep.points) ? prep.points : []).map(String).slice(0, 3),
+      points: (Array.isArray(prep.points) ? prep.points : []).map(String).slice(0, 4),
     }
   }
 
@@ -284,8 +332,10 @@ export function startAlerts({ mcpServers, isReadOnly, broadcast, listening, loca
         'Pick only messages from a real person that need the user\'s attention or a reply ' +
         'soon: a direct question, a deadline today, something blocked on them. Never ' +
         'newsletters, notifications, receipts, marketing or automated mail. At most three. ' +
+        `Mark "vip": true when the sender is one of these people — ${JSON.stringify(vips())} — or ` +
+        'it is about a production incident, outage or security event. ' +
         'Answer exactly: {"emails":[{"id":"...","from":"<name>","subject":"...",' +
-        '"why":"<under ten words>"}]}',
+        '"why":"<under ten words>","vip":false}]}',
     )
     const emails = parseJson(text)?.emails
     if (!Array.isArray(emails)) {
@@ -304,14 +354,74 @@ export function startAlerts({ mcpServers, isReadOnly, broadcast, listening, loca
           title: String(m.from),
           detail: [m.subject, m.why].filter(Boolean).map(String).join(' — '),
           at: new Date().toISOString(),
+          ...(m.vip === true ? { vip: true } : {}),
         })
       }
     }
     console.log(`[jarvis] alerts: mail checked, ${fresh} needing attention ($${spent.toFixed(3)})`)
   }
 
+  // --- portfolio ---------------------------------------------------------------
+  const PORTFOLIO_SEEN = 'portfolio-alerts.json'
+
+  async function checkPortfolio() {
+    const { text, spent } = await ask(
+      `It is ${localNow()}. Using Jira (projects ${JIRA_PROJECTS.join(', ')}; search for the Jira ` +
+        'tools if they are not in front of you) and Azure DevOps if it is connected: (1) issues in ' +
+        'open sprints with priority Highest, High, P1 or Critical that are Blocked, On Hold or ' +
+        'flagged; (2) for each open sprint, its dates and how many issues are done out of the total. ' +
+        'Answer exactly {"blocked":[{"key":"...","title":"...","status":"...","owner":"<name or empty>"}],' +
+        '"sprints":[{"name":"...","project":"...","start":"YYYY-MM-DD","end":"YYYY-MM-DD","done":0,"total":0}]}. ' +
+        'If Jira is not connected, {"blocked":[],"sprints":[],"unavailable":true}.',
+    )
+    const r = parseJson(text)
+    if (!r || r.unavailable) {
+      console.log(`[jarvis] alerts: portfolio ${r?.unavailable ? 'unavailable (no Jira)' : 'check did not come back as expected'}`)
+      return
+    }
+    const seen = readJsonFile(PORTFOLIO_SEEN, { blocked: {}, slipping: {} })
+    const today = new Date().toLocaleDateString('en-CA')
+    const fresh = (Array.isArray(r.blocked) ? r.blocked : []).filter((b) => b?.key && !seen.blocked[b.key])
+    for (const b of fresh) seen.blocked[b.key] = today
+    if (fresh.length && listening()) {
+      const first = fresh[0]
+      broadcast({
+        kind: 'portfolio',
+        label: 'Portfolio',
+        title: fresh.length === 1 ? `${first.key} is blocked` : `${fresh.length} high-priority items newly blocked`,
+        detail: fresh.slice(0, 4).map((b) => `${b.key} ${b.title}${b.owner ? ` (${b.owner})` : ''}`).join(' · '),
+        say:
+          fresh.length === 1
+            ? `Sir, ${first.title} is blocked${first.owner ? `, with ${first.owner}` : ''}.`
+            : `Sir, ${fresh.length} high-priority items are newly blocked, ${first.title} among them.`,
+        at: new Date().toISOString(),
+      })
+    }
+    for (const sp of Array.isArray(r.sprints) ? r.sprints : []) {
+      const slip = sprintSlip(sp)
+      if (slip === null || slip < SLIP_PCT) continue
+      const k = `${sp.project ?? ''}|${sp.name}`
+      if (seen.slipping[k] === today) continue
+      seen.slipping[k] = today
+      if (!listening()) continue
+      broadcast({
+        kind: 'portfolio',
+        label: 'Sprint',
+        title: `${sp.name} is behind`,
+        detail: `${sp.done} of ${sp.total} done with ${Math.round(elapsedPct(sp))}% of the sprint gone`,
+        say: `Sir, ${sp.name} is behind — ${sp.done} of ${sp.total} done with ${Math.round(elapsedPct(sp))} percent of the sprint gone.`,
+        at: new Date().toISOString(),
+      })
+    }
+    // Forget blocked items after two weeks so a re-block is said again.
+    const cutoff = new Date(Date.now() - 14 * 86_400_000).toLocaleDateString('en-CA')
+    for (const [k, d] of Object.entries(seen.blocked)) if (d < cutoff) delete seen.blocked[k]
+    writeJsonFile(PORTFOLIO_SEEN, seen)
+    console.log(`[jarvis] alerts: portfolio checked, ${fresh.length} newly blocked ($${spent.toFixed(3)})`)
+  }
+
   // --- the clock -----------------------------------------------------------------
-  const due = { calendar: 0, mail: 0 }
+  const due = { calendar: 0, mail: 0, portfolio: 0 }
   let busy = false
   const tick = async () => {
     if (busy || stopped || !listening() || !withinHours()) return
@@ -325,6 +435,10 @@ export function startAlerts({ mcpServers, isReadOnly, broadcast, listening, loca
       if (MAIL_MIN > 0 && now >= due.mail) {
         due.mail = now + MAIL_MIN * 60_000
         await checkMail()
+      }
+      if (PORTFOLIO_MIN > 0 && now >= due.portfolio) {
+        due.portfolio = now + PORTFOLIO_MIN * 60_000
+        await checkPortfolio()
       }
     } catch (err) {
       console.warn(`[jarvis] alerts: check failed: ${err?.message ?? err}`)
@@ -349,4 +463,25 @@ export function startAlerts({ mcpServers, isReadOnly, broadcast, listening, loca
       session.close?.()
     },
   }
+}
+
+/** Percent of a sprint's days gone, or null without dates. */
+export function elapsedPct(sp, now = Date.now()) {
+  const a = Date.parse(`${sp?.start}T00:00:00`)
+  const b = Date.parse(`${sp?.end}T23:59:59`)
+  if (Number.isNaN(a) || Number.isNaN(b) || b <= a) return null
+  return Math.min(100, Math.max(0, ((now - a) / (b - a)) * 100))
+}
+
+/**
+ * How far a sprint's time has run ahead of its work, in points of percent;
+ * null when there is too little to judge (no dates, no issues, or under a
+ * third of the way in, when "behind" is mostly noise).
+ */
+export function sprintSlip(sp, now = Date.now()) {
+  const elapsed = elapsedPct(sp, now)
+  const total = Number(sp?.total)
+  const done = Number(sp?.done)
+  if (elapsed === null || !(total > 0) || Number.isNaN(done) || elapsed < 33) return null
+  return elapsed - (done / total) * 100
 }

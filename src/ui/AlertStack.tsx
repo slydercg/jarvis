@@ -1,6 +1,17 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useStore } from '../store'
+import { useStore, type Alert } from '../store'
+
+const LABELS: Record<Alert['kind'], string> = {
+  meeting: 'Meeting',
+  mail: 'Mail',
+  brief: 'Brief',
+  wrap: 'Wrap-up',
+  review: 'Weekly review',
+  promise: 'Promise',
+  portfolio: 'Portfolio',
+  digest: 'While you were focused',
+}
 
 /**
  * Proactive alerts, top right under the status line.
@@ -14,6 +25,7 @@ export function AlertStack() {
   const alerts = useStore((s) => s.alerts)
   const muted = useStore((s) => s.alertsMuted)
   const dismiss = useStore((s) => s.dismissAlert)
+  const focus = useStore((s) => s.focus)
   const [, tick] = useState(0)
 
   // Keep "in 8 min" honest, and clear meetings once they are well under way.
@@ -28,16 +40,23 @@ export function AlertStack() {
     return () => clearInterval(id)
   }, [alerts.length, dismiss])
 
-  if (!alerts.length && !muted) return null
+  const focused = focus.active && focus.until
+  if (!alerts.length && !muted && !focused) return null
 
   return (
     <section className="alerts" aria-label="Alerts" aria-live="polite">
       {muted && <div className="alerts-muted">Alerts muted · say “resume alerts”</div>}
+      {focused && (
+        <div className="alerts-muted alerts-focus">
+          Heads-down until {new Date(focus.until!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+          {focus.held ? ` · ${focus.held} held` : ''}
+        </div>
+      )}
       <AnimatePresence initial={false}>
         {alerts.map((a) => (
           <motion.div
             key={a.id}
-            className={`alert alert-${a.kind}`}
+            className={`alert alert-${a.kind}${a.label === 'Overdue' ? ' alert-overdue' : ''}`}
             role="status"
             initial={{ opacity: 0, x: 16 }}
             animate={{ opacity: 1, x: 0 }}
@@ -45,9 +64,7 @@ export function AlertStack() {
             transition={{ duration: 0.22, ease: 'easeOut' }}
           >
             <div className="alert-head">
-              <span className="alert-kind">
-                {a.kind === 'meeting' ? 'Meeting' : a.kind === 'brief' ? 'Brief' : 'Mail'}
-              </span>
+              <span className="alert-kind">{a.label ?? LABELS[a.kind] ?? 'Alert'}</span>
               <span className="alert-when">{when(a)}</span>
               <button
                 type="button"
@@ -69,6 +86,13 @@ export function AlertStack() {
                 )}
               </ul>
             )}
+            {a.items && a.items.length > 0 && (
+              <ul className="alert-prep" aria-label="Held back">
+                {a.items.map((it, i) => (
+                  <li key={`${i}:${it.title}`}>{it.title}</li>
+                ))}
+              </ul>
+            )}
           </motion.div>
         ))}
       </AnimatePresence>
@@ -76,7 +100,7 @@ export function AlertStack() {
   )
 }
 
-function when(a: { kind: 'meeting' | 'mail' | 'brief'; at: number }): string {
+function when(a: Pick<Alert, 'kind' | 'at'>): string {
   const mins = Math.round((a.at - Date.now()) / 60_000)
   if (a.kind === 'meeting') {
     if (mins > 1) return `in ${mins} min`

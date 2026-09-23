@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { AlertKind, FocusFrame } from './lib/bridge'
 
 /** Where things stand before a meeting, gathered ahead of the heads-up. */
 export type MeetingPrep = { summary: string; points: string[] }
@@ -6,12 +7,15 @@ export type MeetingPrep = { summary: string; points: string[] }
 /** A heads-up: a meeting about to start, mail that needs you, or the morning brief. */
 export type Alert = {
   id: string
-  kind: 'meeting' | 'mail' | 'brief'
+  kind: AlertKind
   title: string
   detail: string
   /** Meeting start, or when the mail was flagged, as a Date.now() value. */
   at: number
   prep?: MeetingPrep
+  label?: string
+  say?: string
+  items?: Array<{ title: string; detail: string }>
 }
 
 const MUTED_KEY = 'jarvis.alertsMuted'
@@ -275,6 +279,8 @@ type State = {
   alerts: Alert[]
   /** Alerts still show, but are not spoken. Remembered per browser. */
   alertsMuted: boolean
+  /** Heads-down, as the bridge reports it. */
+  focus: FocusFrame
   /** The settings panel is open. */
   settingsOpen: boolean
   /** Name of the speech-synthesis voice in use, shown in the HUD. */
@@ -321,6 +327,7 @@ type State = {
   pushAlert: (a: Alert) => void
   dismissAlert: (id: string) => void
   setAlertsMuted: (muted: boolean) => void
+  setFocus: (focus: FocusFrame) => void
   setSettingsOpen: (open: boolean) => void
   pushTurn: (t: Turn) => void
   /** Replace the transcript: a restored conversation, or a fresh start. */
@@ -350,6 +357,7 @@ export const useStore = create<State>((set) => ({
   confirm: null,
   alerts: [],
   alertsMuted: readMuted(),
+  focus: { active: false },
   settingsOpen: false,
   voice: '',
   gestures: false,
@@ -431,6 +439,7 @@ export const useStore = create<State>((set) => ({
   pushAlert: (a) => set((s) => ({ alerts: [a, ...s.alerts.filter((x) => x.id !== a.id)].slice(0, 3) })),
   dismissAlert: (id) => set((s) => ({ alerts: s.alerts.filter((a) => a.id !== id) })),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  setFocus: (focus) => set({ focus }),
   setAlertsMuted: (alertsMuted) => {
     try {
       localStorage.setItem(MUTED_KEY, alertsMuted ? '1' : '0')

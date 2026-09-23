@@ -85,3 +85,12 @@ test('a failing flow never reveals its URL', async () => {
     globalThis.fetch = real
   }
 })
+
+test('a flow that is not set up says where to add it', async () => {
+  await assert.rejects(pa.protective.sent(), /add "sent_email" to ~\/\.jarvis\/power-automate\.json/)
+  assert.equal(pa.hasFlow('sent_email'), false)
+  assert.deepEqual(
+    pa.normaliseSent({ toRecipients: [{ emailAddress: { address: 'chris@example.com' } }], subject: 'Roadmap', bodyPreview: 'By Friday' }),
+    { id: '', to: ['chris@example.com'], subject: 'Roadmap', preview: 'By Friday', sent: '' },
+  )
+})
