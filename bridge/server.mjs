@@ -178,7 +178,23 @@ function configuredServers() {
 const MCP_SERVERS = configuredServers()
 
 /** `claude.ai Google Calendar` -> `Google Calendar`, for the HUD and the log. */
-const displayName = (name) => String(name).replace(/^claude\.ai /, '')
+const displayName = (name) =>
+  String(name).replace(/^claude\.ai /, '').replace(/_/g, ' ')
+
+/**
+ * The interface's own in-process servers. They are how JARVIS draws on the
+ * screen, not systems he is linked to, so the SYSTEMS rail leaves them out.
+ */
+const INTERNAL_SERVERS = new Set(['jarvis', 'jarvis_ui', 'jarvis_chrome', 'jarvis_eyes'])
+
+/** Usable servers, as the rail shows them: no internals, sorted, deduped. */
+function railList(all) {
+  const names = all
+    .filter((s) => !['needs-auth', 'failed', 'disabled'].includes(s.status))
+    .filter((s) => !INTERNAL_SERVERS.has(s.name))
+    .map((s) => displayName(s.name))
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b))
+}
 
 /**
  * The first init message is the only place the full list — your claude.ai
@@ -187,7 +203,8 @@ const displayName = (name) => String(name).replace(/^claude\.ai /, '')
  * "why can't he read my mail" has no answer on screen.
  */
 let initLogged = false
-function logServers(all) {
+function logServers(everything) {
+  const all = everything.filter((s) => !INTERNAL_SERVERS.has(s.name))
   const byStatus = (pred) => all.filter(pred).map((s) => displayName(s.name))
   const usable = byStatus((s) => s.status !== 'needs-auth' && s.status !== 'failed')
   const connectors = all.filter((s) => /^claude\.ai /.test(s.name)).length
@@ -1273,7 +1290,10 @@ wss.on('connection', (socket) => {
   // Answer the HUD straight away rather than making it wait for the agent's
   // first turn. Refined later by the real init message.
   socket.send(
-    JSON.stringify({ type: 'ready', servers: Object.keys(MCP_SERVERS).map(displayName) }),
+    JSON.stringify({
+      type: 'ready',
+      servers: railList(Object.keys(MCP_SERVERS).map((name) => ({ name }))),
+    }),
   )
 
   /** Resolves the pending user message into the SDK's input generator. */
@@ -1529,6 +1549,46 @@ wss.on('connection', (socket) => {
     },
   })
 
+  /**
+   * Fill the SYSTEMS rail straight away, connectors included.
+   *
+   * The init message that carries the full server list only arrives with the
+   * first question, so until then the rail could show nothing but what
+   * ~/.claude.json names — none of the claude.ai connectors. mcpServerStatus()
+   * answers as soon as the CLI has started, no question needed. Servers connect
+   * lazily, so it is asked again every few seconds while any are still pending,
+   * and the rail fills in as they come up. Also where the terminal learns what
+   * loaded, at startup rather than on the first question.
+   */
+  ;(async () => {
+    const deadline = Date.now() + 60_000
+    let last = ''
+    while (!closed && Date.now() < deadline) {
+      let all
+      try {
+        all = await session.mcpServerStatus()
+      } catch {
+        return // Session ended, or this SDK cannot answer; init will cover it.
+      }
+      if (closed) return
+      const list = railList(all)
+      const key = list.join('|')
+      if (key !== last) {
+        last = key
+        send({ type: 'ready', servers: list })
+      }
+      const pending = all.some((s) => s.status === 'pending')
+      if (!pending) {
+        if (!initLogged) {
+          initLogged = true
+          logServers(all)
+        }
+        return
+      }
+      await new Promise((r) => setTimeout(r, 3000))
+    }
+  })()
+
   // Pump the session's output stream to the browser for as long as it lives.
   ;(async () => {
     try {
@@ -1647,10 +1707,7 @@ wss.on('connection', (socket) => {
               // Servers report 'pending' until first use — they connect
               // lazily — so only drop the ones that are actually unusable.
               const all = msg.mcp_servers ?? []
-              const usable = all
-                .filter((s) => s.status !== 'needs-auth' && s.status !== 'failed')
-                .map((s) => displayName(s.name))
-              send({ type: 'ready', servers: usable })
+              send({ type: 'ready', servers: railList(all) })
               if (!initLogged) {
                 // Once per bridge, not per page load: the list does not change
                 // between reconnects and the terminal is not a ticker.

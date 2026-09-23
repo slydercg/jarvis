@@ -137,7 +137,23 @@ body::after {
   gap: 9px;
   font-size: 10px;
 }
-.rail-left { left: 92px; }
+.rail-left {
+  left: 92px;
+  /* With every claude.ai connector linked the list runs to thirty or more
+     entries — taller than a laptop screen. Wrap it into further columns
+     rather than let it run off the top and bottom edges. */
+  flex-wrap: wrap;
+  max-height: 70vh;
+  column-gap: 26px;
+  align-content: flex-start;
+}
+.rail-left .rail-item { max-width: 150px; }
+.rail-left .tick { flex-shrink: 0; }
+.rail-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .rail-right { right: 92px; align-items: flex-end; }
 
 .rail-title {

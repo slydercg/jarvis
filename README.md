@@ -174,10 +174,12 @@ they come along as long as:
   over your login and switches the connectors off. The bridge warns you if it's
   set.
 
-On the first question, the terminal lists what actually loaded, for example:
+As soon as the page connects, before you say anything, the SYSTEMS rail on the
+left fills with every server and connector that loaded (it wraps into columns
+when the list is long), and the terminal lists them, for example:
 
 ```
-[jarvis] 31 MCP servers available (27 from your claude.ai connectors): Gmail, Google Calendar, …
+[jarvis] 27 MCP servers available (27 from your claude.ai connectors): Gmail, Google Calendar, …
 [jarvis] needs signing in again (claude.ai → Settings → Connectors): Notion
 ```
 
