@@ -16,7 +16,13 @@
     "preview": "vite preview",
     "bridge": "node bridge/server.mjs",
     "bridge:writes": "JARVIS_ALLOW_WRITES=1 node bridge/server.mjs",
-    "setup": "node scripts/setup.mjs"
+    "setup": "node scripts/setup.mjs",
+    "autostart:install": "node scripts/autostart.mjs install",
+    "autostart:status": "node scripts/autostart.mjs status",
+    "autostart:logs": "node scripts/autostart.mjs logs",
+    "autostart:restart": "node scripts/autostart.mjs restart",
+    "autostart:stop": "node scripts/autostart.mjs stop",
+    "autostart:uninstall": "node scripts/autostart.mjs uninstall"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.220",

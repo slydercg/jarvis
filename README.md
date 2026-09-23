@@ -80,6 +80,41 @@ Click **INITIALISE**, allow the microphone when asked, and say **"Hey Jarvis"**.
 > It has to be a real browser window. Embedded preview panes block the
 > microphone, so JARVIS will look perfectly alive and simply never respond.
 
+### Start at login (Mac)
+
+Have him running whenever your Mac is, with no terminal left open:
+
+```bash
+npm run autostart:install                              # opens in your default browser
+npm run autostart:install -- --browser "Microsoft Edge"  # or a specific one
+```
+
+He starts now and at every login, restarts himself if he crashes, and opens the
+page once it is ready. Click **INITIALISE** as usual: browsers need that click
+before they allow the microphone.
+
+| Command | What it does |
+|---|---|
+| `npm run autostart:status` | Installed? Running? The last few log lines |
+| `npm run autostart:logs` | Follow the log (`~/.jarvis/logs/jarvis.log`) |
+| `npm run autostart:restart` | Pick up a changed `.env.local` or a `git pull` |
+| `npm run autostart:stop` | Stop until the next login |
+| `npm run autostart:uninstall` | Stop, and never start at login again |
+
+Install options: `--no-open` skips opening the browser, and `--writes` lets the
+login copy take actions, the same as `npm start -- --writes`.
+
+A login item does not read your `~/.zshrc`, so **put settings in `.env.local`,
+not in shell exports**. The installer names any `JARVIS_*`, `ELEVENLABS_*` or
+`VITE_*` variables it finds only in your shell. It never copies their values
+anywhere. It writes one file, `~/Library/LaunchAgents/local.jarvis.assistant.plist`,
+which records this folder and your `node`. If you move the folder or switch
+Node versions with nvm, run install again. `autostart:status` tells you when
+that is needed.
+
+With auto-start on, typing `npm start` as well just says he is already running,
+instead of fighting the other copy for the port.
+
 ---
 
 ## How it works
@@ -453,6 +488,11 @@ it used and where it came from.
 **Bridge not reachable.** Check that `npm run bridge` is still running in its
 terminal, and that nothing else is holding port `8787`. `EADDRINUSE` means an
 old copy is still running: `kill $(lsof -ti :8787)`.
+
+**Started at login but not answering.** Run `npm run autostart:status` and read
+the log lines it shows. The usual causes: Claude Code logged out (run `claude`,
+`/login`, then `npm run autostart:restart`), or a setting that lives only in your
+shell and not in `.env.local`.
 
 ---
 
