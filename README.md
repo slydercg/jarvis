@@ -108,9 +108,9 @@ WebSocket (plus a few HTTP endpoints) on `ws://localhost:8787`.
 rest. The bridge can. And because it is the Agent SDK, it authenticates off your
 existing Claude Code login: no API key, billed to that same Claude account.
 
-**The model.** `claude-opus-5` at effort `medium` by default. Override with the
+**The model.** `claude-opus-5` at effort `high` by default. Override with the
 `JARVIS_MODEL` and `JARVIS_EFFORT` environment variables. On startup the bridge
-prints its choice, e.g. `[jarvis] model claude-opus-5 · effort medium`.
+prints its choice, e.g. `[jarvis] model claude-opus-5 · effort high`.
 
 ### The voice pipeline
 
@@ -160,9 +160,38 @@ A few things you can say:
 - *"Take a screenshot of my phone."*
 - *"Open my GitHub notifications."*
 
-> **Note on account connectors.** Servers you added through your **claude.ai
-> account** are not stored on disk, so the bridge cannot see them — it works from
-> the servers in `~/.claude.json` (about 14), not the claude.ai ones.
+### Your accounts: claude.ai connectors
+
+The connectors you've added to your **claude.ai account** load too: Gmail,
+Google Calendar, Drive, Notion, Jira and Confluence, HubSpot, market data, your
+brokerage, your speakers and the rest. They aren't stored on disk. Claude Code
+fetches them with your claude.ai login when the bridge starts a session, so
+they come along as long as:
+
+- Claude Code is logged in with the **same account** that holds the connectors
+  (`claude`, then `/login`, then choose your Claude subscription), and
+- `ANTHROPIC_API_KEY` is **not** set in the shell. An API key takes precedence
+  over your login and switches the connectors off. The bridge warns you if it's
+  set.
+
+On the first question, the terminal lists what actually loaded, for example:
+
+```
+[jarvis] 31 MCP servers available (27 from your claude.ai connectors): Gmail, Google Calendar, …
+[jarvis] needs signing in again (claude.ai → Settings → Connectors): Notion
+```
+
+JARVIS reaches for a connector before opening the site in Chrome. Every message
+also carries your local date, time and time zone, so "what's on my calendar
+today" means your today. Try:
+
+- *"Anything important in my inbox?"*
+- *"What's my next meeting?"*
+- *"Draft a reply to Sarah saying Thursday works."* (Drafts are allowed in
+  read-only mode. Nothing is sent.)
+- *"How's the portfolio doing today?"*
+
+Set `ENABLE_CLAUDEAI_MCP_SERVERS=0` in the shell to run without them.
 
 ### JARVIS controls the interface
 
@@ -217,8 +246,11 @@ then the triangular arc reactor lighting up — with a start-up sound under it
 
 ## Configuration
 
-Everything is optional in bridge mode. Frontend settings live in `.env.local`
-(copy `.env.example`); bridge settings are environment variables.
+Everything is optional in bridge mode. Put settings in `.env.local` (copy
+`.env.example`). The page reads the `VITE_*` values and the bridge reads the
+rest. Anything already set in your shell wins over the file. The bridge refuses
+`ANTHROPIC_API_KEY` from the file, because it would quietly switch you from your
+subscription to API billing.
 
 ### Bridge
 
@@ -226,8 +258,9 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 |---|---|---|
 | `JARVIS_BRIDGE_PORT` | `8787` | Port for the WebSocket + HTTP endpoints |
 | `JARVIS_MODEL` | `claude-opus-5` | Model to run |
-| `JARVIS_EFFORT` | `medium` | Reasoning effort |
+| `JARVIS_EFFORT` | `high` | Reasoning effort |
 | `JARVIS_ALLOW_WRITES` | off | `1` allows effectful tools (see below) |
+| `JARVIS_ALLOW_MONEY` | off | `1` (with writes) allows orders, trades, payments, invoices |
 | `JARVIS_ALLOWED_ORIGINS` | local dev | Extra WebSocket origins to accept |
 | `JARVIS_ALLOW_NO_ORIGIN` | off | Accept connections with no `Origin` header |
 | `JARVIS_FILE_ROOTS` | — | Roots the `/file` endpoint may serve from |
@@ -247,14 +280,19 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 
 ### Adding an ElevenLabs key
 
-You do not have to touch a flag. Either:
+You do not have to touch a flag. Any one of these works, checked in this order:
 
-- Set `ELEVENLABS_API_KEY` on the bridge before starting it, **or**
-- Add the key to your `elevenlabs` MCP server's env in `~/.claude.json` — the
-  bridge reads it from there too.
+- `ELEVENLABS_API_KEY` in the shell that runs `npm start`
+- `ELEVENLABS_API_KEY=...` in `.env.local`
+- the key in your `elevenlabs` MCP server's env in `~/.claude.json`
+
+The startup line says which one it used: `speech via ElevenLabs (key from .env.local)`.
 
 Either way, `/health` starts reporting the capability, the browser picks it up on
-the next boot, and both the voice and transcription upgrade automatically.
+the next boot, and both the voice and transcription upgrade automatically. If
+the key turns out not to work (revoked, no Speech to Text permission, out of
+credit), the page switches to the browser's own recognition on the first
+rejection instead of going deaf. The terminal says why.
 
 ---
 
@@ -266,6 +304,16 @@ interface for a confirmation dialog, so the decision is made ahead of time in
 `decideTool()` in `bridge/server.mjs`, not at the moment of use. The bridge sets
 `settingSources: []`, which makes its own gate the only authority — filesystem
 settings and any global `bypassPermissions` cannot override it.
+
+What runs without writes, beyond lookups: **drafting** email (it lands in
+Drafts, nothing is sent) and **music and speaker control** (Sonos, Spotify).
+Sending, replying, forwarding, and creating or answering calendar events need
+writes.
+
+Money is a separate tier. Placing or cancelling orders, trades, payments,
+invoices and transfers stay blocked even with writes on, unless you also set
+`JARVIS_ALLOW_MONEY=1`. Reading balances, positions, orders and invoices is
+always allowed.
 
 To allow effectful tools (phone, browser driving, sending), run the bridge this
 way instead:
@@ -288,8 +336,19 @@ Press **T** for a one-line audio self-test.
 **No voice at all.** You must be in **Chrome or Edge**, in a **real browser
 window** (not an embedded preview), and you must have **allowed the microphone**.
 
+**He hears you but never answers.** Look at the `npm start` terminal. If it says
+Claude Code is not logged in, run `claude`, type `/login`, choose your Claude
+subscription account, and restart. JARVIS also says this out loud now instead of
+waiting silently. A `model ... is not available` line means your account can't
+use the configured model: `JARVIS_MODEL=claude-sonnet-5 npm start`.
+
+**Diagnostics show `stt 401` / `stt 403`.** Your ElevenLabs key was rejected.
+JARVIS has already switched to browser speech. The terminal line says which key
+it used and where it came from.
+
 **Bridge not reachable.** Check that `npm run bridge` is still running in its
-terminal, and that nothing else is holding port `8787`.
+terminal, and that nothing else is holding port `8787`. `EADDRINUSE` means an
+old copy is still running: `kill $(lsof -ti :8787)`.
 
 ---
 

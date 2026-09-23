@@ -204,6 +204,16 @@ export default function App() {
       store
         .getState()
         .setError(err instanceof Error ? err.message : 'Something went wrong.')
+      // Say it too, when the bridge wrote it to be said — "not signed in" on a
+      // screen nobody is facing reads exactly like being ignored.
+      if (err instanceof Error && (err as Error & { spoken?: boolean }).spoken) {
+        try {
+          spk.say(err.message)
+          await spk.end()
+        } catch {
+          // Speech failing here must not mask the original error.
+        }
+      }
     } finally {
       if (!stale()) {
         speaker.current = null
