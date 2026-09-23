@@ -10,8 +10,8 @@
  *   1. waits until he is quiet — no page open, or nothing said for
  *      JARVIS_UPDATE_IDLE_MIN minutes (15) — because the update reloads the
  *      page, and a reloaded page needs a click before it can use the mic;
- *   2. stops him, fast-forwards to origin/main, and runs `npm ci` if the
- *      dependencies changed;
+ *   2. stops him, fast-forwards to origin/main, and installs whatever
+ *      dependencies changed (incrementally; see installDeps);
  *   3. starts him again (rewriting the LaunchAgent first if that changed), and
  *      checks that the bridge actually comes up;
  *   4. if it does not, puts the previous version back, restarts that, and
@@ -20,7 +20,7 @@
  * It only ever fast-forwards main. On another branch, with local commits, or
  * with edited tracked files, it leaves everything alone and says why in
  * `npm run autostart:status`. The one exception is package-lock.json, which
- * `npm install` rewrites on its own; that is reset, since `npm ci` follows.
+ * `npm install` rewrites on its own; that is reset before the pull.
  *
  * A macOS notification says what changed. JARVIS_AUTO_UPDATE=off in .env.local
  * turns the whole thing off.
@@ -79,7 +79,7 @@ function waiting(remote, reason) {
 }
 
 function run(cmd, args, opts = {}) {
-  const r = spawnSync(cmd, args, { cwd: ROOT, encoding: 'utf8', ...opts })
+  const r = spawnSync(cmd, args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, ...opts })
   return { ok: r.status === 0, out: (r.stdout ?? '').trim(), err: (r.stderr ?? r.error?.message ?? '').trim() }
 }
 const git = (...args) => run('git', args)
@@ -123,11 +123,60 @@ async function startJarvis() {
   return false
 }
 
+/** Longest an install may take before the update is abandoned and rolled back. */
+const INSTALL_TIMEOUT_MS = 15 * 60_000
+
+/**
+ * Bring node_modules in line with the lockfile, adding and removing only what
+ * changed. This was `npm ci`, which deletes all 1.6 GB and downloads it again:
+ * minutes at best, and under a throttled LaunchAgent it never finished, which
+ * left him stopped on a half-installed node_modules crashing with
+ * ERR_MODULE_NOT_FOUND. An incremental install is seconds for the usual one
+ * added package, and never empties the folder.
+ */
 function installDeps() {
-  const ci = run('npm', ['ci', '--no-audit', '--no-fund'])
-  if (ci.ok) return true
-  log(`npm ci failed, trying npm install: ${ci.err.split('\n').slice(-3).join(' ')}`)
-  return run('npm', ['install', '--no-audit', '--no-fund']).ok
+  const t0 = Date.now()
+  log('installing dependencies')
+  const r = run('npm', ['install', '--no-audit', '--no-fund'], { timeout: INSTALL_TIMEOUT_MS })
+  const secs = Math.round((Date.now() - t0) / 1000)
+  if (r.ok) {
+    log(`dependencies installed (${secs}s)`)
+    return true
+  }
+  log(`dependencies failed after ${secs}s: ${(r.err || 'timed out').split('\n').slice(-3).join(' ')}`)
+  return false
+}
+
+/**
+ * One update at a time. launchd never overlaps runs of its own job, but
+ * `npm run autostart:update` by hand can land in the middle of one, and two
+ * installs into the same node_modules is how you get a broken one.
+ */
+const LOCK = join(JARVIS_HOME, 'update.lock')
+function takeLock() {
+  try {
+    const pid = Number(readFileSync(LOCK, 'utf8'))
+    if (pid && pid !== process.pid) {
+      try {
+        process.kill(pid, 0)
+        return false // alive: someone else is updating
+      } catch {
+        // Stale: its process is gone.
+      }
+    }
+  } catch {
+    // No lock.
+  }
+  mkdirSync(JARVIS_HOME, { recursive: true })
+  writeFileSync(LOCK, String(process.pid))
+  return true
+}
+function dropLock() {
+  try {
+    if (Number(readFileSync(LOCK, 'utf8')) === process.pid) rmSync(LOCK, { force: true })
+  } catch {
+    // Already gone.
+  }
 }
 
 async function main() {
@@ -139,8 +188,20 @@ async function main() {
     return writeState({ waiting: { reason: `not updating: the folder is on branch "${branch}", not main` } })
   }
 
+  if (!takeLock()) {
+    if (now) console.log('An update is already running; `npm run autostart:status` shows its progress.')
+    return
+  }
+
   const fetched = git('fetch', '--quiet', 'origin', 'main')
-  if (!fetched.ok) return waiting('', `could not reach GitHub: ${fetched.err.split('\n')[0]}`)
+  if (!fetched.ok) {
+    // "cannot lock ref" is a `git pull` in a Terminal at the same moment, not
+    // the network; the next check simply tries again.
+    const first = fetched.err.split('\n')[0]
+    return waiting('', /cannot lock ref|unable to update local ref/.test(fetched.err)
+      ? 'fetch clashed with another git command; trying again next check'
+      : `could not reach GitHub: ${first}`)
+  }
 
   const local = git('rev-parse', 'HEAD').out
   const remote = git('rev-parse', 'origin/main').out
@@ -184,7 +245,10 @@ async function main() {
     if (running) await startJarvis()
     return
   }
-  if (deps && !installDeps()) log('dependencies did not install cleanly; starting anyway')
+  // A failed install does not stop here: the start below fails its health
+  // check, and the rollback puts the previous version and its modules back.
+  if (deps) installDeps()
+  log('starting')
 
   if (!running) {
     log(`updated to ${remote.slice(0, 7)} (he was not running; it applies when he next starts)`)
@@ -216,6 +280,7 @@ async function main() {
 main()
   .catch((err) => log(`update check failed: ${err?.stack ?? err}`))
   .finally(() => {
+    dropLock()
     // A stray marker would suppress opening the page at the next real login.
     if (existsSync(SKIP_OPEN) && Date.now() - statSync(SKIP_OPEN).mtimeMs > 10 * 60_000) rmSync(SKIP_OPEN, { force: true })
   })

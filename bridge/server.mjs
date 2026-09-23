@@ -22,6 +22,7 @@ import { query, getSessionMessages } from '@anthropic-ai/claude-agent-sdk'
 import { alertsSummary, startAlerts } from './alerts.mjs'
 import {
   forgetSession,
+  MISSING_CONVERSATION,
   MEMORY_FILE,
   memoryPrompt,
   memoryServer,
@@ -1948,6 +1949,29 @@ wss.on('connection', (socket) => {
             // empty text is indistinguishable from a turn that simply had
             // nothing to say — the HUD stops spinning and JARVIS stands there
             // silent. Say what happened instead.
+            // Resuming a conversation Claude Code does not have fails every
+            // turn with the same error. sessionOptions() checks first, so this
+            // is the backstop: forget it, say so plainly, and drop the socket
+            // so the page reconnects to a fresh one.
+            if (
+              convo.resumed &&
+              !answered &&
+              MISSING_CONVERSATION.test(`${msg.result ?? ''} ${[].concat(msg.errors ?? []).join(' ')}`)
+            ) {
+              console.warn('[jarvis] the conversation being resumed does not exist; starting a fresh one')
+              forgetSession()
+              sendTurn({
+                type: 'error',
+                message: "I couldn't pick up our earlier conversation, so I've started a fresh one. Please say that again.",
+              })
+              finishTurn?.()
+              finishTurn = null
+              closed = true
+              deliver?.(null)
+              session.close?.()
+              socket.close()
+              break
+            }
             if (turnFailed) {
               // Already reported, in plain words, by failTurn.
             } else if (msg.subtype === 'success' && msg.is_error) {
@@ -1982,9 +2006,13 @@ wss.on('connection', (socket) => {
             finishTurn = null
             turnFailed = false
             spoke = false
-            // Keep an active conversation resumable after a reload.
-            answered = true
-            saveSession(convo.id)
+            // Keep an active conversation resumable after a reload — only
+            // one that has actually answered. Saving on every result kept a
+            // conversation Claude Code had never heard of "recent" for ever.
+            if (msg.subtype === 'success' && !msg.is_error) {
+              answered = true
+              saveSession(convo.id)
+            }
             // One turn's tool ids are never referred to again, and these
             // otherwise grow for as long as the socket is open.
             seenTools.clear()
