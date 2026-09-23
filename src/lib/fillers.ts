@@ -123,8 +123,37 @@ const BY_TOOL: Rule[] = [
   // Calendar keys off "calendar" alone. "event" used to live here, which is how
   // a Mixpanel event query came out as "Checking your calendar."
   {
+    server: /calendar/,
     tool: /calendar|\bdiary\b|\bmeeting\b/,
     lines: ['Checking your calendar.', 'Consulting the diary.'],
+  },
+  // Meeting notes sit below the calendar so "list meetings" on a calendar
+  // server stays a diary lookup; these servers only hold what was said.
+  {
+    server: /granola|wispr|fireflies|otter/,
+    lines: ['Consulting the meeting notes.', 'Reviewing the transcript.'],
+  },
+  {
+    server: /google drive|google_drive|\bdrive\b|sharepoint|dropbox|\bbox\b/,
+    lines: ['Searching your files.', 'Opening the file store.'],
+  },
+  {
+    server: /notion|confluence|atlassian/,
+    lines: ['Consulting your notes.', 'Checking the wiki.'],
+  },
+  {
+    server: /hubspot|salesforce|\bcrm\b/,
+    lines: ['Checking the CRM.', 'Pulling the account.'],
+  },
+  // Brokerage and market data. The money-moving tools are blocked at the
+  // bridge by default, so these lines only ever describe reading.
+  {
+    server: /robinhood|alpha vantage|alpha_vantage|financial|crypto/,
+    lines: ['Checking the markets.', 'Pulling the figures.'],
+  },
+  {
+    server: /quickbooks|paypal|stripe/,
+    lines: ['Checking the books.', 'Pulling the figures.'],
   },
   {
     server: /elevenlabs|openai-tts/,

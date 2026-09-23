@@ -398,13 +398,64 @@ export async function startVoice(h: VoiceHandlers): Promise<Voice> {
     )
     return { stop: () => {}, live: () => false }
   }
-  diag.engine = caps().stt ? 'elevenlabs' : 'browser'
-  return caps().stt ? startElevenVoice(h) : startBrowserVoice(h)
+  if (!caps().stt) {
+    diag.engine = 'browser'
+    return startBrowserVoice(h)
+  }
+
+  /**
+   * The premium path, with the free one held in reserve.
+   *
+   * The bridge reports `stt: true` whenever it has *a* key, not a key that
+   * works. A revoked key, one without the Speech to Text permission, or an
+   * exhausted quota used to leave the loop running, hearing you perfectly, and
+   * throwing every word away — the listener looked alive and never answered.
+   * Now a transcriber that clearly cannot work hands over to the browser's own
+   * recogniser, and the diagnostics panel says so.
+   */
+  diag.engine = 'elevenlabs'
+  let current: Voice | null = null
+  let fellBack = false
+  const fallBack = (why: string) => {
+    if (fellBack || !browserSpeechAvailable()) return
+    fellBack = true
+    current?.stop()
+    diag.engine = 'browser'
+    diag.lastError = `${why} — switched to browser speech`
+    console.warn(`[voice] ElevenLabs transcription unusable (${why}); using browser speech`)
+    current = startBrowserVoice(h)
+  }
+  const eleven = await startElevenVoice(h, fallBack)
+  // A failure can land while startElevenVoice is still settling; if it did, the
+  // browser engine is already running and this one must not come back to life.
+  if (fellBack) eleven.stop()
+  else current = eleven
+  return {
+    stop: () => current?.stop(),
+    live: () => current?.live() ?? false,
+  }
 }
 
+const browserSpeechAvailable = () =>
+  typeof window !== 'undefined' &&
+  Boolean((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition)
+
+/**
+ * Status codes that mean the transcriber will never work this session: a bad
+ * or unpermitted key (401, 403), no credits (402), no key at all (503). One is
+ * enough. Anything else — a timeout, a 429, a 5xx — might pass, so those need
+ * a run of consecutive failures before we give up on the premium path.
+ */
+const FATAL_STT = new Set([401, 402, 403, 503])
+const STT_FAILURES_BEFORE_FALLBACK = 3
+
 /** VAD + ElevenLabs Scribe. */
-async function startElevenVoice(h: VoiceHandlers): Promise<Voice> {
+async function startElevenVoice(
+  h: VoiceHandlers,
+  onUnusable: (why: string) => void,
+): Promise<Voice> {
   let lastWake = 0
+  let failures = 0
   let vad: Vad | null = null
 
   /**
@@ -460,8 +511,13 @@ async function startElevenVoice(h: VoiceHandlers): Promise<Voice> {
         diag.restarts++
         diag.lastError = `stt ${res.status}`
         drop(`transcription failed (${res.status})`)
+        failures++
+        if (FATAL_STT.has(res.status) || failures >= STT_FAILURES_BEFORE_FALLBACK) {
+          onUnusable(`stt ${res.status}`)
+        }
         return
       }
+      failures = 0
       const { text } = (await res.json()) as { text?: string }
       const said = (text ?? '').trim()
       diag.lastError = ''
@@ -501,6 +557,7 @@ async function startElevenVoice(h: VoiceHandlers): Promise<Voice> {
       diag.restarts++
       diag.lastError = String(err)
       drop('could not reach the speech service')
+      if (++failures >= STT_FAILURES_BEFORE_FALLBACK) onUnusable('speech service unreachable')
     }
   }
 

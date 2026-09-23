@@ -15,6 +15,8 @@
  *   node bridge/server.mjs
  */
 
+// First, so .env.local is in process.env before anything below reads it.
+import { envSource } from './env.mjs'
 import { WebSocketServer } from 'ws'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { displayServer } from './panels.mjs'
@@ -175,6 +177,42 @@ function configuredServers() {
 
 const MCP_SERVERS = configuredServers()
 
+/** `claude.ai Google Calendar` -> `Google Calendar`, for the HUD and the log. */
+const displayName = (name) => String(name).replace(/^claude\.ai /, '')
+
+/**
+ * The first init message is the only place the full list — your claude.ai
+ * connectors included — is known, so say what came up and what did not.
+ * A connector that needs signing in again is otherwise just absent, and
+ * "why can't he read my mail" has no answer on screen.
+ */
+let initLogged = false
+function logServers(all) {
+  const byStatus = (pred) => all.filter(pred).map((s) => displayName(s.name))
+  const usable = byStatus((s) => s.status !== 'needs-auth' && s.status !== 'failed')
+  const connectors = all.filter((s) => /^claude\.ai /.test(s.name)).length
+  console.log(
+    `[jarvis] ${usable.length} MCP servers available` +
+      (connectors ? ` (${connectors} from your claude.ai connectors)` : '') +
+      (usable.length ? `: ${usable.join(', ')}` : ''),
+  )
+  const auth = byStatus((s) => s.status === 'needs-auth')
+  if (auth.length) {
+    console.warn(
+      `[jarvis] needs signing in again (claude.ai → Settings → Connectors): ${auth.join(', ')}`,
+    )
+  }
+  const failed = byStatus((s) => s.status === 'failed')
+  if (failed.length) console.warn(`[jarvis] failed to start: ${failed.join(', ')}`)
+  if (!connectors && !process.env.ANTHROPIC_API_KEY) {
+    console.warn(
+      '[jarvis] no claude.ai connectors loaded. To use Gmail, Calendar and the rest,' +
+        ' connect them at claude.ai → Settings → Connectors and log Claude Code in with' +
+        ' that same account (`claude`, then /login).',
+    )
+  }
+}
+
 /** MCP tools arrive as `mcp__<server>__<tool>`. */
 const mcpServerOf = (toolName) =>
   toolName.startsWith('mcp__') ? toolName.split('__')[1] : null
@@ -217,7 +255,22 @@ const READ_ONLY_MCP = new Set([
   // make_outbound_call, delete_character, create_* and edit_image. Generation
   // runs; acting on the world does not.
   'higgsfield', 'heygen', 'elevenlabs',
-])
+  // claude.ai connectors whose whole surface is lookups: market data, research
+  // and meeting notes. Matched after the `claude_ai_` prefix is stripped and
+  // lower-cased (see serverKey), so these are the connector names as shown in
+  // claude.ai → Settings → Connectors.
+  'alpha_vantage', 'financial_datasets', 'financial_modeling_prep', 'crypto_com',
+  'perplexity', 'firecrawl', 'granola', 'wispr_flow',
+].map((s) => s.toLowerCase()))
+
+/**
+ * `claude_ai_Google_Calendar` -> `google_calendar`.
+ *
+ * claude.ai connectors reach the SDK with that prefix on the server half of
+ * every tool name; a local MCP server with the same job would not have it. One
+ * key for both means a rule written for one covers the other.
+ */
+const serverKey = (server) => server.replace(/^claude_ai_/i, '').toLowerCase()
 
 /**
  * Anchored on the tool name, so it reads the verb rather than the noun.
@@ -225,7 +278,11 @@ const READ_ONLY_MCP = new Set([
  * and the persona is told in as many words to put screenshots on the display.
  */
 const READ_VERB =
-  /^(get|list|read|search|find|query|fetch|check|describe|inspect|show|view|explain|screenshot)/i
+  /^(?:[a-z0-9]+[_-]){0,2}(get|list|read|search|find|query|fetch|check|describe|inspect|show|view|explain|screenshot|suggest|preview|review|analyze|lookup|count)/i
+// The optional leading namespace is for connectors that prefix their tools —
+// Hostinger's `hosting_listWebsitesV1`, Notion's `notion-search`, QuickBooks'
+// `qbo_accounting_get_balance_sheet` — which would otherwise read as writes. It cannot let a write through: the veto below is
+// checked first, and it reads the whole name.
 
 /**
  * Unanchored on purpose — `make_outbound_call` and `Bulk-Edit-Events` both
@@ -233,7 +290,33 @@ const READ_VERB =
  * even though it sounds like a read.
  */
 const EFFECTFUL_VERB =
-  /(send|call|post|create|delete|remove|update|edit|write|install|launch|tap|swipe|press|type|buy|pay|charge|publish|deploy|outbound|download)/i
+  /(send|call|post|create|delete|remove|update|edit|write|install|launch|tap|swipe|press|type|buy|pay|charge|publish|deploy|outbound|download|cancel|trash|archive|rename|merge|forward|reply|share|invite|respond|transfer|purchase|subscribe|renew|refund|revoke|place_|mark_)/i
+
+/**
+ * The tier above writes: anything that moves money or commits to a trade.
+ *
+ * Connecting a brokerage, an accounting system and a payment processor to a
+ * voice loop means a misheard sentence is one tool call away from an order.
+ * JARVIS_ALLOW_WRITES is the switch for "let him act"; this is a second,
+ * separate switch, off unless named, because acting and spending are not the
+ * same level of trust. Only consulted for tools that already need write
+ * access, so reading orders, invoices or payslips is unaffected.
+ */
+const MONEY_VERB =
+  /(order|exercise|purchase|buy|\bpay|_pay|payment|charge|invoice|transfer|withdraw|renew|subscri|payroll|credit|refund|loan|trade|billing|checkout)/i
+const ALLOW_MONEY = ALLOW_WRITES && process.env.JARVIS_ALLOW_MONEY === '1'
+
+/**
+ * Drafting mail is allowed without write access.
+ *
+ * A draft sits in the user's own Drafts folder until they choose to send it,
+ * so nothing leaves the mailbox — and "draft a reply to that" is the single
+ * most useful thing a voice assistant does with email. Sending, replying and
+ * forwarding still need JARVIS_ALLOW_WRITES.
+ */
+const MEDIA_SERVER = /^(sonos|spotify)$/
+
+const DRAFT_TOOL = /^(?:[a-z0-9]+_)?(create|update)_(reply_(all_)?)?draft$/i
 
 /**
  * Tools whose names trip the veto without deserving it.
@@ -245,11 +328,15 @@ const EFFECTFUL_VERB =
  * is one of the better things this assistant can do, so it is named here
  * instead of being lost to a regex.
  *
- * Full `server__tool` keys, so an exemption can never leak across servers.
+ * Full `server__tool` keys, so an exemption can never leak across servers. The
+ * server half is serverKey()'d, so a claude.ai connector is named without its
+ * `claude_ai_` prefix.
  */
 const VETO_EXEMPT = new Set([
   'openrouter__send-message',
   'openrouter__send-feedback',
+  // Returns the file's contents to the model; nothing is written to disk.
+  'google_drive__download_file_content',
 ])
 
 function decideTool(name) {
@@ -280,12 +367,20 @@ function decideTool(name) {
     if (server === 'jarvis_eyes') return true
 
     const tool = mcpToolOf(name)
-    if (EFFECTFUL_VERB.test(tool) && !VETO_EXEMPT.has(`${server}__${tool}`)) {
-      return ALLOW_WRITES
-    }
+    const key = serverKey(server)
+    if (DRAFT_TOOL.test(tool)) return true
+    if (VETO_EXEMPT.has(`${key}__${tool}`)) return true
+    const vetoed = EFFECTFUL_VERB.test(tool)
+    // Music and speakers: "play something", "turn it down" and "skip this" are
+    // what a voice assistant is for, and a wrong guess costs one song. Removing
+    // speakers from a group or deleting a playlist still trips the veto.
+    if (MEDIA_SERVER.test(key) && !vetoed) return true
     // The session tools this bridge is developed inside count as read-only too.
-    if (READ_ONLY_MCP.has(server) || server.startsWith('ccd_session')) return true
-    return READ_VERB.test(tool) ? true : ALLOW_WRITES
+    const readOnly =
+      !vetoed &&
+      (READ_ONLY_MCP.has(key) || server.startsWith('ccd_session') || READ_VERB.test(tool))
+    if (readOnly) return true
+    return MONEY_VERB.test(tool) ? ALLOW_MONEY : ALLOW_WRITES
   }
   return ALLOW_WRITES
 }
@@ -383,15 +478,43 @@ The interface itself:
 - Put it back. A colour that outlives the moment that earned it is a fault.
 - Never mention that you have done any of it. They are looking at the screen.
 
+The time. Every message from the user begins with the current local date, time
+and time zone in square brackets. It is for you, never to be read aloud. It is
+what "today", "tomorrow" and "this afternoon" mean, on the calendar above all.
+
+Their accounts — the connectors:
+- You are connected directly to the user's own accounts: Gmail and Google
+  Calendar, and whatever else your tool list carries — Drive, Notion, Jira and
+  Confluence, HubSpot, meeting notes, market data, their brokerage, their
+  speakers. For anything one of those accounts holds, the connector comes FIRST.
+  It is faster and more exact than opening the site. The browser is for what
+  no connector covers.
+- Some tools are loaded on demand. If the one you need is not in front of you,
+  search for it — "gmail", "calendar", "drive" — before deciding it is missing.
+- Mail: summarise, newest first. Who it is from and what they want, in a
+  clause each; never subjects verbatim, never an address, never a signature.
+  Say how many are unread when asked about the inbox.
+- Calendar: times in their time zone, spoken the way a person says them. "Your
+  next meeting is the design review at two, sir." Mention a clash if you see one.
+- Drafting a reply is always permitted and lands in their Drafts folder; say
+  that it is there. Sending, replying, forwarding, and creating, moving or
+  answering calendar events change the world: before one, say in a sentence
+  what you are about to do, and if it is refused, say the action is unavailable.
+- Money is never moved on inference. Orders, trades, payments, invoices and
+  transfers are blocked unless the user has explicitly enabled them, and even
+  then happen only when asked for in so many words, in this turn. Reading
+  balances, positions and prices is always fine. Figures, not advice, unless
+  they ask for an opinion.
+
 Their browser — ALWAYS the \`chrome_*\` tools, first, for anything to do with a
-browser or a web page:
+browser or a web page that no connector covers:
 - The \`chrome_*\` tools drive the user's own Chrome. It is already signed in to
   everything they use, it carries their real cookies, and it does not read as
   automation to the sites it visits.
 - This is the FIRST thing you reach for on any browsing task: opening a page,
-  reading one, searching a site, checking mail, a dashboard, a profile, an
-  account, anything behind a login. Do not weigh it up against the
-  alternatives — start here.
+  reading one, searching a site, a dashboard, a profile, an account, anything
+  behind a login that no connector reaches. Do not weigh it up against the
+  other browser options — start here.
 - But Chrome is your HANDS, not your display. Use it to reach and read things;
   then show what you found on a blade. Leaving the answer in a browser tab is
   not showing it — they are looking at this interface.
@@ -439,22 +562,63 @@ Using tools:
 - If you don't know, say you don't know.`
 
 /**
- * ElevenLabs credentials, borrowed from the MCP server config.
+ * ElevenLabs credentials, and where they came from.
  *
- * If you've set up the elevenlabs MCP server, the key is already on this
- * machine — no reason to make you paste it into a second .env file. The browser
- * never sees it: it POSTs text to /tts here and gets audio back.
+ * Looked for in order: the shell that ran `npm start`, .env.local or .env (see
+ * env.mjs), then any elevenlabs MCP server in Claude Code's config — global or
+ * home-scoped, the same two blocks MCP_SERVERS reads. If you've set up that MCP
+ * server the key is already on this machine, so there is no reason to make you
+ * paste it twice. The browser never sees it: it POSTs here and gets audio back.
+ *
+ * The source is reported because "key from MCP config" used to be printed
+ * whatever the truth was, and a stale key in one place while you edit another
+ * is exactly the failure that message needs to make obvious.
  */
-function elevenKey() {
-  if (process.env.ELEVENLABS_API_KEY) return process.env.ELEVENLABS_API_KEY
-  try {
-    const cfg = JSON.parse(
-      readFileSync(join(homedir(), '.claude.json'), 'utf8'),
-    )
-    return cfg.mcpServers?.elevenlabs?.env?.ELEVENLABS_API_KEY ?? null
-  } catch {
-    return null
+function findElevenKey() {
+  const env = process.env.ELEVENLABS_API_KEY
+  if (env) {
+    return { key: env, source: envSource.get('ELEVENLABS_API_KEY') ?? 'your shell environment' }
   }
+  for (const [name, cfg] of Object.entries(MCP_SERVERS)) {
+    const key = cfg?.env?.ELEVENLABS_API_KEY
+    if (/elevenlabs/i.test(name) && key) {
+      return { key, source: `the "${name}" MCP server in ~/.claude.json` }
+    }
+  }
+  return { key: null, source: null }
+}
+
+const ELEVEN = findElevenKey()
+const elevenKey = () => ELEVEN.key
+
+/**
+ * Say once, in the terminal, why ElevenLabs refused — rather than on every
+ * utterance, or not at all. The page falls back to browser speech on its own;
+ * this is so the person at the keyboard knows which key to fix.
+ */
+const elevenComplaints = new Set()
+function reportElevenFailure(what, status, body) {
+  let detail = ''
+  try {
+    const parsed = JSON.parse(body)
+    detail = parsed?.detail?.message ?? parsed?.detail?.status ?? ''
+  } catch {
+    detail = String(body ?? '').slice(0, 120)
+  }
+  const tag = `${what}:${status}`
+  if (elevenComplaints.has(tag)) return
+  elevenComplaints.add(tag)
+  const hint =
+    status === 401 || status === 403
+      ? ` Check the key (from ${ELEVEN.source}) at elevenlabs.io → Developers → API Keys` +
+        ' (it needs Speech to Text and Text to Speech).'
+      : status === 429 || status === 402
+        ? ' The ElevenLabs quota or credits look exhausted.'
+        : ''
+  console.warn(
+    `[jarvis] ElevenLabs ${what} failed (${status}${detail ? `: ${detail}` : ''}) —` +
+      ` the page falls back to browser speech.${hint}`,
+  )
 }
 
 const VOICE_ID = process.env.JARVIS_VOICE_ID ?? 'JBFqnCBsd6RMkjVDRZzb'
@@ -865,8 +1029,10 @@ const handleRequest = async (req, res) => {
         },
       )
       if (!upstream.ok) {
+        const body = await upstream.text()
+        reportElevenFailure('speech', upstream.status, body)
         res.writeHead(upstream.status, cors)
-        return res.end(await upstream.text())
+        return res.end(body)
       }
 
       // Pipe it through rather than buffering. Waiting for the whole file here
@@ -949,8 +1115,10 @@ const handleRequest = async (req, res) => {
         body: form,
       })
       if (!upstream.ok) {
+        const body = await upstream.text()
+        reportElevenFailure('transcription', upstream.status, body)
         res.writeHead(upstream.status, cors)
-        return res.end(await upstream.text())
+        return res.end(body)
       }
       const data = await upstream.json()
       res.writeHead(200, { ...cors, 'content-type': 'application/json' })
@@ -1002,9 +1170,21 @@ server.listen(PORT)
 
 console.log(`[jarvis] bridge listening on ws://localhost:${PORT}`)
 console.log(
-  `[jarvis] speech ${elevenKey() ? 'via ElevenLabs (key from MCP config)' : 'using browser fallback voice'}`,
+  ELEVEN.key
+    ? `[jarvis] speech via ElevenLabs (key from ${ELEVEN.source})`
+    : '[jarvis] speech using the browser\'s own voice and recognition (no ElevenLabs key)',
 )
 console.log(`[jarvis] model ${MODEL} · effort ${EFFORT}`)
+if (process.env.ANTHROPIC_API_KEY) {
+  console.warn(
+    '[jarvis] ANTHROPIC_API_KEY is set in this shell. Claude Code will bill that API key' +
+      ' instead of your Claude subscription, and your claude.ai connectors (Gmail,' +
+      ' Calendar, …) will not load. Unset it to use your subscription login.',
+  )
+}
+if (ALLOW_MONEY) {
+  console.warn('[jarvis] MONEY ENABLED — orders, payments and transfers are permitted')
+}
 console.log(
   `[jarvis] writes ${ALLOW_WRITES ? 'ENABLED' : 'disabled'}` +
     (ALLOW_WRITES ? '' : ' — set JARVIS_ALLOW_WRITES=1 to permit shell/file/device actions'),
@@ -1039,13 +1219,61 @@ const RESULT_FAILURES = {
   default: 'The turn ended without an answer.',
 }
 
+/**
+ * API failures that no amount of retrying will fix.
+ *
+ * Measured on this SDK: with no valid login the CLI does not fail the turn, it
+ * emits `api_retry` with error 'authentication_failed' and backs off, again
+ * and again, for minutes. From the page that is indistinguishable from a slow
+ * answer — the wake word works, the reactor listens, and JARVIS simply never
+ * replies. So the first of these ends the turn, says what is wrong out loud,
+ * and prints the fix where the person at the keyboard will see it.
+ *
+ * `spoken` is read aloud; `fix` goes to the terminal only.
+ */
+const FATAL_API_ERRORS = {
+  authentication_failed: {
+    spoken: "I'm afraid I'm not signed in to Claude on this machine. The fix is in the terminal.",
+    fix: 'Claude Code is not logged in, or its login expired. Run `claude` in a terminal, type /login, choose your Claude subscription account, then restart Jarvis.',
+  },
+  oauth_org_not_allowed: {
+    spoken: "I'm afraid this Claude organisation doesn't permit the login I'm using.",
+    fix: 'Your Claude login belongs to an organisation that does not allow this. Run `claude`, then /login with a different account.',
+  },
+  billing_error: {
+    spoken: "I'm afraid the Claude account has no usage or credit left.",
+    fix: 'The Claude account is out of usage or credit. Check your plan at claude.ai/settings/usage. If you meant to use your subscription, make sure ANTHROPIC_API_KEY is not set in your shell.',
+  },
+  model_not_found: {
+    spoken: "I'm afraid the configured model isn't available on this account.",
+    fix: `The model "${MODEL}" is not available to this account. Restart with a different one, for example: JARVIS_MODEL=claude-sonnet-5 npm start`,
+  },
+}
+
+/**
+ * "Tuesday, 22 September 2026, 4:41 pm (America/Chicago)".
+ *
+ * The model has no clock. Without this, "what's on my calendar today" is a
+ * guess at the date, and a guess in UTC at that — so every message carries
+ * the machine's own idea of now, and the persona is told never to say it.
+ */
+function localNow() {
+  const now = new Date()
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const when = now.toLocaleString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  })
+  return `${when} (${zone})`
+}
+
 wss.on('connection', (socket) => {
   console.log('[jarvis] client connected')
 
   // Answer the HUD straight away rather than making it wait for the agent's
   // first turn. Refined later by the real init message.
   socket.send(
-    JSON.stringify({ type: 'ready', servers: Object.keys(MCP_SERVERS) }),
+    JSON.stringify({ type: 'ready', servers: Object.keys(MCP_SERVERS).map(displayName) }),
   )
 
   /** Resolves the pending user message into the SDK's input generator. */
@@ -1063,7 +1291,7 @@ wss.on('connection', (socket) => {
       if (closed || text == null) return
       yield {
         type: 'user',
-        message: { role: 'user', content: text },
+        message: { role: 'user', content: `[${localNow()}]\n${text}` },
         parent_tool_use_id: null,
       }
     }
@@ -1085,6 +1313,22 @@ wss.on('connection', (socket) => {
    */
   let answering = null
   const sendTurn = (msg) => send({ ...msg, ask: answering })
+
+  /**
+   * Set when a fatal API error has already been reported for this turn, so the
+   * `result` that follows the interrupt does not say a second, vaguer thing.
+   */
+  let turnFailed = false
+  const failTurn = (code) => {
+    const known = FATAL_API_ERRORS[code]
+    if (!known || turnFailed) return false
+    turnFailed = true
+    console.error(`[jarvis] ${known.fix}`)
+    sendTurn({ type: 'error', message: known.spoken })
+    // Stop the back-off loop now rather than letting it retry for minutes.
+    void Promise.resolve(session.interrupt?.()).catch(() => {})
+    return true
+  }
 
   /**
    * Asking the browser for something and waiting for the answer.
@@ -1236,6 +1480,12 @@ wss.on('connection', (socket) => {
       // The cost is that MCP servers stop being discovered too, which is why
       // mcpServers above passes them in by hand.
       settingSources: [],
+      // Your claude.ai connectors — Gmail, Google Calendar, Drive and the rest —
+      // are a separate channel: the CLI fetches them with your claude.ai login
+      // whatever settingSources says, and strictMcpConfig is the one switch
+      // that would turn them off. Stated so nobody "tidies" it to true. Set
+      // ENABLE_CLAUDEAI_MCP_SERVERS=0 in the shell to run without them.
+      strictMcpConfig: false,
       // Stated explicitly, and it has to be.
       //
       // With no `model` here the SDK falls back to its own default, which on
@@ -1312,6 +1562,10 @@ wss.on('connection', (socket) => {
           }
 
           case 'assistant': {
+            // A failed request arrives as an assistant message carrying an
+            // error code, its text a canned "Please run /login" that would be
+            // read aloud as if it were an answer.
+            if (msg.error && failTurn(msg.error)) break
             // Fallback for builds that emit whole assistant messages rather
             // than partial events. Deduped against the stream_event path.
             for (const block of msg.content ?? msg.message?.content ?? []) {
@@ -1342,7 +1596,18 @@ wss.on('connection', (socket) => {
             // empty text is indistinguishable from a turn that simply had
             // nothing to say — the HUD stops spinning and JARVIS stands there
             // silent. Say what happened instead.
-            if (msg.subtype === 'success') {
+            if (turnFailed) {
+              // Already reported, in plain words, by failTurn.
+            } else if (msg.subtype === 'success' && msg.is_error) {
+              // "Success" with is_error: the CLI finished the turn but the
+              // text is an error notice, not an answer. Log it verbatim — it is
+              // usually the most specific description available.
+              console.error(`[jarvis] turn failed: ${msg.result ?? 'unknown error'}`)
+              sendTurn({
+                type: 'error',
+                message: 'The request to Claude failed. The details are in the terminal.',
+              })
+            } else if (msg.subtype === 'success') {
               sendTurn({
                 type: 'done',
                 text: msg.result ?? '',
@@ -1362,6 +1627,7 @@ wss.on('connection', (socket) => {
             // the only place a turn is genuinely over.
             finishTurn?.()
             finishTurn = null
+            turnFailed = false
             // One turn's tool ids are never referred to again, and these
             // otherwise grow for as long as the socket is open.
             seenTools.clear()
@@ -1369,14 +1635,28 @@ wss.on('connection', (socket) => {
             break
 
           case 'system':
+            if (msg.subtype === 'api_retry') {
+              if (!failTurn(msg.error) && msg.attempt === 1) {
+                console.warn(
+                  `[jarvis] Claude request failed (${msg.error_status ?? 'no response'}, ${msg.error}); retrying`,
+                )
+              }
+              break
+            }
             if (msg.subtype === 'init') {
               // Servers report 'pending' until first use — they connect
               // lazily — so only drop the ones that are actually unusable.
-              const usable = (msg.mcp_servers ?? [])
+              const all = msg.mcp_servers ?? []
+              const usable = all
                 .filter((s) => s.status !== 'needs-auth' && s.status !== 'failed')
-                .map((s) => s.name)
+                .map((s) => displayName(s.name))
               send({ type: 'ready', servers: usable })
-              console.log(`[jarvis] ${usable.length} MCP servers available`)
+              if (!initLogged) {
+                // Once per bridge, not per page load: the list does not change
+                // between reconnects and the terminal is not a ticker.
+                initLogged = true
+                logServers(all)
+              }
             }
             break
         }

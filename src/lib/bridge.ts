@@ -445,7 +445,14 @@ export async function ask(
             break
 
           case 'error':
-            fail(new Error(msg.message ?? 'The bridge reported an error.'))
+            // Marked as meant to be heard: the bridge writes these as plain
+            // sentences for exactly that, and an error that only appears as
+            // text on a screen nobody is looking at is a silent failure.
+            fail(
+              Object.assign(new Error(msg.message ?? 'The bridge reported an error.'), {
+                spoken: true,
+              }),
+            )
             break
         }
       } catch (err) {
@@ -499,5 +506,8 @@ export function interrupt(): void {
 function prettyToolName(raw: string): string {
   if (!raw.startsWith('mcp__')) return raw
   const [, server, ...rest] = raw.split('__')
-  return `${server} · ${rest.join(' ').replace(/_/g, ' ')}`
+  // claude.ai connectors arrive as `claude_ai_Google_Calendar`; the badge only
+  // needs the part a person would recognise.
+  const label = server.replace(/^claude_ai_/, '').replace(/_/g, ' ')
+  return `${label} · ${rest.join(' ').replace(/_/g, ' ')}`
 }
