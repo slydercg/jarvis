@@ -99,10 +99,37 @@ before they allow the microphone.
 | `npm run autostart:logs` | Follow the log (`~/.jarvis/logs/jarvis.log`) |
 | `npm run autostart:restart` | Pick up a changed `.env.local` or a `git pull` |
 | `npm run autostart:stop` | Stop until the next login |
+| `npm run autostart:update` | Pull and apply the latest version now, without waiting |
 | `npm run autostart:uninstall` | Stop, and never start at login again |
 
-Install options: `--no-open` skips opening the browser, and `--writes` lets the
-login copy take actions, the same as `npm start -- --writes`.
+Install options: `--no-open` skips opening the browser, `--writes` lets the
+login copy take actions (the same as `npm start -- --writes`), and `--no-update`
+turns off the automatic updates described below.
+
+#### It keeps itself up to date
+
+Once installed, you never have to `git pull` again. A second small background
+job checks GitHub every five minutes. When something new has been merged to
+`main`, it:
+
+1. **waits until he's quiet**, meaning no page is open or nothing has been
+   said for 15 minutes (`JARVIS_UPDATE_IDLE_MIN`). An update reloads the page,
+   and a reloaded page needs a click on INITIALISE before the microphone works
+   again.
+2. stops him, pulls the new version, and runs `npm ci` if the dependencies
+   changed.
+3. starts him again and checks that he actually came up. The page you had
+   open reloads by itself, and a macOS notification says what changed.
+4. **if the new version doesn't start, puts the old one back** and skips that
+   version until a newer one is merged.
+
+It only ever fast-forwards `main`. It leaves the folder alone, and
+`autostart:status` says why, when the folder is on another branch, has
+commits that aren't on GitHub, or has edited files. If you have stopped him
+with `autostart:stop`, it pulls the new version but doesn't start him.
+`JARVIS_AUTO_UPDATE=off` in `.env.local` turns it off, and
+`npm run autostart:update` applies an update immediately. Its log is
+`~/.jarvis/logs/update.log`.
 
 A login item does not read your `~/.zshrc`, so **put settings in `.env.local`,
 not in shell exports**. The installer names any `JARVIS_*`, `ELEVENLABS_*` or
@@ -493,6 +520,10 @@ old copy is still running: `kill $(lsof -ti :8787)`.
 the log lines it shows. The usual causes: Claude Code logged out (run `claude`,
 `/login`, then `npm run autostart:restart`), or a setting that lives only in your
 shell and not in `.env.local`.
+
+**An update didn't arrive.** `npm run autostart:status` shows the last check and
+anything pending, for example "waiting until he has been quiet" or "files edited
+in this folder". `npm run autostart:update` applies it straight away.
 
 ---
 

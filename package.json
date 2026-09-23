@@ -22,6 +22,7 @@
     "autostart:logs": "node scripts/autostart.mjs logs",
     "autostart:restart": "node scripts/autostart.mjs restart",
     "autostart:stop": "node scripts/autostart.mjs stop",
+    "autostart:update": "node scripts/update.mjs --now",
     "autostart:uninstall": "node scripts/autostart.mjs uninstall"
   },
   "dependencies": {

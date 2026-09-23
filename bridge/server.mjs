@@ -1035,7 +1035,15 @@ const handleRequest = async (req, res) => {
     // student with nothing configured still has a working assistant.
     const eleven = Boolean(elevenKey())
     res.writeHead(200, { ...cors, 'content-type': 'application/json' })
-    return res.end(JSON.stringify({ ok: true, tts: eleven, stt: eleven }))
+    return res.end(
+      JSON.stringify({
+        ok: true,
+        tts: eleven,
+        stt: eleven,
+        pages: pages.size,
+        idleSeconds: Math.round((Date.now() - lastActivity) / 1000),
+      }),
+    )
   }
 
   // Serve local image files to the page. Screenshots and generated art land on
@@ -1476,6 +1484,17 @@ function localNow() {
  */
 const pages = new Set()
 let watcher = null
+
+/**
+ * When someone last spoke to him or he last answered. The auto-updater reads it
+ * from /health and only restarts him once things have been quiet for a while,
+ * because an update reloads the page and a reload needs a click to get the
+ * microphone back — not something to spring on you mid-sentence.
+ */
+let lastActivity = Date.now()
+const touch = () => {
+  lastActivity = Date.now()
+}
 function ensureWatcher() {
   watcher ??= startAlerts({
     mcpServers: MCP_SERVERS,
@@ -1923,6 +1942,7 @@ wss.on('connection', (socket) => {
           }
 
           case 'result':
+            touch()
             // A result is not automatically a success. The error subtypes
             // carry no `result` field at all, so reporting them as 'done' with
             // empty text is indistinguishable from a turn that simply had
@@ -2025,6 +2045,7 @@ wss.on('connection', (socket) => {
     }
 
     if (msg.type === 'ask' && typeof msg.text === 'string') {
+      touch()
       /**
        * Queued behind any interrupt that is still settling.
        *

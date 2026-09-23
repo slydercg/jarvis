@@ -6,6 +6,7 @@
  *   npm run autostart:logs        follow the log
  *   npm run autostart:restart     after changing .env.local or pulling updates
  *   npm run autostart:stop        stop it until the next login
+ *   npm run autostart:update      pull and apply the latest version right now
  *   npm run autostart:uninstall   stop it and never start at login again
  *
  * It is a macOS LaunchAgent: a small plist in ~/Library/LaunchAgents that tells
@@ -23,6 +24,10 @@
  *     It never copies a value into the plist — secrets belong in .env.local.
  *   - There is no terminal to watch. Everything goes to the log file, which is
  *     cut back when it grows past a few megabytes.
+ *
+ * It also keeps itself up to date: a second, tiny agent runs scripts/update.mjs
+ * every five minutes, which pulls whatever was merged to main and restarts him
+ * once he is quiet. --no-update installs without it.
  *
  * Pass --writes to install to let the login copy take real actions, exactly as
  * `npm start -- --writes` does. --print writes nothing and shows the plist.
@@ -45,6 +50,17 @@ const JARVIS_HOME = (process.env.JARVIS_HOME ?? join(homedir(), '.jarvis')).repl
 const LOG = join(JARVIS_HOME, 'logs', 'jarvis.log')
 const DOMAIN = `gui/${userInfo().uid}`
 const SERVICE = `${DOMAIN}/${LABEL}`
+
+const UPDATER = 'local.jarvis.updater'
+const UPDATER_PLIST = join(homedir(), 'Library', 'LaunchAgents', `${UPDATER}.plist`)
+const UPDATER_SERVICE = `${DOMAIN}/${UPDATER}`
+const UPDATE_LOG = join(JARVIS_HOME, 'logs', 'update.log')
+const UPDATE_STATE = join(JARVIS_HOME, 'update.json')
+/** How often the updater looks at GitHub, in seconds. One fetch; cheap. */
+const UPDATE_EVERY = 300
+
+// Tests on a machine without launchd point this at a stand-in.
+const LAUNCHCTL = process.env.JARVIS_LAUNCHCTL ?? 'launchctl'
 
 const [command = 'status', ...flags] = process.argv.slice(2)
 const flag = (name) => flags.includes(name)
@@ -121,7 +137,7 @@ function envFileNames() {
 function shellOnlySettings() {
   const inFiles = envFileNames()
   return Object.keys(process.env)
-    .filter((k) => /^(JARVIS_|ELEVENLABS_|VITE_)/.test(k))
+    .filter((k) => /^(JARVIS_|ELEVENLABS_|VITE_)/.test(k) && k !== 'JARVIS_LAUNCHCTL')
     .filter((k) => !inFiles.has(k))
     .sort()
 }
@@ -134,13 +150,47 @@ const xml = (s) =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 function plist({ node, path, open, browser, writes }) {
-  const args = [node, join(ROOT, 'scripts', 'start.mjs'), ...(writes ? ['--writes'] : [])]
-  const env = {
-    PATH: path,
-    JARVIS_LOG_FILE: LOG,
-    ...(open ? { JARVIS_OPEN: '1' } : {}),
-    ...(browser ? { JARVIS_BROWSER: browser } : {}),
-  }
+  return agent({
+    label: LABEL,
+    args: [node, join(ROOT, 'scripts', 'start.mjs'), ...(writes ? ['--writes'] : [])],
+    env: {
+      PATH: path,
+      JARVIS_LOG_FILE: LOG,
+      ...(open ? { JARVIS_OPEN: '1' } : {}),
+      ...(browser ? { JARVIS_BROWSER: browser } : {}),
+    },
+    log: LOG,
+    extra: `\t<key>RunAtLoad</key>
+\t<true/>
+\t<key>KeepAlive</key>
+\t<dict>
+\t\t<key>SuccessfulExit</key>
+\t\t<false/>
+\t</dict>
+\t<key>ThrottleInterval</key>
+\t<integer>30</integer>
+\t<key>ProcessType</key>
+\t<string>Interactive</string>`,
+  })
+}
+
+/** The updater: one short run every UPDATE_EVERY seconds, in the background. */
+function updaterPlist({ node, path }) {
+  return agent({
+    label: UPDATER,
+    args: [node, join(ROOT, 'scripts', 'update.mjs')],
+    env: { PATH: path, JARVIS_LOG_FILE: UPDATE_LOG },
+    log: UPDATE_LOG,
+    extra: `\t<key>StartInterval</key>
+\t<integer>${UPDATE_EVERY}</integer>
+\t<key>ProcessType</key>
+\t<string>Background</string>
+\t<key>LowPriorityIO</key>
+\t<true/>`,
+  })
+}
+
+function agent({ label, args, env, log, extra }) {
   const strings = (list) => list.map((a) => `\t\t<string>${xml(a)}</string>`).join('\n')
   const dict = (obj) =>
     Object.entries(obj)
@@ -151,7 +201,7 @@ function plist({ node, path, open, browser, writes }) {
 <plist version="1.0">
 <dict>
 \t<key>Label</key>
-\t<string>${LABEL}</string>
+\t<string>${label}</string>
 \t<key>ProgramArguments</key>
 \t<array>
 ${strings(args)}
@@ -162,21 +212,11 @@ ${strings(args)}
 \t<dict>
 ${dict(env)}
 \t</dict>
-\t<key>RunAtLoad</key>
-\t<true/>
-\t<key>KeepAlive</key>
-\t<dict>
-\t\t<key>SuccessfulExit</key>
-\t\t<false/>
-\t</dict>
-\t<key>ThrottleInterval</key>
-\t<integer>30</integer>
-\t<key>ProcessType</key>
-\t<string>Interactive</string>
+${extra}
 \t<key>StandardOutPath</key>
-\t<string>${xml(LOG)}</string>
+\t<string>${xml(log)}</string>
 \t<key>StandardErrorPath</key>
-\t<string>${xml(LOG)}</string>
+\t<string>${xml(log)}</string>
 </dict>
 </plist>
 `
@@ -187,11 +227,37 @@ ${dict(env)}
 // ---------------------------------------------------------------------------
 
 function launchctl(...args) {
-  return spawnSync('launchctl', args, { encoding: 'utf8' })
+  return spawnSync(LAUNCHCTL, args, { encoding: 'utf8' })
 }
 
-function loaded() {
-  return launchctl('print', SERVICE).status === 0
+function loaded(service = SERVICE) {
+  return launchctl('print', service).status === 0
+}
+
+/**
+ * The options the current install was made with, read back from its plist, so
+ * the updater can rewrite it for a new version without asking again.
+ */
+function savedOptions() {
+  if (!existsSync(PLIST)) return null
+  const body = readFileSync(PLIST, 'utf8')
+  const env = (k) => new RegExp(`<key>${k}</key>\\s*<string>([^<]*)</string>`).exec(body)?.[1]
+  const unxml = (s) =>
+    s?.replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&')
+  return {
+    open: env('JARVIS_OPEN') === '1',
+    browser: unxml(env('JARVIS_BROWSER')),
+    writes: body.includes('<string>--writes</string>'),
+    update: existsSync(UPDATER_PLIST),
+  }
+}
+
+/** Write a plist and (re)load it. Returns an error message, or null. */
+function load(file, body, service) {
+  if (loaded(service)) launchctl('bootout', service)
+  writeFileSync(file, body)
+  const r = launchctl('bootstrap', DOMAIN, file)
+  return r.status === 0 ? null : (r.stderr || r.stdout).trim()
 }
 
 /** { state, pid, lastExit } from `launchctl print`, or null if not loaded. */
@@ -207,7 +273,7 @@ function serviceState() {
 }
 
 function requireMac() {
-  if (process.platform !== 'darwin') {
+  if (process.platform !== 'darwin' && !process.env.JARVIS_LAUNCHCTL) {
     fail(
       'Auto-start is set up with a macOS LaunchAgent, so it only works on a Mac.\n' +
         '  (`npm run autostart:install -- --print` shows the file it would write.)',
@@ -227,11 +293,13 @@ function install() {
     open: !flag('--no-open'),
     browser: option('--browser'),
     writes: flag('--writes'),
+    update: !flag('--no-update'),
   }
   const body = plist(config)
 
   if (flag('--print')) {
     process.stdout.write(body)
+    if (config.update) process.stdout.write(`\n${updaterPlist(config)}`)
     return
   }
   requireMac()
@@ -248,12 +316,16 @@ function install() {
   mkdirSync(dirname(LOG), { recursive: true })
 
   // Replace any earlier copy, so a re-install picks up a moved folder or a new
-  // node. bootout on something that is not loaded just fails quietly.
-  if (loaded()) launchctl('bootout', SERVICE)
-  writeFileSync(PLIST, body)
-  const r = launchctl('bootstrap', DOMAIN, PLIST)
-  if (r.status !== 0) {
-    fail(`launchctl could not load it: ${(r.stderr || r.stdout).trim()}\n  The plist is at ${PLIST}.`)
+  // node.
+  const err = load(PLIST, body, SERVICE)
+  if (err) fail(`launchctl could not load it: ${err}\n  The plist is at ${PLIST}.`)
+
+  if (config.update) {
+    const uerr = load(UPDATER_PLIST, updaterPlist(config), UPDATER_SERVICE)
+    if (uerr) say(`\n  Could not start the updater (${uerr}); everything else is installed.`)
+  } else if (existsSync(UPDATER_PLIST)) {
+    if (loaded(UPDATER_SERVICE)) launchctl('bootout', UPDATER_SERVICE)
+    rmSync(UPDATER_PLIST, { force: true })
   }
 
   say(`\n  ${nameOf()} will now start when you log in, and is starting now.`)
@@ -262,6 +334,10 @@ function install() {
   say(`  Log:     ${LOG}`)
   if (config.open) say(`  Opens in ${config.browser ?? 'your default browser'} once it is ready.`)
   if (config.writes) say('  Actions are enabled (--writes): effectful tools run without asking.')
+  if (config.update) {
+    say('  Updates: whatever is merged to main is pulled and applied automatically,')
+    say(`  once he has been quiet for a while. Log: ${UPDATE_LOG}`)
+  }
   if (node.includes('/.nvm/')) {
     say('\n  Node comes from nvm. If you switch or remove this version, run install again.')
   }
@@ -285,6 +361,8 @@ function uninstall() {
   const was = existsSync(PLIST)
   if (loaded()) launchctl('bootout', SERVICE)
   rmSync(PLIST, { force: true })
+  if (loaded(UPDATER_SERVICE)) launchctl('bootout', UPDATER_SERVICE)
+  rmSync(UPDATER_PLIST, { force: true })
   say(
     was
       ? `\n  Removed. ${nameOf()} will no longer start at login, and has been stopped.\n  The log and memory in ${JARVIS_HOME} are kept.\n`
@@ -310,6 +388,52 @@ function restart() {
   say('\n  Restarted. `npm run autostart:logs` to watch it come up.\n')
 }
 
+/**
+ * Called by the updater after a pull: rewrite the agents for the new version
+ * with the options they were installed with, and (re)start him. The updater's
+ * own agent is rewritten but not reloaded — it is the process running this —
+ * and launchd reads the new one at the next login.
+ */
+function refresh() {
+  requireMac()
+  const saved = savedOptions()
+  if (!saved) fail('Auto-start is not installed.')
+  const node = nodePath()
+  const config = { ...saved, node, path: loginPath(node) }
+
+  const body = plist(config)
+  const same = readFileSync(PLIST, 'utf8') === body
+  if (!same) {
+    const err = load(PLIST, body, SERVICE)
+    if (err) fail(`launchctl could not load it: ${err}`)
+  } else if (loaded()) {
+    const r = launchctl('kickstart', '-k', SERVICE)
+    if (r.status !== 0) fail(`launchctl could not restart it: ${(r.stderr || r.stdout).trim()}`)
+  } else {
+    const r = launchctl('bootstrap', DOMAIN, PLIST)
+    if (r.status !== 0) fail(`launchctl could not start it: ${(r.stderr || r.stdout).trim()}`)
+  }
+  if (saved.update) writeFileSync(UPDATER_PLIST, updaterPlist(config))
+  say(same ? 'restarted' : 'rewrote the LaunchAgent and restarted')
+}
+
+function updateStatus() {
+  if (!existsSync(UPDATER_PLIST)) {
+    say('  Updates: off. `npm run autostart:install` turns them on.')
+    return
+  }
+  let state = {}
+  try {
+    state = JSON.parse(readFileSync(UPDATE_STATE, 'utf8'))
+  } catch {
+    // Not run yet.
+  }
+  const when = (iso) => (iso ? new Date(iso).toLocaleString() : 'not yet')
+  say(`  Updates: on, checked every ${UPDATE_EVERY / 60} min (last check ${when(state.checked)}).`)
+  if (state.last) say(`  Last update: ${when(state.last.at)} — ${state.last.subject}`)
+  if (state.waiting?.reason) say(`  Pending: ${state.waiting.reason}`)
+}
+
 function status() {
   requireMac()
   if (!existsSync(PLIST)) {
@@ -331,6 +455,7 @@ function status() {
   if (!body.includes(`<string>${xml(ROOT)}</string>`)) {
     say('  Problem: it was installed from a different folder. Run install again from here.')
   }
+  updateStatus()
 
   if (existsSync(LOG)) {
     const tail = readFileSync(LOG, 'utf8').trimEnd().split('\n').slice(-8)
@@ -356,7 +481,7 @@ function nameOf() {
   return 'Jarvis'
 }
 
-const COMMANDS = { install, uninstall, stop, restart, status, logs }
+const COMMANDS = { install, uninstall, stop, restart, refresh, status, logs }
 if (!COMMANDS[command]) {
   fail(`Unknown command "${command}". One of: ${Object.keys(COMMANDS).join(', ')}.`)
 }

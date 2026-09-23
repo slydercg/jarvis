@@ -14,7 +14,9 @@
 import { spawn } from 'node:child_process'
 import process from 'node:process'
 import { createServer } from 'node:net'
-import { cpSync, existsSync, mkdirSync, statSync, truncateSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, rmSync, statSync, truncateSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
 /**
  * Put MediaPipe's WebAssembly where the page can actually load it.
@@ -148,11 +150,31 @@ function portTaken(p) {
   })
 }
 
+/**
+ * After an automatic update the page that was already open reloads by itself
+ * when the dev server comes back; opening another would leave two copies
+ * listening. The updater leaves this marker to say so.
+ */
+function justUpdated() {
+  const marker = join(
+    (process.env.JARVIS_HOME ?? join(homedir(), '.jarvis')).replace(/^~(?=$|\/)/, homedir()),
+    '.skip-open',
+  )
+  try {
+    const recent = Date.now() - statSync(marker).mtimeMs < 10 * 60_000
+    rmSync(marker, { force: true })
+    return recent
+  } catch {
+    return false
+  }
+}
+
 /** Open the page once, in JARVIS_BROWSER if set, else the default browser. */
 let opened = false
 function openPage(url) {
   if (opened) return
   opened = true
+  if (skipOpen) return console.log(`  updated; the open page at ${url} reloads by itself`)
   const browser = process.env.JARVIS_BROWSER
   const [cmd, args] =
     process.platform === 'darwin'
@@ -167,6 +189,8 @@ function openPage(url) {
 }
 
 trimLog()
+// Read (and cleared) at startup, whether or not this run opens the page.
+const skipOpen = justUpdated()
 
 /**
  * Taken for a few seconds is normal: on a restart the previous bridge is still
