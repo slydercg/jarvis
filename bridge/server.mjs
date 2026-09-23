@@ -1593,9 +1593,18 @@ const wss = new WebSocketServer({
     done(true)
   },
 })
-server.listen(PORT)
+/**
+ * Loopback only. Node's default is every interface, which put this socket on
+ * the LAN — and the Origin check above only stops browsers, which tell the
+ * truth about Origin; a script on another device on the same Wi-Fi can send
+ * `Origin: http://localhost:5173` and drive the agent. The page and the bridge
+ * always share a machine, so nothing legitimate is lost. JARVIS_BRIDGE_HOST
+ * exists for anyone who deliberately wants the bridge reachable from elsewhere.
+ */
+const HOST = process.env.JARVIS_BRIDGE_HOST?.trim() || '127.0.0.1'
+server.listen(PORT, HOST)
 
-console.log(`[jarvis] bridge listening on ws://localhost:${PORT}`)
+console.log(`[jarvis] bridge listening on ws://localhost:${PORT} (${HOST} only)`)
 console.log(
   ELEVEN.key
     ? `[jarvis] speech via ElevenLabs (key from ${ELEVEN.source})`
