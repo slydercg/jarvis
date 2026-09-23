@@ -31,6 +31,15 @@ import {
   sessionOptions,
 } from './memory.mjs'
 import { displayServer } from './panels.mjs'
+import {
+  VERSION,
+  checkElevenKey,
+  plausibleKey,
+  plausibleVoiceId,
+  readSettings,
+  setEnvLocal,
+  writeSettings,
+} from './settings.mjs'
 import { uiServer } from './ui.mjs'
 import { chromeAvailable, chromeServer } from './chrome.mjs'
 import { visionServer } from './vision.mjs'
@@ -776,7 +785,9 @@ function findElevenKey() {
   return { key: null, source: null }
 }
 
-const ELEVEN = findElevenKey()
+// Replaced when a key is saved or removed in the settings panel, so a new key
+// works at once instead of after a restart.
+let ELEVEN = findElevenKey()
 const elevenKey = () => ELEVEN.key
 
 /**
@@ -809,7 +820,28 @@ function reportElevenFailure(what, status, body) {
   )
 }
 
-const VOICE_ID = process.env.JARVIS_VOICE_ID ?? 'JBFqnCBsd6RMkjVDRZzb'
+/** The ElevenLabs voice he speaks with: chosen in settings, else JARVIS_VOICE_ID, else George. */
+let voiceId = readSettings().voiceId ?? process.env.JARVIS_VOICE_ID ?? 'JBFqnCBsd6RMkjVDRZzb'
+
+/** The account's voices, fetched on demand and kept briefly; listing is free but slow. */
+let voiceCache = { key: null, at: 0, voices: null }
+
+/** A small JSON body, or null if it is too big or not JSON. */
+async function readJson(req, limit = 16 * 1024) {
+  let body = ''
+  for await (const chunk of req) {
+    body += chunk
+    if (body.length > limit) {
+      req.destroy()
+      return null
+    }
+  }
+  try {
+    return JSON.parse(body || '{}')
+  } catch {
+    return null
+  }
+}
 
 /**
  * Where /file is permitted to read from, and how big a read may get.
@@ -1007,6 +1039,7 @@ function corsFor(req) {
   if (origin) {
     headers['access-control-allow-origin'] = origin
     headers['access-control-allow-headers'] = 'content-type'
+    headers['access-control-allow-methods'] = 'GET, POST, DELETE, OPTIONS'
   }
   return headers
 }
@@ -1026,6 +1059,74 @@ const handleRequest = async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, cors)
     return res.end()
+  }
+
+  // --- settings --------------------------------------------------------------
+  // Reads are harmless. Writes change the key he bills against, so they must
+  // come from the page itself: an allowed Origin is required, not just
+  // tolerated as it is for the rest of this server.
+  const settingsWrite = req.method !== 'GET' && req.url?.startsWith('/settings')
+  if (settingsWrite && !(origin && originAllowed(origin))) {
+    res.writeHead(403, cors)
+    return res.end('settings can only be changed from the page')
+  }
+  const json = (status, body) => {
+    res.writeHead(status, { ...cors, 'content-type': 'application/json' })
+    return res.end(JSON.stringify(body))
+  }
+
+  if (req.method === 'GET' && req.url === '/settings') {
+    return json(200, {
+      version: VERSION,
+      eleven: { configured: Boolean(elevenKey()), source: ELEVEN.source, voiceId },
+    })
+  }
+
+  if (req.method === 'POST' && req.url === '/settings/eleven-key') {
+    const body = await readJson(req)
+    const key = typeof body?.key === 'string' ? body.key.trim() : ''
+    if (!plausibleKey(key)) return json(400, { ok: false, reason: "That doesn't look like an ElevenLabs key." })
+    const check = await checkElevenKey(key)
+    if (!check.ok) return json(400, { ok: false, reason: check.reason })
+    setEnvLocal('ELEVENLABS_API_KEY', key)
+    process.env.ELEVENLABS_API_KEY = key
+    ELEVEN = { key, source: '.env.local' }
+    elevenComplaints.clear()
+    voiceCache = { key, at: check.voices ? Date.now() : 0, voices: check.voices }
+    console.log('[jarvis] ElevenLabs key saved from the settings panel; speech via ElevenLabs')
+    return json(200, {
+      ok: true,
+      voices: check.voices,
+      note: check.voices ? null : 'Saved. This key may not list voices, so the default voice is used.',
+    })
+  }
+
+  if (req.method === 'DELETE' && req.url === '/settings/eleven-key') {
+    setEnvLocal('ELEVENLABS_API_KEY', null)
+    delete process.env.ELEVENLABS_API_KEY
+    ELEVEN = findElevenKey()
+    voiceCache = { key: null, at: 0, voices: null }
+    console.log('[jarvis] ElevenLabs key removed from .env.local from the settings panel')
+    return json(200, { ok: true, configured: Boolean(elevenKey()), source: ELEVEN.source })
+  }
+
+  if (req.method === 'GET' && req.url === '/voices') {
+    const key = elevenKey()
+    if (!key) return json(200, { voices: [] })
+    if (voiceCache.key !== key || !voiceCache.voices || Date.now() - voiceCache.at > 5 * 60_000) {
+      const check = await checkElevenKey(key)
+      voiceCache = { key, at: Date.now(), voices: check.ok ? check.voices : null }
+      if (!check.ok) return json(502, { voices: [], reason: check.reason })
+    }
+    return json(200, { voices: voiceCache.voices ?? [], current: voiceId })
+  }
+
+  if (req.method === 'POST' && req.url === '/settings/voice') {
+    const body = await readJson(req)
+    if (!plausibleVoiceId(body?.voiceId)) return json(400, { ok: false, reason: 'not a voice id' })
+    voiceId = body.voiceId
+    writeSettings({ voiceId })
+    return json(200, { ok: true, voiceId })
   }
 
   if (req.method === 'GET' && req.url === '/health') {
@@ -1191,8 +1292,12 @@ const handleRequest = async (req, res) => {
     // Inside a try: this handler is async with nothing catching its rejection,
     // so a malformed body used to take the entire bridge down with it.
     let text
+    let voice = voiceId
     try {
-      ;({ text } = JSON.parse(body || '{}'))
+      let asked
+      ;({ text, voiceId: asked } = JSON.parse(body || '{}'))
+      // The settings panel previews a voice before it is chosen.
+      if (plausibleVoiceId(asked)) voice = asked
     } catch {
       res.writeHead(400, cors)
       return res.end('bad json')
@@ -1203,7 +1308,7 @@ const handleRequest = async (req, res) => {
     }
     try {
       const upstream = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream` +
+        `https://api.elevenlabs.io/v1/text-to-speech/${voice}/stream` +
           // 22kHz mono is half the bytes of 44kHz and indistinguishable through
           // a laptop speaker; optimize_streaming_latency=3 trades a little
           // prosody for a much earlier first byte.

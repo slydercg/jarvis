@@ -1,7 +1,7 @@
 import { NAME_PATTERN } from './identity'
 import { BRIDGE_HTTP_URL } from '../config'
 import { getMic } from './audio'
-import { speakingNow, speakingSince } from './tts'
+import { speakingNow, speakingSince, spokeUntil } from './tts'
 import { startVad, type Vad } from './vad'
 import { caps } from './capabilities'
 import { startWakeWord, wakeWordStatus } from './wakeword'
@@ -288,6 +288,21 @@ const OVERRIDE =
 /** See echo.ts; `OVERRIDE` always cuts through. */
 const isEcho = (heard: string, spoken: string) => isEchoOf(heard, spoken, OVERRIDE)
 
+/**
+ * The second line of defence against his own voice, by time rather than words.
+ *
+ * Speech that begins while he is talking, or within this long of him stopping,
+ * and that was not a deliberate interruption, is his own voice coming back —
+ * the macOS voice plays where the browser's echo canceller cannot hear it, and
+ * a mangled transcript can slip past the word match. "Stop", "wait" and his
+ * name still cut through, and anything you say after the grace is untouched.
+ */
+const ECHO_GRACE_MS = 1500
+const beganAsHeSpoke = (startedAt: number, text: string) => {
+  const until = spokeUntil()
+  return Boolean(until) && startedAt < until + ECHO_GRACE_MS && !OVERRIDE.test(text)
+}
+
 // ---------------------------------------------------------------------------
 // Diagnostics
 // ---------------------------------------------------------------------------
@@ -479,7 +494,10 @@ async function startElevenVoice(
    * Order is preserved because the drain is single-flight, which matters —
    * "London" arriving before "what's the weather in" is worse than either.
    */
-  const pendingAudio: Blob[] = []
+  const pendingAudio: { blob: Blob; startedAt: number; barge: boolean }[] = []
+  /** When the segment being captured began, and whether it interrupted him. */
+  let segStart = 0
+  let segBarge = false
   let draining = false
 
   /**
@@ -504,7 +522,7 @@ async function startElevenVoice(
    * transcript arriving — and the transcript belongs to the mode the user is in
    * now, not the one they interrupted.
    */
-  const transcribe = async (blob: Blob) => {
+  const transcribe = async ({ blob, startedAt, barge }: { blob: Blob; startedAt: number; barge: boolean }) => {
     const mode = h.mode()
     if (mode === 'deaf') return
     // Asleep, and the on-device word is listening for his name: this segment
@@ -545,6 +563,10 @@ async function startElevenVoice(
       // threshold stops most of it at the door; this catches the rest.
       if (isEcho(said, speakingNow())) {
         drop('echo of his own voice')
+        return
+      }
+      if (!barge && mode !== 'wake' && beganAsHeSpoke(startedAt, said)) {
+        drop(`began as he was speaking — his own voice ("${said.slice(0, 40)}")`)
         return
       }
 
@@ -593,6 +615,8 @@ async function startElevenVoice(
       const mode = h.mode()
       diag.mode = mode
       diag.sessions++
+      segStart = Date.now()
+      segBarge = false
       if (mode === 'deaf') return
       // Standing down mid-thought throws the thought away with it. Otherwise
       // held text would surface as the opening of the *next* conversation.
@@ -606,11 +630,12 @@ async function startElevenVoice(
           diag.selfGuarded++
           return
         }
+        segBarge = true
         h.onSpeechStart()
       }
     },
     onEnd: (blob) => {
-      pendingAudio.push(blob)
+      pendingAudio.push({ blob, startedAt: segStart || Date.now(), barge: segBarge })
       void drain()
     },
     onLevel: (v) => {
@@ -689,6 +714,8 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
   let lastWake = 0
   let lastAlive = Date.now()
   let lastHeard = 0
+  /** When the utterance being assembled was first heard, for the echo clock. */
+  let utterStart = 0
   let silenceTimer: ReturnType<typeof setTimeout> | null = null
 
   /** Same assembly rules as the premium path — a pause is not a full stop. */
@@ -717,15 +744,22 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     interim = ''
     started = false
     barged = false
+    utterStart = 0
   }
 
   const emit = () => {
     const text = `${settled} ${interim}`.replace(/\s+/g, ' ').trim()
     const mode = h.mode()
+    const startedAt = utterStart
+    const interrupted = barged
     reset()
     if (!text || mode === 'deaf') return
     if (isEcho(text, speakingNow())) {
       drop('echo of his own voice')
+      return
+    }
+    if (mode !== 'wake' && !interrupted && startedAt && beganAsHeSpoke(startedAt, text)) {
+      drop(`began as he was speaking — his own voice ("${text.slice(0, 40)}")`)
       return
     }
     diag.heard = text
@@ -782,6 +816,9 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       interim = ''
       return
     }
+    // First sign of this utterance: the time the echo clock judges it by.
+    // Not while asleep — room chatter then must not date a later command.
+    if (!utterStart && mode !== 'wake') utterStart = Date.now()
 
     if (mode === 'wake') {
       settled += fresh
@@ -916,6 +953,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     // drop the room chatter settled before it.
     prime: () => {
       settled = ''
+      utterStart = 0
     },
   }
 }
