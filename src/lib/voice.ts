@@ -443,7 +443,7 @@ async function withWakeWord(h: VoiceHandlers, voice: Voice): Promise<Voice> {
     h.onWake('', true)
   })
   localWake.on = Boolean(wake)
-  diag.wakeWord = wake ? 'on-device' : wakeWordStatus
+  diag.wakeWord = wakeWordStatus
   return {
     ...voice,
     stop: () => {
