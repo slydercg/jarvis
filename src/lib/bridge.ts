@@ -34,7 +34,20 @@ type Frame = {
   mode?: string
   seconds?: number
   when?: string
-  servers?: Array<string | { name?: string }>
+  servers?: Array<string | { name?: string; status?: string }>
+  costUsd?: number | null
+  tier?: string
+}
+
+/** How a server is doing, as the rail shows it. */
+export type ServerHealth = 'live' | 'pending' | 'auth' | 'failed'
+
+/** What one turn produced. Cost is the session's running total, in dollars. */
+export type AskResult = {
+  text: string
+  tools: string[]
+  costUsd?: number | null
+  tier?: string
 }
 
 /** Every question gets an id so its answer can be told from anyone else's. */
@@ -49,8 +62,8 @@ export const bridgeServers = () => servers
 
 /** The list arrives twice — once from config, once with live status — so the
  *  HUD subscribes rather than reading it a single time at boot. */
-let onServers: ((s: string[]) => void) | null = null
-export function watchServers(fn: (s: string[]) => void) {
+let onServers: ((s: string[], health: Record<string, ServerHealth>) => void) | null = null
+export function watchServers(fn: (s: string[], health: Record<string, ServerHealth>) => void) {
   onServers = fn
 }
 
@@ -172,10 +185,16 @@ function dispatch(ws: WebSocket) {
       // The bridge announces immediately on connect from Claude Code's config,
       // then again with live status once the agent initialises. Keep listening
       // so the later, more accurate list wins.
+      const health: Record<string, ServerHealth> = {}
       servers = (msg.servers ?? [])
-        .map((s) => (typeof s === 'string' ? s : (s.name ?? '')))
+        .map((s) => {
+          if (typeof s === 'string') return s
+          const name = s.name ?? ''
+          if (name && s.status) health[name] = s.status as ServerHealth
+          return name
+        })
         .filter(Boolean)
-      onServers?.(servers)
+      onServers?.(servers, health)
       firstReady.resolve()
     } else if (msg.type === 'panel' && msg.panel) {
       onPanel?.(msg.panel)
@@ -316,7 +335,7 @@ let pending: { finish: (fallback?: string) => void } | null = null
 export async function ask(
   prompt: string,
   handlers: AskHandlers,
-): Promise<{ text: string; tools: string[] }> {
+): Promise<AskResult> {
   /**
    * A new question supersedes the one in flight.
    *
@@ -381,12 +400,14 @@ export async function ask(
       ws.removeEventListener('error', onError)
     }
 
+    let costUsd: number | null = null
+    let tier: string | undefined
     const finish = (fallback = '') => {
       if (done) return
       cleanup()
       // Prefer the streamed text; fall back to the final result if this build
       // didn't emit deltas.
-      resolve({ text: (text || fallback).trim(), tools })
+      resolve({ text: (text || fallback).trim(), tools, costUsd, tier })
     }
 
     const fail = (err: Error) => {
@@ -441,6 +462,8 @@ export async function ask(
             break
 
           case 'done':
+            costUsd = typeof msg.costUsd === 'number' ? msg.costUsd : null
+            tier = msg.tier
             finish(msg.text ?? '')
             break
 

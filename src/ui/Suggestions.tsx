@@ -13,6 +13,7 @@ import { useStore } from '../store'
  * Each line is phrased the way you'd actually say it, not as a feature name.
  */
 const EXAMPLES = [
+  'brief me',
   'what happened in AI this week',
   'generate an image of the Mark Seven suit',
   'take a screenshot of my phone',

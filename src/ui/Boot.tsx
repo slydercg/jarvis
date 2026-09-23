@@ -101,6 +101,10 @@ export function Boot() {
           </div>
         </div>
 
+        <div className="boot-skip">
+          <kbd>Esc</kbd> to skip
+        </div>
+
         {/* ---- beats 2-4: the centre stage ---- */}
         <div className="boot-stage">
           {stage === 'rings' && <Rings reduced={!!reduced} />}

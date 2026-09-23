@@ -124,6 +124,36 @@ const MODEL = process.env.JARVIS_MODEL ?? 'claude-opus-5'
 const EFFORT = process.env.JARVIS_EFFORT ?? 'high'
 
 /**
+ * Two tiers, chosen per question.
+ *
+ * Measured on this bridge, one Opus turn at high effort costs $0.30–0.40 —
+ * the same for "what time is it" as for "compare these three offers". Most of
+ * what is said to a voice assistant is the first kind. So short, simple turns
+ * go to a faster, cheaper model at low effort, and anything that asks for
+ * research, writing, analysis, planning or a briefing — or simply runs long —
+ * goes to the main model. The conversation carries across: it is one session,
+ * and only the model answering the next turn changes.
+ *
+ * JARVIS_ROUTING=off keeps every turn on JARVIS_MODEL.
+ */
+const FAST_MODEL = process.env.JARVIS_FAST_MODEL ?? 'claude-sonnet-5'
+const FAST_EFFORT = process.env.JARVIS_FAST_EFFORT ?? 'low'
+const ROUTING = process.env.JARVIS_ROUTING !== 'off' && FAST_MODEL !== MODEL
+const ROUTES = {
+  deep: { tier: 'deep', model: MODEL, effort: EFFORT },
+  fast: { tier: 'fast', model: FAST_MODEL, effort: FAST_EFFORT },
+}
+const DEEP_ASK =
+  /\b(brief(ing)?|research|analy[sz]\w*|compare|comparison|plan\w*|strateg\w*|write|draft\w*|summar\w*|review\w*|investigat\w*|explain why|generate|create|build|design|portfolio|report|prepare|decide|recommend\w*|pros and cons)\b/i
+const DEEP_WORDS = 18
+
+function routeFor(text) {
+  if (!ROUTING) return ROUTES.deep
+  const words = text.trim().split(/\s+/).filter(Boolean).length
+  return DEEP_ASK.test(text) || words > DEEP_WORDS ? ROUTES.deep : ROUTES.fast
+}
+
+/**
  * Both spellings of every renamed built-in are listed on purpose. The SDK
  * presents several tools to the model under newer names — Task is Agent,
  * BashOutput is TaskOutput, KillShell is TaskStop, and the MCP resource tools
@@ -187,13 +217,29 @@ const displayName = (name) =>
  */
 const INTERNAL_SERVERS = new Set(['jarvis', 'jarvis_ui', 'jarvis_chrome', 'jarvis_eyes'])
 
-/** Usable servers, as the rail shows them: no internals, sorted, deduped. */
+/**
+ * The SDK's status words, as the rail shows them. A server that needs signing
+ * in again is kept on the list — marked, not dropped — because a connector
+ * that silently vanishes is the one nobody thinks to go and fix.
+ */
+const RAIL_STATUS = {
+  connected: 'live',
+  pending: 'pending',
+  'needs-auth': 'auth',
+  failed: 'failed',
+}
+
+/** The rail: [{ name, status }], no internals, no disabled, sorted, deduped. */
 function railList(all) {
-  const names = all
-    .filter((s) => !['needs-auth', 'failed', 'disabled'].includes(s.status))
-    .filter((s) => !INTERNAL_SERVERS.has(s.name))
-    .map((s) => displayName(s.name))
-  return [...new Set(names)].sort((a, b) => a.localeCompare(b))
+  const seen = new Map()
+  for (const s of all) {
+    if (INTERNAL_SERVERS.has(s.name) || s.status === 'disabled') continue
+    const name = displayName(s.name)
+    if (!seen.has(name)) seen.set(name, RAIL_STATUS[s.status] ?? 'pending')
+  }
+  return [...seen]
+    .map(([name, status]) => ({ name, status }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /**
@@ -529,6 +575,19 @@ Their accounts — the connectors:
   then happen only when asked for in so many words, in this turn. Reading
   balances, positions and prices is always fine. Figures, not advice, unless
   they ask for an opinion.
+
+The briefing — when asked to "brief me", for a briefing, or how the day looks:
+- Gather in parallel: mail that needs a reply (every mail connector you have),
+  today's calendar with any clashes, yesterday's meeting action items if a
+  notes connector is there, and the portfolio's move today if a brokerage is.
+  Leave out any source that is not connected, without remarking on it.
+- Put it on screen ONCE with \`display\`, sticky: first a .hud-grid of up to
+  four cells, each a .hud-metric figure over a .hud-unit caption ("3" / "unread
+  need you", "4" / "meetings · 1 clash", "+0.8%" / "portfolio today"); then a
+  .hud-rows list of the three things that most need attention today, most
+  urgent first, each with the time or sender as its .hud-tag.
+- Speak three sentences at most: the single most important item first, then
+  the rest in one line. The screen carries the detail.
 
 Their browser — ALWAYS the \`chrome_*\` tools, first, for anything to do with a
 browser or a web page that no connector covers:
@@ -1198,7 +1257,11 @@ console.log(
     ? `[jarvis] speech via ElevenLabs (key from ${ELEVEN.source})`
     : '[jarvis] speech using the browser\'s own voice and recognition (no ElevenLabs key)',
 )
-console.log(`[jarvis] model ${MODEL} · effort ${EFFORT}`)
+console.log(
+  ROUTING
+    ? `[jarvis] model ${MODEL} · effort ${EFFORT} for deep turns; ${FAST_MODEL} · ${FAST_EFFORT} for quick ones`
+    : `[jarvis] model ${MODEL} · effort ${EFFORT}`,
+)
 if (process.env.ANTHROPIC_API_KEY) {
   console.warn(
     '[jarvis] ANTHROPIC_API_KEY is set in this shell. Claude Code will bill that API key' +
@@ -1340,6 +1403,10 @@ wss.on('connection', (socket) => {
    */
   let answering = null
   const sendTurn = (msg) => send({ ...msg, ask: answering })
+
+  /** Which route the session is on now, and the queue that switches it. */
+  let tier = 'deep'
+  let delivering = Promise.resolve()
 
   /**
    * Set when a fatal API error has already been reported for this turn, so the
@@ -1579,7 +1646,7 @@ wss.on('connection', (socket) => {
       }
       if (closed) return
       const list = railList(all)
-      const key = list.join('|')
+      const key = JSON.stringify(list)
       if (key !== last) {
         last = key
         send({ type: 'ready', servers: list })
@@ -1679,6 +1746,7 @@ wss.on('connection', (socket) => {
                 type: 'done',
                 text: msg.result ?? '',
                 costUsd: msg.total_cost_usd ?? null,
+                tier,
               })
             } else {
               console.error(
@@ -1763,7 +1831,21 @@ wss.on('connection', (socket) => {
        */
       const text = msg.text
       const id = typeof msg.id === 'string' ? msg.id : null
-      void settling.then(() => {
+      // Chained, so a second question cannot overtake the first while the
+      // model switch for the first is still being applied.
+      delivering = delivering.then(() => settling).then(async () => {
+        const route = routeFor(text)
+        if (route.tier !== tier) {
+          try {
+            await session.setModel(route.model)
+            await session.applyFlagSettings({ effortLevel: route.effort })
+            tier = route.tier
+          } catch (err) {
+            // Answer on whatever is current rather than not at all.
+            console.warn(`[jarvis] could not switch to ${route.model}: ${err?.message ?? err}`)
+          }
+        }
+        console.log(`[jarvis] ${tier} turn (${ROUTES[tier].model})`)
         answering = id
         if (deliver) {
           const resolve = deliver

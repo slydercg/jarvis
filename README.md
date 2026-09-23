@@ -108,7 +108,15 @@ WebSocket (plus a few HTTP endpoints) on `ws://localhost:8787`.
 rest. The bridge can. And because it is the Agent SDK, it authenticates off your
 existing Claude Code login: no API key, billed to that same Claude account.
 
-**The model.** `claude-opus-5` at effort `high` by default. Override with the
+**Two models, picked per question.** Short, simple turns ("what time is it",
+"thanks", "turn it down") go to `claude-sonnet-5` at low effort. Anything that
+asks for research, writing, analysis, planning or a briefing, or simply runs
+long, goes to the main model. It's still one conversation; only the model
+answering the next turn changes. Measured on this bridge, a quick follow-up
+costs about $0.02 against $0.30–0.40 for a main-model turn. The HUD shows the
+session's running cost and which model answered last.
+
+**The main model.** `claude-opus-5` at effort `high` by default. Override with the
 `JARVIS_MODEL` and `JARVIS_EFFORT` environment variables. On startup the bridge
 prints its choice, e.g. `[jarvis] model claude-opus-5 · effort high`.
 
@@ -187,6 +195,9 @@ JARVIS reaches for a connector before opening the site in Chrome. Every message
 also carries your local date, time and time zone, so "what's on my calendar
 today" means your today. Try:
 
+- *"Brief me."* Unread mail that needs you, today's meetings and clashes,
+  yesterday's action items and the portfolio's move, as one card on screen
+  and three spoken sentences. Sources you haven't connected are skipped.
 - *"Anything important in my inbox?"*
 - *"What's my next meeting?"*
 - *"Draft a reply to Sarah saying Thursday works."* (Drafts are allowed in
@@ -230,7 +241,8 @@ chose.
 | **Space** | Talk without the wake word |
 | Just speak | Interrupt him mid-sentence (barge-in) |
 | **V** | Cycle the browser voice |
-| **Escape** | Stand down |
+| **Escape** | Stand down (during start-up: skip the boot sequence) |
+| Command bar | Type instead of talking; Enter sends it |
 | **D** | Live diagnostics panel |
 | **T** | One-line audio self-test |
 
@@ -277,6 +289,9 @@ Restart `npm start` after changing it.
 | `JARVIS_BRIDGE_PORT` | `8787` | Port for the WebSocket + HTTP endpoints |
 | `JARVIS_MODEL` | `claude-opus-5` | Model to run |
 | `JARVIS_EFFORT` | `high` | Reasoning effort |
+| `JARVIS_FAST_MODEL` | `claude-sonnet-5` | Model for short, simple turns |
+| `JARVIS_FAST_EFFORT` | `low` | Effort for those turns |
+| `JARVIS_ROUTING` | on | `off` sends every turn to `JARVIS_MODEL` |
 | `JARVIS_ALLOW_WRITES` | off | `1` allows effectful tools (see below) |
 | `JARVIS_ALLOW_MONEY` | off | `1` (with writes) allows orders, trades, payments, invoices |
 | `JARVIS_ALLOWED_ORIGINS` | local dev | Extra WebSocket origins to accept |

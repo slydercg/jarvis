@@ -220,6 +220,12 @@ type State = {
   activeTool: string | null
   error: string | null
   connected: string[]
+  /** Per-server status for the SYSTEMS rail: live, pending, auth or failed. */
+  health: Record<string, 'live' | 'pending' | 'auth' | 'failed'>
+  /** The session's running cost in dollars, as the bridge last reported it. */
+  sessionCost: number | null
+  /** Which route answered last: 'fast' or 'deep'. */
+  tier: string | null
   /** Name of the speech-synthesis voice in use, shown in the HUD. */
   voice: string
   /** Whether the camera is on and hands are being tracked. Store-backed rather
@@ -258,6 +264,8 @@ type State = {
   setActiveTool: (t: string | null) => void
   setError: (e: string | null) => void
   setConnected: (c: string[]) => void
+  setHealth: (h: Record<string, 'live' | 'pending' | 'auth' | 'failed'>) => void
+  setUsage: (cost: number | null, tier: string | null) => void
   pushTurn: (t: Turn) => void
   appendToLastTurn: (text: string) => void
 
@@ -278,6 +286,9 @@ export const useStore = create<State>((set) => ({
   activeTool: null,
   error: null,
   connected: [],
+  health: {},
+  sessionCost: null,
+  tier: null,
   voice: '',
   gestures: false,
   looking: null,
@@ -352,6 +363,8 @@ export const useStore = create<State>((set) => ({
   setActiveTool: (activeTool) => set({ activeTool }),
   setError: (error) => set({ error }),
   setConnected: (connected) => set({ connected }),
+  setHealth: (health) => set({ health }),
+  setUsage: (sessionCost, tier) => set({ sessionCost, tier }),
   pushTurn: (turn) => set((s) => ({ turns: [...s.turns.slice(-40), turn] })),
   appendToLastTurn: (text) =>
     set((s) => {
