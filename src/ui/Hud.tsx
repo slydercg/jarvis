@@ -213,9 +213,9 @@ export function Hud() {
           <div className="rail-title">SYSTEMS</div>
           {connected.length === 0 && <div className="rail-item dim">none linked</div>}
           {connected.map((c) => (
-            <div key={c} className="rail-item">
+            <div key={c} className="rail-item" title={c}>
               <span className="tick" />
-              {c}
+              <span className="rail-label">{c}</span>
             </div>
           ))}
           <div className="rail-item">
