@@ -142,6 +142,8 @@ export default function App() {
   const voicePoll = useRef<ReturnType<typeof setInterval> | null>(null)
   /** Set while a "start fresh" reconnect is in flight, so it is not reported as a fault. */
   const resetting = useRef(false)
+  /** Turns "reconnecting" into "not running" once the bridge has been gone a while. */
+  const offlineTimer = useRef(0)
   /** Ends the boot sequence early. Set only while it is playing. */
   const skipBoot = useRef<(() => void) | null>(null)
 
@@ -318,7 +320,7 @@ export default function App() {
     }
   }
 
-  const onWake = (trailing: string) => {
+  const onWake = (trailing: string, local = false) => {
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot') return
 
@@ -334,6 +336,26 @@ export default function App() {
 
     store.getState().setPhase('waking')
 
+    // The on-device word fires the instant his name is said, before anyone
+    // knows whether a question follows. Greeting straight away would talk over
+    // "Jarvis, what's the weather", so give it a beat: still talking means the
+    // question is on its way and arrives as the next utterance; quiet means it
+    // was just his name, and he answers to it.
+    if (local) {
+      window.setTimeout(() => {
+        if (store.getState().phase !== 'waking') return
+        if (voice.current?.talking()) {
+          listen(AWAIT_SPEECH_MS)
+          return
+        }
+        greet()
+      }, 700)
+      return
+    }
+    greet()
+  }
+
+  const greet = () => {
     // Answer to his name. Deliberately NOT awaited any more: the microphone is
     // already open and the echo filter knows his voice, so the user can talk
     // straight over the greeting instead of waiting it out.
@@ -668,8 +690,18 @@ export default function App() {
         if (state === 'reconnected') resetting.current = false
         return
       }
+      clearTimeout(offlineTimer.current)
       if (state === 'lost') {
         store.getState().setError('Bridge connection lost — reconnecting.')
+        // Still down after a while: it is not a blip, so say what fixes it.
+        // The page keeps retrying and clears this the moment it is back.
+        offlineTimer.current = window.setTimeout(() => {
+          store
+            .getState()
+            .setError(
+              "The bridge isn't running. Run npm run autostart:restart (or npm start); this page reconnects by itself.",
+            )
+        }, 30_000)
       } else if (state === 'reconnected') {
         // The bridge resumes the conversation, so nothing to apologise for.
         store.getState().setError(null)

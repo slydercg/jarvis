@@ -4,6 +4,7 @@ import { getMic } from './audio'
 import { speakingNow, speakingSince } from './tts'
 import { startVad, type Vad } from './vad'
 import { caps } from './capabilities'
+import { startWakeWord, wakeWordStatus } from './wakeword'
 
 /**
  * The voice loop.
@@ -40,8 +41,10 @@ export type VoiceHandlers = {
   mode: () => VoiceMode
   /** Fired on his name, from a partial — waiting for endpointing feels slow.
    *  `trailing` is whatever followed it, so "Jarvis, what's the weather" is
-   *  one breath rather than two turns. */
-  onWake: (trailing: string) => void
+   *  one breath rather than two turns. `local` is true when the on-device
+   *  wake word heard it: that fires on the name itself, mid-sentence, so
+   *  whatever follows has not been heard yet and arrives as the next utterance. */
+  onWake: (trailing: string, local?: boolean) => void
   /** The user has genuinely started talking. This is the barge-in trigger. */
   onSpeechStart: () => void
   /** Live transcript, for the caption under the reactor. */
@@ -56,7 +59,19 @@ export type Voice = {
   stop: () => void
   /** True while a recogniser is actually running. */
   live: () => boolean
+  /** True while the person is audibly mid-sentence. */
+  talking: () => boolean
+  /** Drop anything buffered while asleep: the on-device wake word just fired,
+   *  and what came before his name is not part of the command. */
+  prime?: () => void
 }
+
+/**
+ * Set while the on-device wake word is running. The engines then leave his
+ * name to it: nothing said while he is asleep is searched for "Jarvis", and
+ * on the ElevenLabs path nothing is even sent to be transcribed.
+ */
+const localWake = { on: false }
 
 // ---------------------------------------------------------------------------
 // Endpointing
@@ -352,6 +367,8 @@ export const diag = {
   lastError: '',
   /** Times the wake word matched. */
   wakes: 0,
+  /** 'on-device' when Porcupine listens for his name, else why it does not. */
+  wakeWord: 'speech recognition',
   /** Current mode, as the app last reported it. */
   mode: '',
   /** Why the last transcript was ignored — '' when it was accepted. */
@@ -403,8 +420,41 @@ export async function startVoice(h: VoiceHandlers): Promise<Voice> {
         ? 'Microphone access denied — voice input is unavailable.'
         : 'No microphone available.',
     )
-    return { stop: () => {}, live: () => false }
+    return { stop: () => {}, live: () => false, talking: () => false }
   }
+  const voice = await startEngine(h)
+  return withWakeWord(h, voice)
+}
+
+/**
+ * Put the on-device wake word in front of whichever engine is running. When it
+ * cannot start (no key, no keyword for the name), the engine's own text search
+ * for his name carries on, so nothing here can leave him unable to wake.
+ */
+async function withWakeWord(h: VoiceHandlers, voice: Voice): Promise<Voice> {
+  let last = 0
+  const wake = await startWakeWord(() => {
+    if (h.mode() !== 'wake') return
+    if (Date.now() - last < WAKE_DEBOUNCE) return
+    last = Date.now()
+    diag.wakes++
+    diag.dropped = ''
+    voice.prime?.()
+    h.onWake('', true)
+  })
+  localWake.on = Boolean(wake)
+  diag.wakeWord = wake ? 'on-device' : wakeWordStatus
+  return {
+    ...voice,
+    stop: () => {
+      wake?.stop()
+      localWake.on = false
+      voice.stop()
+    },
+  }
+}
+
+async function startEngine(h: VoiceHandlers): Promise<Voice> {
   if (!caps().stt) {
     diag.engine = 'browser'
     return startBrowserVoice(h)
@@ -440,6 +490,8 @@ export async function startVoice(h: VoiceHandlers): Promise<Voice> {
   return {
     stop: () => current?.stop(),
     live: () => current?.live() ?? false,
+    talking: () => current?.talking() ?? false,
+    prime: () => current?.prime?.(),
   }
 }
 
@@ -506,6 +558,12 @@ async function startElevenVoice(
   const transcribe = async (blob: Blob) => {
     const mode = h.mode()
     if (mode === 'deaf') return
+    // Asleep, and the on-device word is listening for his name: this segment
+    // is someone talking in the room, and it stays in the room.
+    if (mode === 'wake' && localWake.on) {
+      drop('asleep — the on-device wake word is listening for his name')
+      return
+    }
     const t0 = performance.now()
     try {
       const res = await fetch(`${BRIDGE_HTTP_URL}/stt`, {
@@ -646,6 +704,7 @@ async function startElevenVoice(
       diag.running = false
     },
     live: () => vad?.live() ?? false,
+    talking: () => vad?.meter().speaking ?? false,
   }
 }
 
@@ -668,7 +727,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
   if (!Ctor) {
     h.onError('This browser has no speech recognition — use Chrome or Edge, or add an ElevenLabs key.')
-    return { stop: () => {}, live: () => false }
+    return { stop: () => {}, live: () => false, talking: () => false }
   }
 
   let stopped = false
@@ -680,6 +739,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
   let barged = false
   let lastWake = 0
   let lastAlive = Date.now()
+  let lastHeard = 0
   let silenceTimer: ReturnType<typeof setTimeout> | null = null
 
   /** Same assembly rules as the premium path — a pause is not a full stop. */
@@ -723,6 +783,10 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     diag.heardAt = Date.now()
     if (mode === 'wake') {
       assemble.cancel()
+      if (localWake.on) {
+        drop('asleep — the on-device wake word is listening for his name')
+        return
+      }
       if (WAKE.test(text) && Date.now() - lastWake > WAKE_DEBOUNCE) {
         lastWake = Date.now()
         diag.wakes++
@@ -749,6 +813,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
 
   const onResult = (e: any) => {
     touch()
+    lastHeard = Date.now()
     const mode = h.mode()
     diag.mode = mode
     if (mode === 'deaf') {
@@ -771,6 +836,10 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
 
     if (mode === 'wake') {
       settled += fresh
+      if (localWake.on) {
+        if (settled.length > 400) settled = ''
+        return
+      }
       if (WAKE.test(heard) && Date.now() - lastWake > WAKE_DEBOUNCE) {
         lastWake = Date.now()
         diag.wakes++
@@ -891,5 +960,13 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       }
     },
     live: () => running,
+    // The recogniser has no level meter; a result in the last moment is the
+    // nearest thing it has to "still talking".
+    talking: () => Date.now() - lastHeard < 800,
+    // Keep the phrase in progress (it holds his name and whatever follows),
+    // drop the room chatter settled before it.
+    prime: () => {
+      settled = ''
+    },
   }
 }

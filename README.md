@@ -328,6 +328,35 @@ rest. Anything already set in your shell wins over the file. The bridge refuses
 `ANTHROPIC_API_KEY` from the file, because it would quietly switch you from your
 subscription to API billing.
 
+### Wake word on your own machine
+
+By default he finds his name by transcribing everything the microphone hears
+while he's asleep and searching the text for "Jarvis". That means everything
+said in the room is sent off to be transcribed: to Google with the browser's
+recognition, or to ElevenLabs with Scribe, which is billed. It also means
+anything that transcribes as "Jarvis" wakes him.
+
+With a free Picovoice key, he listens for the sound of his name **on your Mac**
+instead:
+
+1. Sign up at [console.picovoice.ai](https://console.picovoice.ai) (free for
+   personal use) and copy your AccessKey.
+2. Add it to `.env.local`: `VITE_PICOVOICE_ACCESS_KEY=...`
+3. Restart (`npm run autostart:restart`, or `npm start`).
+
+Nothing leaves the machine until he's awake, and there's no transcription
+charge while he's asleep. He also false-triggers far less. Say "Jarvis" and he
+answers. Say "Jarvis, what's the weather" in one breath and he waits for the
+question rather than greeting over it. Press **D** and the `wake word` row
+shows `on-device` when it's working, or the reason it isn't (a bad key, for
+example). In either of those cases he falls back to the text search, so he can
+always be woken.
+
+"Jarvis" is built in, as are Computer, Terminator, Bumblebee, Americano,
+Blueberry, Grapefruit, Grasshopper, Picovoice and Porcupine. For any other name,
+train a keyword at console.picovoice.ai, download the `.ppn` for **Web (WASM)**,
+put it in `public/`, and set `VITE_WAKE_KEYWORD_FILE=/my-name.ppn`.
+
 ### Renaming him
 
 One line in `.env.local` renames him everywhere: the wake word, the wordmark,
@@ -375,6 +404,10 @@ Restart `npm start` after changing it.
 | `VITE_TTS_ENGINE` | `system` or `kokoro` |
 | `VITE_KOKORO_VOICE` | Voice for the Kokoro engine |
 | `VITE_USE_ELEVENLABS` | Force the ElevenLabs voice on |
+| `VITE_PICOVOICE_ACCESS_KEY` | Turns on the on-device wake word (see below) |
+| `VITE_WAKE_SENSITIVITY` | `0`–`1`, default `0.6`. Higher catches more and false-triggers more |
+| `VITE_WAKE_KEYWORD_FILE` | A `.ppn` in `public/` for a name that isn't built in |
+| `VITE_WAKE_ENGINE` | `speech` ignores the key and uses the old text search |
 | `VITE_ANTHROPIC_API_KEY` | Direct mode only |
 
 ### Adding an ElevenLabs key
@@ -515,6 +548,13 @@ it used and where it came from.
 **Bridge not reachable.** Check that `npm run bridge` is still running in its
 terminal, and that nothing else is holding port `8787`. `EADDRINUSE` means an
 old copy is still running: `kill $(lsof -ti :8787)`.
+
+**"Bridge connection lost — reconnecting."** The bridge restarted or stopped.
+The page keeps retrying and clears the message by itself when the bridge is
+back. If it changes to "The bridge isn't running", run
+`npm run autostart:restart` (or `npm start`). With auto-start installed, an
+`npm start` left open in a Terminal no longer strands you when you close it:
+the login copy waits in the background and takes over.
 
 **Started at login but not answering.** Run `npm run autostart:status` and read
 the log lines it shows. The usual causes: Claude Code logged out (run `claude`,

@@ -206,14 +206,31 @@ async function portHeld(p, seconds = 8) {
 
 const bridgePort = Number(process.env.JARVIS_BRIDGE_PORT ?? 8787)
 if (await portHeld(bridgePort)) {
-  console.log(
-    `\nJARVIS is already running: something is using port ${bridgePort}.\n` +
-      '  If it started at login, open http://localhost:5173 or run\n' +
-      '  `npm run autostart:restart` to pick up changes. Otherwise stop the other\n' +
-      `  copy (kill $(lsof -ti :${bridgePort})) and run npm start again.\n`,
-  )
-  // A clean exit, so auto-start does not keep retrying against the other copy.
-  process.exit(0)
+  if (process.env.JARVIS_LOG_FILE) {
+    /**
+     * The auto-start copy, and something else — usually an `npm start` left
+     * running in a Terminal — already has the port. It used to exit here, and
+     * then when that Terminal closed nothing was left running at all: the page
+     * sat on "Bridge connection lost" until the next login. Stand by instead,
+     * and take over the moment the other copy lets go.
+     */
+    console.log(
+      `\nAnother copy of JARVIS is using port ${bridgePort}. Standing by; this one` +
+        ' takes over when it stops.\n',
+    )
+    while (await portTaken(bridgePort)) await new Promise((r) => setTimeout(r, 5000))
+    // Give its page server a moment to let go of 5173 too.
+    await new Promise((r) => setTimeout(r, 2000))
+    console.log('  the other copy stopped; starting.')
+  } else {
+    console.log(
+      `\nJARVIS is already running: something is using port ${bridgePort}.\n` +
+        '  If it started at login, open http://localhost:5173 or run\n' +
+        '  `npm run autostart:restart` to pick up changes. Otherwise stop the other\n' +
+        `  copy (kill $(lsof -ti :${bridgePort})) and run npm start again.\n`,
+    )
+    process.exit(0)
+  }
 }
 
 vendorWasm()

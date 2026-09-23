@@ -25,6 +25,7 @@ type VoiceDiag = {
   heardAt: number
   lastError: string
   wakes: number
+  wakeWord: string
   mode: string
   dropped: string
   accepted: number
@@ -115,6 +116,7 @@ export function Diagnostics() {
       <Row k="mode" v={`${v.mode ?? '—'} (phase ${phase})`} />
       <Row k="accepted" v={String(v.accepted ?? 0)} bad={(v.accepted ?? 0) === 0} />
       <Row k="wakes" v={String(v.wakes ?? 0)} />
+      <Row k="wake word" v={v.wakeWord ?? '—'} />
       <Row k="last heard" v={v.heard ? `"${v.heard}" ${ago(v.heardAt ?? 0)}` : '— nothing yet'} bad={!v.heard} />
       <Row k="last drop" v={v.dropped || '—'} bad={Boolean(v.dropped)} />
       <Row k="error" v={v.lastError || '—'} bad={Boolean(v.lastError)} />
