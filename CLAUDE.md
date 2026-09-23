@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the page (the face) and a Node bridge (the brain) that runs Claude Code headless and talks to the page over a WebSocket on :8787. README.md covers setup and features. This file covers how the code is put together.
+J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the page (the face) and a Node bridge (the brain) that runs Claude Code headless and talks to the page over a WebSocket on :8787. README.md covers setup and features. This file covers how the code is put together. ONBOARDING.md is the same map written for people: one spoken question traced end to end, and where to start reading. When a module is added, renamed or removed, update both.
 
 ## Tech Stack
 

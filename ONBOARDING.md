@@ -2,7 +2,9 @@
 
 A map of the codebase for anyone about to change it. The [README](README.md)
 covers what Jarvis does and how to set it up; this covers how it is built and
-where to look.
+where to look. [CLAUDE.md](CLAUDE.md) holds the same map for coding agents,
+with the code style, test setup and gotchas they need. When a module is added,
+renamed or removed, update both.
 
 ## The shape of it
 
