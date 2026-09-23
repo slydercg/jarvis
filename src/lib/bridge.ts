@@ -199,20 +199,29 @@ let firstReady = deferred()
 
 let everConnected = false
 
-/** Backoff for the automatic re-dial. It gives up after the last delay rather
- *  than retrying forever — a bridge that has been down for half a minute is
- *  usually one you stopped on purpose, and the next ask() re-dials anyway. */
-const RECONNECT_DELAYS = [500, 1000, 2000, 4000, 8000, 8000]
+/** Backoff for the automatic re-dial, then every 8s for as long as it takes.
+ *  It used to give up after half a minute, on the theory that a bridge down
+ *  that long was stopped on purpose. With auto-start and auto-update it is
+ *  just as often being restarted or taking over from another copy, and a page
+ *  that had given up sat there saying "reconnecting" long after the bridge
+ *  was back. A refused local connection costs nothing to retry. */
+const RECONNECT_DELAYS = [500, 1000, 2000, 4000, 8000]
 let attempt = 0
 let reconnectTimer = 0
 
 function scheduleReconnect() {
-  if (attempt >= RECONNECT_DELAYS.length) return
-  const delay = RECONNECT_DELAYS[attempt]
+  const delay = RECONNECT_DELAYS[Math.min(attempt, RECONNECT_DELAYS.length - 1)]
   attempt += 1
   clearTimeout(reconnectTimer)
   reconnectTimer = window.setTimeout(() => {
-    void connect().catch(() => {})
+    // A failed dial never reaches onclose's reschedule (that only fires for a
+    // socket that had opened), so it has to re-arm here. Without this the page
+    // tried exactly once, half a second after the drop, and then sat on
+    // "reconnecting" for good if the bridge took any longer than that to come
+    // back — which a restart always does.
+    void connect().catch(() => {
+      if (!socket) scheduleReconnect()
+    })
   }, delay)
 }
 

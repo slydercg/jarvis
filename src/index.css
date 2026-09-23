@@ -601,7 +601,7 @@ body::after {
 .error {
   position: absolute;
   left: 50%;
-  bottom: 124px;
+  bottom: 130px;
   transform: translateX(-50%);
   color: #ff6b6b;
   font-size: 12px;

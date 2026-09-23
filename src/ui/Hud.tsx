@@ -396,7 +396,8 @@ export function Hud() {
           system it documents stays findable. */}
       <Blades />
 
-      {ui.chrome.suggestions && <Suggestions />}
+      {/* The error takes the suggestion's slot rather than printing over it. */}
+      {ui.chrome.suggestions && !error && <Suggestions />}
 
       {error && (
         <div className="error" role="alert">
