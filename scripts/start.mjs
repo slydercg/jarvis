@@ -7,12 +7,14 @@
  * them down together on Ctrl-C — no extra dependency, just Node.
  *
  * Pass --writes to allow JARVIS to take real actions (drive the phone, the
- * browser, send things): `npm start -- --writes`.
+ * browser, send things): `npm start -- --writes`. Pass --open to open the page
+ * in your browser once it is ready (auto-start at login does this for you).
  */
 
 import { spawn } from 'node:child_process'
 import process from 'node:process'
-import { cpSync, existsSync, mkdirSync } from 'node:fs'
+import { createServer } from 'node:net'
+import { cpSync, existsSync, mkdirSync, statSync, truncateSync } from 'node:fs'
 
 /**
  * Put MediaPipe's WebAssembly where the page can actually load it.
@@ -45,14 +47,18 @@ function vendorWasm() {
 }
 
 const writes = process.argv.includes('--writes')
+const open = process.argv.includes('--open') || process.env.JARVIS_OPEN === '1'
 
-// A dim label per process, so the interleaved logs stay readable.
+// A dim label per process, so the interleaved logs stay readable. Colour only
+// in a terminal: in the auto-start log file the escape codes are just noise.
+const tty = process.stdout.isTTY
+const ANSI = new RegExp(String.raw`\u001b\[[0-9;]*m`, 'g')
 const paint = (tag, colour) => (line) =>
   line
     .toString()
     .split('\n')
     .filter((l) => l.length)
-    .map((l) => `\x1b[${colour}m${tag}\x1b[0m ${l}`)
+    .map((l) => (tty ? `\x1b[${colour}m${tag}\x1b[0m ${l}` : `${tag} ${l.replace(ANSI, '')}`))
     .join('\n')
 
 const children = []
@@ -68,7 +74,7 @@ function run(name, command, args, colour, env) {
   child.on('exit', (code) => {
     // If either half dies the other is useless, so take the whole thing down
     // rather than leave a half-running app that looks alive but cannot answer.
-    console.log(`\x1b[${colour}m${name}\x1b[0m exited (${code}); stopping the rest.`)
+    console.log(`${tty ? `\x1b[${colour}m${name}\x1b[0m` : name} exited (${code}); stopping the rest.`)
     shutdown(code ?? 0)
   })
   children.push(child)
@@ -111,15 +117,104 @@ if (port) {
   console.log(`  serving the face on port ${port}; the bridge will accept it.\n`)
 }
 
+/**
+ * Auto-start writes everything to one log file and nothing ever reads it back,
+ * so it would grow for as long as the Mac is in use. launchd opens the file for
+ * appending, which means cutting it to nothing here is safe even while it is
+ * open: the next line simply lands at the start.
+ */
+function trimLog() {
+  const file = process.env.JARVIS_LOG_FILE
+  if (!file) return
+  try {
+    if (statSync(file).size > 5 * 1024 * 1024) truncateSync(file, 0)
+  } catch {
+    // No log yet.
+  }
+}
+
+/**
+ * Is the bridge's port already taken? Nearly always by another copy of this
+ * app — the auto-start one, when you also type `npm start` — and the old
+ * failure was an EADDRINUSE stack trace from the bridge while the face started
+ * anyway and talked to the other copy. Say it plainly and stop instead.
+ */
+function portTaken(p) {
+  return new Promise((resolve) => {
+    const probe = createServer()
+    probe.once('error', (err) => resolve(err.code === 'EADDRINUSE'))
+    probe.once('listening', () => probe.close(() => resolve(false)))
+    probe.listen(p)
+  })
+}
+
+/** Open the page once, in JARVIS_BROWSER if set, else the default browser. */
+let opened = false
+function openPage(url) {
+  if (opened) return
+  opened = true
+  const browser = process.env.JARVIS_BROWSER
+  const [cmd, args] =
+    process.platform === 'darwin'
+      ? ['open', browser ? ['-a', browser, url] : [url]]
+      : process.platform === 'win32'
+        ? ['cmd', ['/c', 'start', '', url]]
+        : ['xdg-open', [url]]
+  const child = spawn(cmd, args, { stdio: 'ignore', detached: true })
+  child.on('error', (err) => console.warn(`  could not open ${url}: ${err.message}`))
+  child.unref()
+  console.log(`  opening ${url}${browser ? ` in ${browser}` : ''}`)
+}
+
+trimLog()
+
+/**
+ * Taken for a few seconds is normal: on a restart the previous bridge is still
+ * letting go of the port. Only a port that stays taken is another copy.
+ */
+async function portHeld(p, seconds = 8) {
+  for (let i = 0; i < seconds * 2; i++) {
+    if (!(await portTaken(p))) return false
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  return true
+}
+
+const bridgePort = Number(process.env.JARVIS_BRIDGE_PORT ?? 8787)
+if (await portHeld(bridgePort)) {
+  console.log(
+    `\nJARVIS is already running: something is using port ${bridgePort}.\n` +
+      '  If it started at login, open http://localhost:5173 or run\n' +
+      '  `npm run autostart:restart` to pick up changes. Otherwise stop the other\n' +
+      `  copy (kill $(lsof -ti :${bridgePort})) and run npm start again.\n`,
+  )
+  // A clean exit, so auto-start does not keep retrying against the other copy.
+  process.exit(0)
+}
+
 vendorWasm()
 
-console.log('\nJ.A.R.V.I.S. starting — the brain and the face.\n')
+console.log(`\nJ.A.R.V.I.S. starting — the brain and the face. (${new Date().toString()})\n`)
 run('bridge', 'node', ['bridge/server.mjs'], '36', bridgeEnv)
 // npm is a shell script on most systems; call the vite binary directly so we do
 // not need shell:true (which would break the argument handling above).
-run('face', process.execPath, ['node_modules/vite/bin/vite.js'], '35', {})
+const face = run('face', process.execPath, ['node_modules/vite/bin/vite.js'], '35', {})
+
+if (open) {
+  // Vite prints "Local:   http://localhost:5173/" when it is serving, with the
+  // port it actually got, which may not be 5173 if that was taken.
+  let seen = ''
+  face.stdout.on('data', (d) => {
+    if (opened) return
+    seen = (seen + d.toString().replace(ANSI, '')).slice(-2000)
+    const m = /Local:\s+(https?:\/\/\S+)/.exec(seen)
+    if (m) openPage(m[1])
+  })
+}
 
 console.log(
-  '\nWhen it says the dev server is ready, open the URL it prints in Chrome,\n' +
-    'click INITIALISE, and say "Hey Jarvis". Ctrl-C stops everything.\n',
+  open
+    ? '\nThe page opens by itself once it is ready. Click INITIALISE and say "Hey Jarvis".\n'
+    : '\nWhen it says the dev server is ready, open the URL it prints in Chrome,\n' +
+        'click INITIALISE, and say "Hey Jarvis". Ctrl-C stops everything.\n',
 )
