@@ -1,0 +1,32 @@
+# Every push to main and every pull request: lint, typecheck and build the
+# page, and run the tests (echo filter, ElevenLabs key check, Protective flow
+# handling, and the wake word on recorded speech). A PR that fails here would
+# have failed on the Mac too, after auto-update had already applied it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test

@@ -7,7 +7,7 @@ import { Boot } from './ui/Boot'
 import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
 import { Settings, SettingsButton } from './ui/Settings'
-import { useStore, UNDO_MS } from './store'
+import { useStore, UNDO_MS, type Alert } from './store'
 import { prefs } from './lib/prefs'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
 import { createSpeaker, cycleVoice, currentVoiceName, speakingSince } from './lib/tts'
@@ -111,11 +111,15 @@ const UNMUTE =
   /^((unmute|resume|restart|turn on) (the |my )?(alerts|notifications)|alerts on)[.!]?$/i
 
 /** What he says for an alert. Fronted "Sir": it is an interruption, not an answer. */
-function alertLine(a: { kind: 'meeting' | 'mail'; title: string; detail: string; at: number }): string {
+function alertLine(a: Alert): string {
+  if (a.kind === 'brief') {
+    // Offered, not read out: it may land while he is on a call.
+    return "Good morning, sir. Your brief is ready when you are — say 'brief me'."
+  }
   if (a.kind === 'meeting') {
     const mins = Math.round((a.at - Date.now()) / 60_000)
     const when = mins <= 1 ? 'is starting now' : `starts in ${mins} minutes`
-    return `Sir, ${a.title} ${when}.`
+    return `Sir, ${a.title} ${when}.${a.prep?.summary ? ` ${a.prep.summary}` : ''}`
   }
   const subject = a.detail.split(' — ')[0]
   return `Sir, ${a.title} has written${subject ? ` about ${subject}` : ''}. It looks like it needs you.`
@@ -735,12 +739,13 @@ export default function App() {
      * passed by the time he is free is not announced late.
      */
     watchAlerts((raw) => {
-      const alert = {
+      const alert: Alert = {
         id: `${raw.kind}:${raw.title}:${raw.at}`,
         kind: raw.kind,
         title: raw.title,
         detail: raw.detail,
         at: Date.parse(raw.at) || Date.now(),
+        ...(raw.prep ? { prep: raw.prep } : {}),
       }
       store.getState().pushAlert(alert)
       if (store.getState().alertsMuted) return

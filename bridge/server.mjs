@@ -31,6 +31,9 @@ import {
   sessionOptions,
 } from './memory.mjs'
 import { displayServer } from './panels.mjs'
+import { protectiveConfigured, protectiveServer } from './protective.mjs'
+import { briefServer, maybeOfferBrief } from './briefing.mjs'
+import { localFilesServer } from './localfiles.mjs'
 import {
   VERSION,
   checkElevenKey,
@@ -41,7 +44,7 @@ import {
   writeSettings,
 } from './settings.mjs'
 import { uiServer } from './ui.mjs'
-import { chromeAvailable, chromeServer } from './chrome.mjs'
+import { browserDiagnosis, chromeAvailable, chromeServer } from './chrome.mjs'
 import { visionServer } from './vision.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { readFileSync, realpathSync } from 'node:fs'
@@ -229,13 +232,16 @@ const MCP_SERVERS = configuredServers()
 
 /** `claude.ai Google Calendar` -> `Google Calendar`, for the HUD and the log. */
 const displayName = (name) =>
-  String(name).replace(/^claude\.ai /, '').replace(/_/g, ' ')
+  String(name)
+    .replace(/^claude\.ai /, '')
+    .replace(/_/g, ' ')
+    .replace(/^[a-z]/, (c) => c.toUpperCase())
 
 /**
  * The interface's own in-process servers. They are how JARVIS draws on the
  * screen, not systems he is linked to, so the SYSTEMS rail leaves them out.
  */
-const INTERNAL_SERVERS = new Set(['jarvis', 'jarvis_ui', 'jarvis_chrome', 'jarvis_eyes', 'jarvis_memory'])
+const INTERNAL_SERVERS = new Set(['jarvis', 'jarvis_ui', 'jarvis_chrome', 'jarvis_eyes', 'jarvis_memory', 'jarvis_brief', 'jarvis_files'])
 
 /**
  * The SDK's status words, as the rail shows them. A server that needs signing
@@ -479,6 +485,13 @@ function decideTool(name) {
     // looks like a secret; remembering is the point of it, so it never asks.
     if (server === 'jarvis_memory') return 'allow'
 
+    // The brief is built by a separate read-only session; asking for it
+    // changes nothing.
+    if (server === 'jarvis_brief') return 'allow'
+
+    // Reading documents in the home folder; it cannot write or leave home.
+    if (server === 'jarvis_files') return 'allow'
+
     const tool = mcpToolOf(name)
     const key = serverKey(server)
     if (DRAFT_TOOL.test(tool)) return 'allow'
@@ -512,6 +525,7 @@ const NAME = (process.env.JARVIS_NAME ?? '').trim() || 'JARVIS'
  * read at a glance, and a full email body belongs in the draft, not here.
  */
 const CONFIRM_FIELDS = [
+  ['tasks', 'Tasks'],
   ['to', 'To'], ['recipients', 'To'], ['recipient', 'To'], ['cc', 'Cc'],
   ['subject', 'Subject'], ['title', 'Title'], ['summary', 'Title'], ['name', 'Name'],
   ['start', 'Starts'], ['startTime', 'Starts'], ['start_time', 'Starts'], ['date', 'Date'],
@@ -526,10 +540,16 @@ const clip = (v, n) => {
   return flat.length > n ? `${flat.slice(0, n - 1)}…` : flat
 }
 
+/** Tasks read as a list; addresses as a comma-separated line. */
+const x_sep = (key) => (key === 'tasks' ? ' · ' : ', ')
+
 function describeAction(toolName, input = {}) {
   const server = mcpServerOf(toolName)
   const service = server ? displayName(server.replace(/^claude_ai_/i, '')) : 'System'
-  const verb = (server ? mcpToolOf(toolName) : toolName).replace(/[_-]+/g, ' ').trim()
+  // A tool named after its own server ("protective_create_tasks") reads as
+  // the action alone under that service's name.
+  const bare = server ? mcpToolOf(toolName).replace(new RegExp(`^${server}[_-]`, 'i'), '') : toolName
+  const verb = bare.replace(/[_-]+/g, ' ').trim()
   const details = []
   const seen = new Set()
   for (const [key, label] of CONFIRM_FIELDS) {
@@ -540,9 +560,11 @@ function describeAction(toolName, input = {}) {
       typeof v === 'object' && !Array.isArray(v)
         ? (v.dateTime ?? v.date ?? v.email ?? JSON.stringify(v))
         : Array.isArray(v)
-          ? v.map((x) => (typeof x === 'object' ? (x.email ?? x.name ?? JSON.stringify(x)) : x)).join(', ')
+          ? v
+              .map((x) => (typeof x === 'object' ? (x.email ?? x.name ?? x.text ?? JSON.stringify(x)) : x))
+              .join(x_sep(key))
           : v
-    details.push({ label, value: clip(value, label === 'Message' ? 160 : 90) })
+    details.push({ label, value: clip(value, label === 'Message' || label === 'Tasks' ? 240 : 90) })
     if (details.length >= 5) break
   }
   return {
@@ -660,6 +682,15 @@ Their accounts — the connectors:
   no connector covers.
 - Some tools are loaded on demand. If the one you need is not in front of you,
   search for it — "gmail", "calendar", "drive" — before deciding it is missing.
+- He has three mail and calendar accounts, in this order of importance:
+  PROTECTIVE (his main work account, Mark.Slyder@protective.com — the
+  \`protective_*\` tools), then SCG (Slyder Consulting Group — the Microsoft 365
+  / Outlook tools), then personal Gmail. "My inbox", "my calendar", "my
+  meetings" with no account named means Protective first, then SCG. Say which
+  account something is from only when it helps.
+- Protective replies: \`protective_create_draft\` saves one for review;
+  \`protective_send_email\` sends from Mark.Slyder@protective.com and is confirmed
+  like any send.
 - Mail: summarise, newest first. Who it is from and what they want, in a
   clause each; never subjects verbatim, never an address, never a signature.
   Say how many are unread when asked about the inbox.
@@ -690,18 +721,46 @@ Memory — you remember across conversations:
 - What you already know is at the end of these instructions. Use it quietly
   where it helps; never recite it back unprompted.
 
-The briefing — when asked to "brief me", for a briefing, or how the day looks:
-- Gather in parallel: mail that needs a reply (every mail connector you have),
-  today's calendar with any clashes, yesterday's meeting action items if a
-  notes connector is there, and the portfolio's move today if a brokerage is.
-  Leave out any source that is not connected, without remarking on it.
+The briefing — when asked to "brief me", for a briefing, what needs doing today,
+or how the day looks:
+- Call \`get_brief\` FIRST. It is today's ranked brief across Protective, SCG and
+  To Do — built ahead of time by the same rules as his emailed daily briefing —
+  so it answers at once. Pass refresh only when they ask for an update or it is
+  over an hour old and the morning has moved on.
+- If it fails, gather directly and in parallel instead: mail that needs a reply
+  (every mailbox, Protective first), today's calendar with any clashes, and To
+  Do. Leave out any source that is not connected, without remarking on it.
+- Add the portfolio's move today if a brokerage is connected.
 - Put it on screen ONCE with \`display\`, sticky: first a .hud-grid of up to
   four cells, each a .hud-metric figure over a .hud-unit caption ("3" / "unread
   need you", "4" / "meetings · 1 clash", "+0.8%" / "portfolio today"); then a
   .hud-rows list of the three things that most need attention today, most
   urgent first, each with the time or sender as its .hud-tag.
-- Speak three sentences at most: the single most important item first, then
-  the rest in one line. The screen carries the detail.
+- Speak three sentences at most: the brief's focus line first, then the rest in
+  one line. The screen carries the detail.
+
+Meetings — prep and follow-through:
+- "Prep me for my next meeting", "what's this meeting about": find it on the
+  calendar (Protective first), then gather where things stand — the most recent
+  Granola notes with those people or on that subject, the latest mail thread with
+  them in any mailbox, and open Jira items those mention. Two sentences spoken:
+  where it stands, and what they need to decide or do in it. Detail on a blade.
+- "What did we agree?", "what came out of that meeting": the most recent
+  finished meeting in Granola (get_meetings by id, not the semantic search).
+  Say the decisions and his own action items; then ask once whether to add the
+  action items to To Do.
+- Adding them: one call to \`protective_create_tasks\` with every item — his own
+  as kind "me", things other people owe him as kind "waiting" ("Chris — send the
+  revised estimate"), each with the meeting name, and a due date as YYYY-MM-DD
+  only when one was actually stated. The interface confirms the batch once.
+
+Files on this Mac — a file:// link, or a path like ~/Documents/report.html:
+- Use \`read_local_page\` with the link exactly as given. NEVER the browser: a
+  web page cannot open file:// links, and the file is right here. A link ending
+  in #…&area=APD is a filter; the tool narrows to it by itself.
+- Say when it was last updated, then what it shows: for a dashboard, the few
+  things that changed or need attention, with the numbers that matter, spoken
+  plainly. Detail on a blade with \`display\` if there is more than a sentence.
 
 Their browser — ALWAYS the \`chrome_*\` tools, first, for anything to do with a
 browser or a web page that no connector covers:
@@ -726,7 +785,8 @@ browser or a web page that no connector covers:
   rather than guessing where something is.
 - Before anything that sends, buys, deletes or posts, say in one sentence what
   you are about to do. After it, say what happened.
-- If the browser is unreachable, say so once and carry on without it.
+- If the browser is unreachable, say once what \`chrome_status\` says to do about
+  it — it names the fix — and carry on without it.
 
 Your eyes:
 - \`look\` takes one frame and lets you see it. \`watch\` takes several seconds and
@@ -1513,7 +1573,7 @@ void chromeAvailable().then((ok) => {
   console.log(
     ok
       ? `[jarvis] browser control ready${ALLOW_WRITES ? '' : ' (reading only — clicking and typing need JARVIS_ALLOW_WRITES=1)'}`
-      : '[jarvis] browser control unavailable — open Chrome with the Claude extension enabled',
+      : `[jarvis] browser control unavailable — ${browserDiagnosis()}`,
   )
 })
 
@@ -1601,12 +1661,33 @@ let lastActivity = Date.now()
 const touch = () => {
   lastActivity = Date.now()
 }
+/**
+ * What background readers may call: what the conversation may do without
+ * asking, minus drafts — the conversation saves those without asking, but a
+ * background job has no business writing anything at all.
+ */
+const readOnlyTool = (name) => decideTool(name) === 'allow' && !/draft/i.test(name.split('__').pop() ?? '')
+
+/** Servers for background readers: the configured ones plus Protective, read-only. */
+const backgroundServers = () => ({
+  ...MCP_SERVERS,
+  ...(protectiveConfigured() ? { protective: protectiveServer({ readOnly: true }) } : {}),
+})
+
+/** Everything the brief builder needs; see briefing.mjs. */
+const briefDeps = () => ({
+  mcpServers: MCP_SERVERS,
+  isReadOnly: readOnlyTool,
+  localNow,
+  model: FAST_MODEL,
+})
+
 function ensureWatcher() {
   watcher ??= startAlerts({
-    mcpServers: MCP_SERVERS,
+    mcpServers: backgroundServers(),
     // Exactly what the conversation may do without asking, and nothing else:
     // no confirmations, no writes, ever.
-    isReadOnly: (name) => decideTool(name) === 'allow',
+    isReadOnly: readOnlyTool,
     broadcast: (alert) => {
       console.log(`[jarvis] alert: ${alert.kind} — ${alert.title}`)
       for (const deliver of pages) deliver({ type: 'alert', alert })
@@ -1661,6 +1742,14 @@ wss.on('connection', (socket) => {
   }
   pages.add(send)
   ensureWatcher()
+  // The first page of the morning builds the day's brief and offers it.
+  maybeOfferBrief(briefDeps(), {
+    weekends: process.env.JARVIS_ALERT_WEEKENDS === 'on',
+    broadcast: (alert) => {
+      console.log(`[jarvis] alert: ${alert.kind} — ${alert.title}`)
+      for (const deliver of pages) deliver({ type: 'alert', alert })
+    },
+  })
 
   /**
    * Which question the agent is currently answering.
@@ -1832,6 +1921,13 @@ wss.on('connection', (socket) => {
         jarvis_eyes: visionServer(ask),
         // Lasting notes about the user, in ~/.jarvis/memory.md.
         jarvis_memory: memoryServer(),
+        // The day's ranked brief, built by a read-only session and cached.
+        jarvis_brief: briefServer(briefDeps()),
+        // Reports and dashboards saved on this Mac, file:// links included.
+        jarvis_files: localFilesServer(),
+        // The Protective mailbox, calendar and To Do, via Power Automate —
+        // present only once its flows are set up.
+        ...(protectiveConfigured() ? { protective: protectiveServer() } : {}),
       },
       // A plain system prompt, not the claude_code preset. The preset is
       // tuned for a coding agent — verbose, file-oriented, and a large chunk

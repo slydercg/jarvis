@@ -48,11 +48,13 @@ type Frame = {
 
 /** A proactive heads-up from the bridge's watcher. */
 export type AlertFrame = {
-  kind: 'meeting' | 'mail'
+  kind: 'meeting' | 'mail' | 'brief'
   title: string
   detail: string
   /** Meeting start, or when the mail was flagged. ISO 8601. */
   at: string
+  /** Meetings only: where things stand, when it could be gathered in time. */
+  prep?: { summary: string; points: string[] }
 }
 
 let onAlert: ((a: AlertFrame) => void) | null = null
