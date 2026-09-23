@@ -40,6 +40,11 @@ export async function warm(): Promise<void> {
 
 /** The bridge reports its server list twice — from config on connect, then
  *  with live status once the agent boots — so the HUD subscribes. */
+/** Proactive alerts from the bridge's watcher. Bridge mode only. */
+export function watchAlerts(fn: (a: bridge.AlertFrame) => void): void {
+  if (usingBridge) bridge.watchAlerts(fn)
+}
+
 /** A resumed conversation's last exchanges, to put back on screen. */
 export function watchHistory(
   fn: (turns: Array<{ role: 'user' | 'jarvis'; text: string }>) => void,

@@ -9,6 +9,7 @@ import { Pointer } from './Pointer'
 import { GestureGuide } from './GestureGuide'
 import { CommandBar } from './CommandBar'
 import { ConfirmCard } from './ConfirmCard'
+import { AlertStack } from './AlertStack'
 
 /**
  * The three things he can be doing, shown as words as well as light.
@@ -408,6 +409,8 @@ export function Hud() {
       {/* Above the transcript and the blades: an action waiting on a yes is
           the most important thing on the screen while it is there. */}
       <ConfirmCard />
+
+      <AlertStack />
 
       <footer className="hud-bottom">
         <span className="hint">

@@ -43,6 +43,21 @@ type Frame = {
   details?: Array<{ label: string; value: string }>
   money?: boolean
   turns?: Array<{ role: 'user' | 'jarvis'; text: string }>
+  alert?: AlertFrame
+}
+
+/** A proactive heads-up from the bridge's watcher. */
+export type AlertFrame = {
+  kind: 'meeting' | 'mail'
+  title: string
+  detail: string
+  /** Meeting start, or when the mail was flagged. ISO 8601. */
+  at: string
+}
+
+let onAlert: ((a: AlertFrame) => void) | null = null
+export function watchAlerts(fn: (a: AlertFrame) => void) {
+  onAlert = fn
 }
 
 /** An action the bridge wants the user to approve before it runs. */
@@ -257,6 +272,8 @@ function dispatch(ws: WebSocket) {
           .then(reply)
           .catch((err) => reply({ error: String(err?.message ?? err) }))
       }
+    } else if (msg.type === 'alert' && msg.alert) {
+      onAlert?.(msg.alert)
     } else if (msg.type === 'history' && Array.isArray(msg.turns)) {
       onHistory?.(msg.turns)
     } else if (msg.type === 'confirm' && msg.id) {

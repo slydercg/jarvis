@@ -333,6 +333,40 @@ rejection instead of going deaf. The terminal says why.
 
 ---
 
+## Proactive alerts
+
+He speaks up without being asked:
+
+- **Before a meeting.** *"Sir, the design review starts in ten minutes."*
+- **When mail needs you.** *"Sir, Sarah Chen has written about the contract
+  signature. It looks like it needs you."* Only real people asking for
+  something soon count. Newsletters, notifications, receipts and marketing never
+  do.
+
+Each alert also appears as a card at the top right, with a countdown for
+meetings, and stays there until you dismiss it. He never talks over his own
+answer or a confirmation; the alert waits until he's free. Say **"mute alerts"**
+or **"do not disturb"** to silence them (the cards still appear) and **"resume
+alerts"** to bring them back.
+
+How it works: a separate watcher session, on the quick model and read-only,
+checks your calendar every 20 minutes and your mail every 15. Each meeting gets
+a local timer, so the alert fires on the minute without another model call. It
+runs only while a Jarvis page is open, 8:00–19:00 on weekdays by default.
+Measured cost: about $0.20 when the watcher starts, then roughly $0.01–0.05 per
+check. The terminal logs each check and its cost.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `JARVIS_ALERTS` | on | `off` disables the watcher entirely |
+| `JARVIS_ALERT_LEAD_MIN` | `10` | Minutes before a meeting to warn |
+| `JARVIS_ALERT_CAL_MIN` | `20` | How often the calendar is checked |
+| `JARVIS_ALERT_MAIL_MIN` | `15` | How often mail is checked (`0` turns mail alerts off) |
+| `JARVIS_ALERT_HOURS` | `8-19` | Local hours the watcher runs |
+| `JARVIS_ALERT_WEEKENDS` | off | `on` includes Saturday and Sunday |
+
+---
+
 ## Memory
 
 **The conversation survives a reload.** Refresh the page, lose the connection
