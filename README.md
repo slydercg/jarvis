@@ -320,6 +320,21 @@ then the triangular arc reactor lighting up — with a start-up sound under it
 
 ---
 
+## Settings
+
+Click **Settings** at the bottom right, or press **,** (comma). He stands down
+while it's open.
+
+- **Voice:** ElevenLabs or the Mac's own voice. Paste an ElevenLabs API key
+  and it's checked with ElevenLabs, then saved to `.env.local`. He speaks with
+  it straight away; reload once so he listens with it too. Pick any voice on
+  your ElevenLabs account and preview it before you choose.
+- **Listening:** how long he keeps listening after an answer before needing
+  "hey Jarvis" again, from 0 (always say it) to 15 seconds, plus the wake
+  word's status.
+- **About:** the version that's actually running. Check this first when a fix
+  "didn't work": auto-update may not have applied it yet.
+
 ## Configuration
 
 Everything is optional in bridge mode. Put settings in `.env.local` (copy

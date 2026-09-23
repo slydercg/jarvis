@@ -2221,3 +2221,198 @@ kbd {
   transform: scaleX(-1);
   background: #000;
 }
+
+/* ---------------------------------------------------------------- settings */
+
+.settings-btn {
+  position: absolute;
+  right: 40px;
+  bottom: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, rgba(1, 8, 14, 0.7));
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 6;
+}
+.settings-btn:hover,
+.settings-btn:focus-visible { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.settings-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+.settings-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(1, 6, 12, 0.62);
+  backdrop-filter: blur(3px);
+  pointer-events: auto;
+}
+
+.settings {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  padding: 20px 22px 18px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, rgba(1, 8, 14, 0.96));
+  box-shadow: 0 0 40px color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+
+.settings-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.settings h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.settings h3 {
+  margin: 18px 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.settings section + section {
+  border-top: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.settings-close {
+  width: 32px;
+  height: 32px;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--ink);
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.settings-close:hover,
+.settings-close:focus-visible { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+
+.settings-seg {
+  display: inline-flex;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.settings-seg button {
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.settings-seg button + button { border-left: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+.settings-seg button.on {
+  color: #00151b;
+  background: var(--accent);
+}
+
+.settings-block { margin-top: 12px; }
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  font-size: 13px;
+}
+.settings-label { flex: 0 0 auto; opacity: 0.8; }
+.settings-row > .settings-label + span { margin-left: auto; text-align: right; }
+.settings-value { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.settings-pick select { flex: 1; min-width: 0; }
+.settings-pick input[type='range'] { flex: 1; accent-color: var(--accent); }
+
+.settings select,
+.settings input[type='password'] {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: rgba(1, 8, 14, 0.9);
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  padding: 7px 9px;
+}
+.settings select:focus-visible,
+.settings input:focus-visible,
+.settings-block button:focus-visible,
+.settings-reload button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.settings-key { display: flex; gap: 8px; margin: 6px 0; }
+.settings-key input { flex: 1; min-width: 0; }
+
+.settings-block button,
+.settings-pick button,
+.settings-reload button {
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  cursor: pointer;
+}
+.settings-block button:hover:not(:disabled),
+.settings-pick button:hover,
+.settings-reload button:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.settings button:disabled { opacity: 0.45; cursor: default; }
+
+.settings .settings-link {
+  padding: 4px 0;
+  border: 0;
+  font-size: 12px;
+  text-decoration: underline;
+  opacity: 0.8;
+}
+
+.settings-hint { margin: 4px 0 8px; font-size: 12px; line-height: 1.5; opacity: 0.72; }
+.settings-ok { color: #6ff0b0; font-size: 12px; }
+.settings-warn-inline { color: var(--attention); font-size: 12px; }
+.settings-warn {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--attention);
+  border: 1px solid color-mix(in srgb, var(--attention) 50%, transparent);
+}
+
+.settings-reload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  font-size: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.settings-reload span { flex: 1; }
+
+@media (max-width: 1000px) {
+  .settings-btn { right: 30px; bottom: 96px; }
+}

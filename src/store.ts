@@ -271,6 +271,8 @@ type State = {
   alerts: Alert[]
   /** Alerts still show, but are not spoken. Remembered per browser. */
   alertsMuted: boolean
+  /** The settings panel is open. */
+  settingsOpen: boolean
   /** Name of the speech-synthesis voice in use, shown in the HUD. */
   voice: string
   /** Whether the camera is on and hands are being tracked. Store-backed rather
@@ -315,6 +317,7 @@ type State = {
   pushAlert: (a: Alert) => void
   dismissAlert: (id: string) => void
   setAlertsMuted: (muted: boolean) => void
+  setSettingsOpen: (open: boolean) => void
   pushTurn: (t: Turn) => void
   /** Replace the transcript: a restored conversation, or a fresh start. */
   setTurns: (turns: Turn[]) => void
@@ -343,6 +346,7 @@ export const useStore = create<State>((set) => ({
   confirm: null,
   alerts: [],
   alertsMuted: readMuted(),
+  settingsOpen: false,
   voice: '',
   gestures: false,
   looking: null,
@@ -422,6 +426,7 @@ export const useStore = create<State>((set) => ({
   setConfirm: (confirm) => set({ confirm }),
   pushAlert: (a) => set((s) => ({ alerts: [a, ...s.alerts.filter((x) => x.id !== a.id)].slice(0, 3) })),
   dismissAlert: (id) => set((s) => ({ alerts: s.alerts.filter((a) => a.id !== id) })),
+  setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setAlertsMuted: (alertsMuted) => {
     try {
       localStorage.setItem(MUTED_KEY, alertsMuted ? '1' : '0')

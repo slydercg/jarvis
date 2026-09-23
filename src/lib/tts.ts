@@ -8,6 +8,7 @@ import {
 } from '../config'
 import * as kokoro from './kokoro'
 import { caps } from './capabilities'
+import { prefs } from './prefs'
 
 /**
  * Speech output.
@@ -112,6 +113,16 @@ if (typeof window !== 'undefined') {
 let nativeBroken = false
 
 let speakingAt = 0
+let spokeEnd = 0
+
+/**
+ * When he last stopped talking; now, if he is talking. The voice loop drops
+ * speech that began before this plus a short grace, because what starts the
+ * instant he finishes is almost always the tail of his own voice in the room.
+ */
+export function spokeUntil(): number {
+  return speaking ? Date.now() : spokeEnd
+}
 
 /** When the current sentence started, or 0 if nothing is being spoken. The
  *  voice loop uses this to refuse to interrupt him in his own first syllable. */
@@ -126,6 +137,7 @@ function setSpeaking(text: string) {
     return
   }
   if (speaking) {
+    spokeEnd = Date.now()
     recent.push({ text: speaking, until: Date.now() + ECHO_MEMORY_MS })
     if (recent.length > 12) recent.shift()
   }
@@ -249,15 +261,90 @@ function pickVoice(): SpeechSynthesisVoice | null {
   return cachedVoice
 }
 
+/**
+ * Whether sentences go to ElevenLabs. The settings panel can pin the Mac's
+ * voice even with a key set; `auto` keeps the old rule (ElevenLabs whenever
+ * the bridge has a key). A broken system voice always falls through to the
+ * cloud, whatever was chosen — silence is never the better option.
+ */
+function speaksInCloud(): boolean {
+  if (nativeBroken) return true
+  const engine = prefs().voiceEngine
+  if (engine === 'system') return false
+  return USE_ELEVENLABS || caps().tts
+}
+
 /** What the HUD should show. Reports the engine actually in use rather than
  *  always naming a speechSynthesis voice that a cloud or neural engine has
  *  quietly replaced. */
 export function currentVoiceName(): string {
-  if (USE_ELEVENLABS || caps().tts) return 'ElevenLabs'
+  if (speaksInCloud()) return 'ElevenLabs'
   if (TTS_ENGINE === 'kokoro' && !kokoro.isUnavailable()) {
     return KOKORO_VOICE.replace(/^bm_/, '')
   }
   return pickVoice()?.name ?? 'default'
+}
+
+/** Every English voice installed, for the settings panel's list. */
+export function systemVoices(): SpeechSynthesisVoice[] {
+  const ranked = candidateVoices()
+  const rest = speechSynthesis
+    .getVoices()
+    .filter((v) => /^en/i.test(v.lang) && !ranked.includes(v))
+  return [...ranked, ...rest]
+}
+
+/** The Mac voice in use, by name. */
+export function systemVoiceName(): string {
+  return pickVoice()?.name ?? ''
+}
+
+/** Choose a Mac voice by name, as the V key does by cycling. */
+export function setSystemVoice(name: string) {
+  const hit = speechSynthesis.getVoices().find((v) => v.name === name)
+  if (!hit) return
+  localStorage.setItem(VOICE_PREF_KEY, name)
+  cachedVoice = hit
+}
+
+/**
+ * One line in a given voice, for the settings panel's Preview buttons. It is
+ * registered as speech like any other line, so the echo filter knows it is him.
+ */
+export async function previewVoice(
+  voice: { engine: 'elevenlabs'; voiceId: string } | { engine: 'system'; name: string },
+): Promise<boolean> {
+  const line = 'Good afternoon, sir. This is how I sound.'
+  if (voice.engine === 'system') {
+    const v = speechSynthesis.getVoices().find((x) => x.name === voice.name)
+    if (!v) return false
+    speechSynthesis.cancel()
+    const u = new SpeechSynthesisUtterance(line)
+    u.voice = v
+    u.onstart = () => setSpeaking(line)
+    u.onend = u.onerror = () => setSpeaking('')
+    speechSynthesis.speak(u)
+    return true
+  }
+  try {
+    const res = await fetch(`${BRIDGE_HTTP_URL}/tts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: line, voiceId: voice.voiceId }),
+    })
+    if (!res.ok) return false
+    const url = URL.createObjectURL(await res.blob())
+    const audio = new Audio(url)
+    audio.onplay = () => setSpeaking(line)
+    audio.onended = audio.onerror = () => {
+      setSpeaking('')
+      URL.revokeObjectURL(url)
+    }
+    await audio.play()
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** Step to the next candidate — lets you audition voices on your own machine
@@ -387,7 +474,7 @@ export function createSpeaker(): Speaker {
     // premium path automatic with no flag to set. It falls back to the browser
     // voice on any failure, so a student without a key still hears him speak.
     // `nativeBroken` latches on once the system voice has proved unusable.
-    if (USE_ELEVENLABS || caps().tts || nativeBroken) {
+    if (speaksInCloud()) {
       // Recorded at the moment the tier is chosen rather than only when the
       // native voice latches over. Without this the panel reported 'system'
       // for a session that had spoken every one of its sentences through

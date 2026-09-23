@@ -6,7 +6,9 @@ import { Hud } from './ui/Hud'
 import { Boot } from './ui/Boot'
 import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
+import { Settings, SettingsButton } from './ui/Settings'
 import { useStore, UNDO_MS } from './store'
+import { prefs } from './lib/prefs'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
 import { createSpeaker, cycleVoice, currentVoiceName, speakingSince } from './lib/tts'
 import * as sfx from './lib/sfx'
@@ -65,11 +67,16 @@ const AWAIT_SPEECH_MS = 14000
  * VITE_FOLLOW_UP_SECONDS changes it; 0 means every question starts with
  * "hey Jarvis".
  */
-const FOLLOW_UP_MS = (() => {
+const FOLLOW_UP_DEFAULT_MS = (() => {
   const raw = String(import.meta.env.VITE_FOLLOW_UP_SECONDS ?? '').trim()
   const n = Number(raw)
   return raw && Number.isFinite(n) && n >= 0 ? n * 1000 : 6000
 })()
+/** The settings panel's choice, else the .env.local default. Read per answer. */
+const followUpMs = () => {
+  const s = prefs().followUpSeconds
+  return s === null ? FOLLOW_UP_DEFAULT_MS : s * 1000
+}
 
 /** crypto.randomUUID needs a secure context, which a LAN address over plain
  *  http is not. Not worth failing a whole turn over an id. */
@@ -308,7 +315,8 @@ export default function App() {
         // Stay open. Having to say his name again to add one more sentence is
         // the difference between a conversation and a vending machine —
         // unless it has been set to 0, and then that is what was asked for.
-        if (FOLLOW_UP_MS > 0) listen(FOLLOW_UP_MS)
+        const window = followUpMs()
+        if (window > 0) listen(window)
         else goDormant()
       }
     }
@@ -888,9 +896,27 @@ export default function App() {
     }
     pump()
 
+    // Opening settings stands him down: nothing said while you are in there,
+    // and no voice preview, should be taken as a question.
+    const unsubSettings = useStore.subscribe((s, prev) => {
+      if (s.settingsOpen && !prev.settingsOpen && s.phase !== 'offline' && s.phase !== 'boot') {
+        goDormant()
+      }
+    })
+
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      // The settings panel has its own keys (Escape closes it); none of these
+      // should fire behind it.
+      if (store.getState().settingsOpen) return
+
+      // Comma opens settings, as ⌘, does in most Mac apps.
+      if (e.key === ',' && !e.repeat && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        store.getState().setSettingsOpen(true)
+        return
+      }
 
       // V auditions the next British voice installed on this machine. Which
       // ones exist varies per Mac, so hearing them beats trusting a ranking.
@@ -1005,6 +1031,7 @@ export default function App() {
       window.removeEventListener(COMMAND_EVENT, onCommand)
       cancelAnimationFrame(raf)
       window.removeEventListener('keydown', onKey)
+      unsubSettings()
       clearIdle()
       if (voicePoll.current) clearInterval(voicePoll.current)
       voice.current?.stop()
@@ -1021,6 +1048,8 @@ export default function App() {
       <Hud />
       <Boot />
       <Diagnostics />
+      <SettingsButton />
+      <Settings />
       <Ignition onStart={() => void powerOn()} />
     </>
   )

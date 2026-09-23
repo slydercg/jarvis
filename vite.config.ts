@@ -1,9 +1,21 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { execSync } from 'node:child_process'
+
+// Which commit this page is, shown in Settings → About. The first question
+// whenever a fix "didn't work" is whether the fix is even running yet.
+const version = (() => {
+  try {
+    return execSync('git log -1 --format="%h %cs"').toString().trim()
+  } catch {
+    return 'unknown'
+  }
+})()
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: { __APP_VERSION__: JSON.stringify(version) },
   // VITE_* as usual, plus the three naming settings, which the bridge reads
   // under the same names — so one JARVIS_NAME line renames him everywhere.
   // None of them is a secret; nothing else JARVIS_* reaches the page.
