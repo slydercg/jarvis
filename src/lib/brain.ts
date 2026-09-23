@@ -40,6 +40,18 @@ export async function warm(): Promise<void> {
 
 /** The bridge reports its server list twice — from config on connect, then
  *  with live status once the agent boots — so the HUD subscribes. */
+/** A resumed conversation's last exchanges, to put back on screen. */
+export function watchHistory(
+  fn: (turns: Array<{ role: 'user' | 'jarvis'; text: string }>) => void,
+): void {
+  if (usingBridge) bridge.watchHistory(fn)
+}
+
+/** Drop the conversation and start a new one. Bridge mode only. */
+export function resetConversation(): void {
+  if (usingBridge) bridge.resetConversation()
+}
+
 /** The bridge asking the user to approve an action. Bridge mode only. */
 export function watchConfirm(
   fn: (req: bridge.ConfirmRequest) => Promise<{ ok: boolean }>,

@@ -292,6 +292,9 @@ Restart `npm start` after changing it.
 | `JARVIS_FAST_MODEL` | `claude-sonnet-5` | Model for short, simple turns |
 | `JARVIS_FAST_EFFORT` | `low` | Effort for those turns |
 | `JARVIS_ROUTING` | on | `off` sends every turn to `JARVIS_MODEL` |
+| `JARVIS_RESUME` | on | `off` starts every page load as a new conversation |
+| `JARVIS_RESUME_HOURS` | `12` | How long after the last turn a conversation still resumes |
+| `JARVIS_HOME` | `~/.jarvis` | Where the saved conversation id and `memory.md` live |
 | `JARVIS_ALLOW_WRITES` | off | `1` runs effectful tools without asking (see below) |
 | `JARVIS_CONFIRM` | on | `off` refuses effectful tools instead of asking you |
 | `JARVIS_ALLOW_MONEY` | off | `1` allows orders, trades, payments, invoices, each confirmed |
@@ -327,6 +330,27 @@ the next boot, and both the voice and transcription upgrade automatically. If
 the key turns out not to work (revoked, no Speech to Text permission, out of
 credit), the page switches to the browser's own recognition on the first
 rejection instead of going deaf. The terminal says why.
+
+---
+
+## Memory
+
+**The conversation survives a reload.** Refresh the page, lose the connection
+or restart `npm start`, and he carries on where you left off. The last few
+exchanges come back on screen, and "move it to four" still knows what "it"
+is. A conversation stays resumable for 12 hours after you last spoke
+(`JARVIS_RESUME_HOURS`). Say or type **"start fresh"** (or "new conversation",
+"start over") to end one on purpose.
+
+**Lasting notes.** Tell him *"remember that Sarah is my assistant"*, or state a
+preference plainly, and it goes into `~/.jarvis/memory.md`. Every new
+conversation starts knowing it. *"Forget…"* removes a note, and *"what do you
+know about me?"* lists them. It's a plain Markdown file, one fact per line, so
+edit or delete it freely. He refuses to store anything that looks like a
+password, PIN, code, key, or card or account number, even when asked.
+
+Delete `~/.jarvis` and he forgets everything. `JARVIS_RESUME=off` makes every
+page load a new conversation; the notes still apply.
 
 ---
 
