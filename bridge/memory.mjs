@@ -58,21 +58,49 @@ function readSession() {
 }
 
 /**
+ * Whether Claude Code has a transcript for this session, or null when that
+ * cannot be told. Sessions run with the home directory as their cwd, so the
+ * transcript is ~/.claude/projects/<home with non-alphanumerics as ->/<id>.jsonl.
+ * If that project folder is not there at all, the layout is not what this
+ * expects, and it says so rather than guessing "no".
+ */
+function transcriptExists(id) {
+  const base = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
+  const project = join(base, 'projects', homedir().replace(/[^a-zA-Z0-9]/g, '-'))
+  if (!existsSync(project)) return null
+  return existsSync(join(project, `${id}.jsonl`))
+}
+
+/**
  * Which session to open: the recent one to resume, or a new id to start.
  * `{ resume: id }` or `{ sessionId: id }`, ready to spread into query options.
+ *
+ * A saved id only ever resumes if Claude Code actually has that conversation.
+ * Resuming one it does not have fails every turn with "No conversation found
+ * with session ID", which is exactly what an id saved before its first answer
+ * — then a bridge restart — produced.
  */
 export function sessionOptions() {
   const saved = readSession()
   const fresh = saved && Date.now() - (saved.lastUsed ?? 0) < RESUME_HOURS * 3_600_000
   if (RESUME && fresh && typeof saved.id === 'string') {
-    return { resumed: true, id: saved.id, options: { resume: saved.id } }
+    if (transcriptExists(saved.id) === false) {
+      console.warn('[jarvis] the saved conversation no longer exists; starting a fresh one')
+      forgetSession()
+    } else {
+      return { resumed: true, id: saved.id, options: { resume: saved.id } }
+    }
   }
+  // Not saved yet: only a conversation with an answer in it is worth
+  // resuming, and saveSession is called once there is one.
   const id = randomUUID()
-  saveSession(id)
   return { resumed: false, id, options: { sessionId: id } }
 }
 
-/** Called after each finished turn, so an active conversation stays resumable. */
+/** The CLI's words when asked to resume a conversation it does not have. */
+export const MISSING_CONVERSATION = /No conversation found with session ID/i
+
+/** Called after each answered turn, so an active conversation stays resumable. */
 export function saveSession(id) {
   if (!RESUME) return
   try {
