@@ -546,12 +546,38 @@ body::after {
 
 /* Conversation log */
 
-.log {
+/* The column above the command bar: transcript, error, live caption,
+   suggestion. Bottom-anchored, so whatever is tallest pushes the rest up. */
+.lower {
   position: absolute;
   left: 50%;
-  bottom: 176px;
+  bottom: 124px;
   transform: translateX(-50%);
   width: min(760px, 68vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.lower > * {
+  pointer-events: auto;
+}
+
+.lower-line {
+  min-height: 26px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.log {
+  width: 100%;
+  margin-bottom: 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -585,29 +611,26 @@ body::after {
 /* Live partial transcript while listening */
 
 .caption {
-  position: absolute;
-  left: 50%;
-  bottom: 130px;
-  transform: translateX(-50%);
   font-size: 16px;
   text-transform: none;
   letter-spacing: 0.02em;
   color: #fff;
   opacity: 0.85;
-  max-width: 66vw;
+  max-width: 100%;
   text-align: center;
 }
 
 .error {
-  position: absolute;
-  left: 50%;
-  bottom: 130px;
-  transform: translateX(-50%);
   color: #ff6b6b;
   font-size: 12px;
   text-transform: none;
   letter-spacing: 0.04em;
-  max-width: 70vw;
+  /* One line, always: a wrapped error ran down into the live caption. The
+     full text is in the tooltip and the diagnostics. */
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-align: center;
 }
 
@@ -1064,10 +1087,6 @@ kbd {
 /* ------------------------------------------------------------ suggestions */
 
 .suggest {
-  position: absolute;
-  left: 50%;
-  bottom: 130px;
-  transform: translateX(-50%);
   display: flex;
   align-items: baseline;
   gap: 14px;
@@ -1315,7 +1334,7 @@ kbd {
   .alerts { right: 30px; width: min(320px, 70vw); }
   .rail-left { left: 30px; }
   .rail-right { right: 30px; }
-  .log { width: 84vw; }
+  .lower { width: 84vw; }
 }
 
 /* ---------------------------------------------------------------------------
