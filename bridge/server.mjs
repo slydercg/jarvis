@@ -1097,7 +1097,7 @@ const handleRequest = async (req, res) => {
     return json(200, {
       ok: true,
       voices: check.voices,
-      note: check.voices ? null : 'Saved. This key may not list voices, so the default voice is used.',
+      note: check.note ?? null,
     })
   }
 
