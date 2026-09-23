@@ -45,7 +45,9 @@ export function AlertStack() {
             transition={{ duration: 0.22, ease: 'easeOut' }}
           >
             <div className="alert-head">
-              <span className="alert-kind">{a.kind === 'meeting' ? 'Meeting' : 'Mail'}</span>
+              <span className="alert-kind">
+                {a.kind === 'meeting' ? 'Meeting' : a.kind === 'brief' ? 'Brief' : 'Mail'}
+              </span>
               <span className="alert-when">{when(a)}</span>
               <button
                 type="button"
@@ -58,6 +60,15 @@ export function AlertStack() {
             </div>
             <div className="alert-title">{a.title}</div>
             {a.detail && <div className="alert-detail">{a.detail}</div>}
+            {a.prep && (
+              <ul className="alert-prep" aria-label="Where things stand">
+                {a.prep.points.length ? (
+                  a.prep.points.map((p) => <li key={p}>{p}</li>)
+                ) : (
+                  <li>{a.prep.summary}</li>
+                )}
+              </ul>
+            )}
           </motion.div>
         ))}
       </AnimatePresence>
@@ -65,7 +76,7 @@ export function AlertStack() {
   )
 }
 
-function when(a: { kind: 'meeting' | 'mail'; at: number }): string {
+function when(a: { kind: 'meeting' | 'mail' | 'brief'; at: number }): string {
   const mins = Math.round((a.at - Date.now()) / 60_000)
   if (a.kind === 'meeting') {
     if (mins > 1) return `in ${mins} min`

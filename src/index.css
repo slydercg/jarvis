@@ -2416,3 +2416,13 @@ kbd {
 @media (max-width: 1000px) {
   .settings-btn { right: 30px; bottom: 96px; }
 }
+
+.alert-prep {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.85;
+  text-transform: none;
+}
+.alert-prep li + li { margin-top: 2px; }

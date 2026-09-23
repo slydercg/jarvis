@@ -1,13 +1,17 @@
 import { create } from 'zustand'
 
-/** A heads-up the watcher raised: a meeting about to start, or mail that needs you. */
+/** Where things stand before a meeting, gathered ahead of the heads-up. */
+export type MeetingPrep = { summary: string; points: string[] }
+
+/** A heads-up: a meeting about to start, mail that needs you, or the morning brief. */
 export type Alert = {
   id: string
-  kind: 'meeting' | 'mail'
+  kind: 'meeting' | 'mail' | 'brief'
   title: string
   detail: string
   /** Meeting start, or when the mail was flagged, as a Date.now() value. */
   at: number
+  prep?: MeetingPrep
 }
 
 const MUTED_KEY = 'jarvis.alertsMuted'

@@ -320,6 +320,70 @@ then the triangular arc reactor lighting up — with a start-up sound under it
 
 ---
 
+## Protective mail and calendar (Power Automate)
+
+Protective's Microsoft 365 isn't reachable with a connector, so Jarvis reads it
+the same way the emailed daily briefing does: through its Power Automate flows.
+Those cover the inbox, the calendar, To Do and flagged mail. Two more flows let
+him save drafts and send, and the meeting recap's two To Do flows let him add
+tasks.
+
+The flow links carry a signature, so they are credentials. They live in a file
+on this Mac, never in the repository. Jarvis looks in this order:
+
+1. `JARVIS_PA_ENDPOINTS=/path/to/pa_endpoints.json` in `.env.local`
+2. `~/.jarvis/power-automate.json`
+3. the daily briefing's own `pa_endpoints.json`, if OneDrive syncs
+   `Desktop/daily-briefing-export` to this Mac
+
+The simplest setup is to copy the briefing's file into place and lock it down:
+
+```bash
+mkdir -p ~/.jarvis
+cp "/path/to/daily-briefing-export/pa_endpoints.json" ~/.jarvis/power-automate.json
+chmod 600 ~/.jarvis/power-automate.json
+```
+
+To let him add meeting action items to To Do, add `"todo_add"` (Daily Meeting
+Actions) and `"todo_waiting"` (Waiting On Others) to that file. Their values
+are the two To Do flow links from the Daily Meeting Recap task. Only the eight
+known flows are read from the file; anything else in it, such as the
+briefing's Jira credentials, is ignored. After changing the file, run
+`npm run autostart:restart`.
+
+Reading needs no confirmation. Saving a draft doesn't either; drafts are never
+sent. Sending mail and adding tasks are confirmed on screen first, and a
+batch of tasks is confirmed once.
+
+## Your morning brief
+
+"Brief me" answers from a brief built ahead of time with the same rules as
+the emailed daily briefing. It reads Protective, SCG and To Do, ranks what is
+being asked of you (not what arrived), and leads with a "focus first" line. The
+first time you open Jarvis on a weekday morning (5–11 by default,
+`JARVIS_BRIEF_HOURS`), he builds it in the background and says it's ready. It
+is cached for 90 minutes; "refresh my brief" rebuilds it. `JARVIS_BRIEF=off`
+turns off the morning offer.
+
+## Meetings: prep and follow-through
+
+- **Before:** about five minutes before each meeting heads-up, the watcher
+  gathers where things stand with those people. It uses the last Granola notes,
+  the latest mail thread and open Jira items. The heads-up says it in a
+  sentence, and the alert card lists the points. `JARVIS_MEETING_PREP=off`
+  turns this off.
+- **On demand:** "prep me for my next meeting".
+- **After:** "what did we agree?" reads the meeting from Granola. He then offers
+  to add the action items to To Do: your own go to Daily Meeting Actions, and
+  what others owe you goes to Waiting On Others.
+
+## Reports saved on this Mac
+
+Hand him a `file://` link or a path, for example a generated dashboard, and he
+reads it directly. He never opens it in the browser, which couldn't open such a
+link anyway. A filter in the link, such as `#…&area=APD`, narrows what he reads
+out. Only documents inside your home folder are read.
+
 ## Settings
 
 Click **Settings** at the bottom right, or press **,** (comma). He stands down
@@ -572,6 +636,14 @@ use the configured model: `JARVIS_MODEL=claude-sonnet-5 npm start`.
 **Diagnostics show `stt 401` / `stt 403`.** Your ElevenLabs key was rejected.
 JARVIS has already switched to browser speech. The terminal line says which key
 it used and where it came from.
+
+**"Browser control unavailable".** Jarvis drives your real browser through the
+Claude extension's helper, the same one Claude Code uses. The browser only
+starts that helper if it is registered for that browser. Run
+`npm run browser:doctor` to see which browsers have it and whether it's
+running. If you use Edge (or Brave or Arc) and it isn't registered there, run
+`claude --chrome` once, or `npm run browser:doctor -- --fix`. Then quit and
+reopen the browser and open the Claude extension once.
 
 **Bridge not reachable.** Check that `npm run bridge` is still running in its
 terminal, and that nothing else is holding port `8787`. `EADDRINUSE` means an

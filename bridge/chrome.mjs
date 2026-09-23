@@ -2,7 +2,8 @@ import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import { createConnection } from 'node:net'
 import { readdir, stat } from 'node:fs/promises'
-import { userInfo } from 'node:os'
+import { existsSync } from 'node:fs'
+import { homedir, userInfo } from 'node:os'
 import { join } from 'node:path'
 
 /**
@@ -168,12 +169,7 @@ class ChromeLink {
   async ensureConnected() {
     if (this.socket && !this.socket.destroyed) return
     const path = await findSocket()
-    if (!path) {
-      throw new Error(
-        'The Claude browser extension is not running on this machine. ' +
-          'Open Chrome with the Claude extension enabled, then try again.',
-      )
-    }
+    if (!path) throw new Error(browserDiagnosis())
     await new Promise((resolve, reject) => {
       const socket = createConnection(path)
       const timer = setTimeout(() => {
@@ -565,9 +561,7 @@ export function chromeServer({ allowWrites }) {
             content: [
               {
                 type: 'text',
-                text:
-                  'The browser extension is not running. Chrome may be closed, ' +
-                  'or the Claude extension may be disabled.',
+                text: browserDiagnosis(),
               },
             ],
           }
@@ -811,6 +805,54 @@ export function chromeServer({ allowWrites }) {
     alwaysLoad: true,
     tools,
   })
+}
+
+/**
+ * Where each Chromium browser looks for native messaging hosts on macOS, and
+ * the manifest the Claude extension's helper is registered under. The helper
+ * only starts in a browser whose folder holds that manifest — so an extension
+ * installed in Edge, with the manifest registered only for Chrome, never
+ * starts it, and the socket this file looks for never appears.
+ */
+const HOST_MANIFEST = 'com.anthropic.claude_code_browser_extension.json'
+export const BROWSER_HOSTS = [
+  ['Chrome', 'Library/Application Support/Google/Chrome/NativeMessagingHosts'],
+  ['Microsoft Edge', 'Library/Application Support/Microsoft Edge/NativeMessagingHosts'],
+  ['Brave', 'Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts'],
+  ['Arc', 'Library/Application Support/Arc/User Data/NativeMessagingHosts'],
+  ['Chromium', 'Library/Application Support/Chromium/NativeMessagingHosts'],
+].map(([name, dir]) => ({ name, dir: join(homedir(), dir) }))
+export { HOST_MANIFEST }
+
+/**
+ * Why the browser is unreachable, in terms of what to do about it. Read by
+ * the model (so it can say it) and printed at boot.
+ */
+export function browserDiagnosis() {
+  const hosts = BROWSER_HOSTS.map((b) => ({
+    ...b,
+    installed: existsSync(join(b.dir, '..')),
+    registered: existsSync(join(b.dir, HOST_MANIFEST)),
+  })).filter((b) => b.installed)
+  const registered = hosts.filter((b) => b.registered).map((b) => b.name)
+  const missing = hosts.filter((b) => !b.registered).map((b) => b.name)
+  if (!registered.length) {
+    return (
+      "The Claude extension's helper is not set up on this Mac. In Terminal, run " +
+      '`claude --chrome` once with the browser open and the Claude extension installed, then ' +
+      'open the extension in the browser once.'
+    )
+  }
+  return (
+    `The browser helper is not running. It is registered for ${registered.join(', ')}` +
+    (missing.length ? ` but not for ${missing.join(', ')}` : '') +
+    '. Open one of the registered browsers with the Claude extension enabled and open the ' +
+    'extension once' +
+    (missing.length
+      ? `; to use ${missing.join(' or ')} instead, run \`claude --chrome\` or ` +
+        '`npm run browser:doctor -- --fix` in the Jarvis folder.'
+      : '.')
+  )
 }
 
 /** Whether the extension looks reachable, for the boot log. */

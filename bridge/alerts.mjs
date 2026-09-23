@@ -35,16 +35,26 @@ const [FROM_H, TO_H] = (process.env.JARVIS_ALERT_HOURS ?? '8-19').split('-').map
 
 /** How far ahead a calendar check looks. Longer than the poll, so nothing slips between checks. */
 const HORIZON_MIN = Math.max(120, CAL_MIN * 3)
+/**
+ * Meeting prep: this many minutes before the heads-up, the watcher gathers
+ * where things stand with these people (Granola notes, the latest mail,
+ * open Jira items), so the heads-up can say it. JARVIS_MEETING_PREP=off
+ * turns it off.
+ */
+const PREP = process.env.JARVIS_MEETING_PREP !== 'off'
+const PREP_AHEAD_MIN = 5
 /** A check that has not answered in this long is abandoned; the next tick tries again. */
 const CHECK_TIMEOUT_MS = 180_000
 
 const WATCHER_PROMPT = `You are a background watcher for a personal assistant. You never
 talk to the user. You are asked narrow questions about their calendar and mail,
 and you answer with ONE JSON object and nothing else: no prose, no markdown
-fences. Use the calendar and mail tools you have; search for them with
-ToolSearch if they are not in front of you ("calendar", "gmail", "outlook").
-If a source is not connected, answer as if it were empty. Never take any action
-that changes anything — you only read.`
+fences. Check EVERY calendar and mailbox you have: the Protective work account
+first (protective_get_calendar, protective_get_inbox) — it is the main one — then
+Microsoft 365 / Outlook (the SCG account), then Gmail and Google Calendar. Search
+for tools with ToolSearch if they are not in front of you ("calendar", "gmail",
+"outlook", "granola", "jira"). If a source is not connected, answer as if it
+were empty. Never take any action that changes anything — you only read.`
 
 export function alertsEnabled() {
   return ENABLED
@@ -172,10 +182,11 @@ export function startAlerts({ mcpServers, isReadOnly, broadcast, listening, loca
 
   async function checkCalendar() {
     const { text, spent } = await ask(
-      `It is ${localNow()}. List calendar events that start between now and ` +
+      `It is ${localNow()}. List events on every calendar that start between now and ` +
         `${HORIZON_MIN} minutes from now. Skip all-day events and events the user ` +
-        `declined. Answer exactly: {"events":[{"id":"...","title":"...","start":` +
-        `"<ISO 8601 with offset>","where":"<room, link or empty>"}]}`,
+        `declined, and list a meeting that appears on two calendars once. Answer exactly: ` +
+        `{"events":[{"id":"...","title":"...","start":"<ISO 8601 with offset>",` +
+        `"where":"<room, link or empty>","who":["<up to 8 attendee names or addresses>"]}]}`,
     )
     const events = parseJson(text)?.events
     if (!Array.isArray(events)) {
@@ -193,20 +204,38 @@ export function startAlerts({ mcpServers, isReadOnly, broadcast, listening, loca
       // Inside the lead window but not yet started: the delay is negative, so
       // it fires straight away.
       const delay = start - LEAD_MIN * 60_000 - Date.now()
-      const timer = setTimeout(
+      const entry = { timer: null, prepTimer: null, prep: null }
+      const who = Array.isArray(e.who) ? e.who.map(String).slice(0, 8) : []
+      entry.timer = setTimeout(
         () => {
           scheduled.delete(key)
+          clearTimeout(entry.prepTimer)
           if (!listening()) return
           broadcast({
             kind: 'meeting',
             title: String(e.title),
             detail: e.where ? String(e.where) : '',
             at: new Date(start).toISOString(),
+            ...(entry.prep ? { prep: entry.prep } : {}),
           })
         },
         Math.max(0, delay),
       )
-      scheduled.set(key, timer)
+      // Prep a few minutes before the heads-up, so it is ready when it fires.
+      // Only when there is time for it; a heads-up is never held back waiting.
+      const prepDelay = delay - PREP_AHEAD_MIN * 60_000
+      if (PREP && prepDelay > -PREP_AHEAD_MIN * 60_000 + 60_000) {
+        entry.prepTimer = setTimeout(
+          () => {
+            if (!listening() || stopped) return
+            void prepMeeting(String(e.title), start, who).then((prep) => {
+              entry.prep = prep
+            })
+          },
+          Math.max(0, prepDelay),
+        )
+      }
+      scheduled.set(key, entry)
       added++
     }
     console.log(
@@ -214,6 +243,32 @@ export function startAlerts({ mcpServers, isReadOnly, broadcast, listening, loca
         (added ? `, ${added} newly scheduled` : '') +
         ` ($${spent.toFixed(3)})`,
     )
+  }
+
+  // --- meeting prep ---------------------------------------------------------------
+  /**
+   * Where things stand before a meeting: the last notes with these people or
+   * on this subject, the latest mail thread with them, open Jira items. Two
+   * spoken sentences and up to three points; null when there is nothing.
+   */
+  async function prepMeeting(title, start, who) {
+    const when = new Date(start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    const { text, spent } = await ask(
+      `It is ${localNow()}. Prepare Mark for "${title}" at ${when}` +
+        (who.length ? ` with ${who.join(', ')}` : '') +
+        '. Look at: the most recent Granola meeting notes with these people or on this ' +
+        'subject; the latest email thread with them in any mailbox; open Jira issues those ' +
+        'notes or emails mention. Answer exactly {"summary":"<one or two spoken sentences: ' +
+        'where things stand and what he needs to do or decide in this meeting>","points":' +
+        '["<up to 3 short points>"]}. If nothing relevant turns up, {"summary":"","points":[]}.',
+    )
+    const prep = parseJson(text)
+    console.log(`[jarvis] alerts: prepared "${title}" ($${spent.toFixed(3)})`)
+    if (!prep?.summary) return null
+    return {
+      summary: String(prep.summary).slice(0, 400),
+      points: (Array.isArray(prep.points) ? prep.points : []).map(String).slice(0, 3),
+    }
   }
 
   // --- mail --------------------------------------------------------------------
@@ -224,7 +279,8 @@ export function startAlerts({ mcpServers, isReadOnly, broadcast, listening, loca
     const since = mailSince
     mailSince = new Date()
     const { text, spent } = await ask(
-      `It is ${localNow()}. Look at unread email received since ${since.toISOString()}. ` +
+      `It is ${localNow()}. Look at unread email received since ${since.toISOString()} ` +
+        'in every mailbox — Protective first, then SCG and Gmail. ' +
         'Pick only messages from a real person that need the user\'s attention or a reply ' +
         'soon: a direct question, a deadline today, something blocked on them. Never ' +
         'newsletters, notifications, receipts, marketing or automated mail. At most three. ' +
@@ -285,7 +341,10 @@ export function startAlerts({ mcpServers, isReadOnly, broadcast, listening, loca
       stopped = true
       clearInterval(interval)
       clearTimeout(first)
-      for (const t of scheduled.values()) clearTimeout(t)
+      for (const t of scheduled.values()) {
+        clearTimeout(t.timer)
+        clearTimeout(t.prepTimer)
+      }
       wake?.(null)
       session.close?.()
     },
