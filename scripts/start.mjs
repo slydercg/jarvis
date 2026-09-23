@@ -142,12 +142,21 @@ function trimLog() {
  * anyway and talked to the other copy. Say it plainly and stop instead.
  */
 function portTaken(p) {
-  return new Promise((resolve) => {
-    const probe = createServer()
-    probe.once('error', (err) => resolve(err.code === 'EADDRINUSE'))
-    probe.once('listening', () => probe.close(() => resolve(false)))
-    probe.listen(p)
-  })
+  /**
+   * Probe both the wildcard and loopback. The bridge now binds 127.0.0.1 only,
+   * and on macOS a wildcard listen succeeds alongside a loopback-only one, so
+   * probing the wildcard alone reports the port free while a copy is running.
+   * Older copies bound the wildcard, which the loopback probe alone can miss.
+   */
+  const probeOn = (host) =>
+    new Promise((resolve) => {
+      const probe = createServer()
+      probe.once('error', (err) => resolve(err.code === 'EADDRINUSE'))
+      probe.once('listening', () => probe.close(() => resolve(false)))
+      probe.listen(p, host)
+    })
+  const host = process.env.JARVIS_BRIDGE_HOST?.trim() || '127.0.0.1'
+  return probeOn(host).then((taken) => taken || probeOn(undefined))
 }
 
 /**
