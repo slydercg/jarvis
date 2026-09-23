@@ -37,6 +37,20 @@ type Frame = {
   servers?: Array<string | { name?: string; status?: string }>
   costUsd?: number | null
   tier?: string
+  service?: string
+  action?: string
+  summary?: string
+  details?: Array<{ label: string; value: string }>
+  money?: boolean
+}
+
+/** An action the bridge wants the user to approve before it runs. */
+export type ConfirmRequest = {
+  service: string
+  action: string
+  summary: string
+  details: Array<{ label: string; value: string }>
+  money: boolean
 }
 
 /** How a server is doing, as the rail shows it. */
@@ -90,6 +104,12 @@ export type CaptureRequest = {
   when: 'now' | 'past'
 }
 export type CaptureResult = { data?: string; mimeType?: string; error?: string }
+
+/** The bridge asking for a yes or no. The answer goes back as a `reply`. */
+let onConfirm: ((req: ConfirmRequest) => Promise<{ ok: boolean }>) | null = null
+export function watchConfirm(fn: (req: ConfirmRequest) => Promise<{ ok: boolean }>) {
+  onConfirm = fn
+}
 
 let onCapture: ((req: CaptureRequest) => Promise<CaptureResult>) | null = null
 export function watchCapture(fn: (req: CaptureRequest) => Promise<CaptureResult>) {
@@ -221,6 +241,27 @@ function dispatch(ws: WebSocket) {
         })
           .then(reply)
           .catch((err) => reply({ error: String(err?.message ?? err) }))
+      }
+    } else if (msg.type === 'confirm' && msg.id) {
+      const id = msg.id
+      const reply = (payload: Record<string, unknown>) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'reply', id, ...payload }))
+        }
+      }
+      // No handler means no way to ask, and not asking must mean no.
+      if (!onConfirm) {
+        reply({ ok: false })
+      } else {
+        onConfirm({
+          service: msg.service ?? 'System',
+          action: msg.action ?? 'action',
+          summary: msg.summary ?? '',
+          details: Array.isArray(msg.details) ? msg.details : [],
+          money: msg.money === true,
+        })
+          .then(reply)
+          .catch(() => reply({ ok: false }))
       }
     } else if (msg.type === 'ui' && msg.op) {
       // A `ui` frame with no args is normal — reset and clear take none — so an

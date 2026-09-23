@@ -233,6 +233,97 @@ body::after {
 /* The typed way in. Anchored to the bottom edge, centred under everything that
    stacks up the middle — transcript, captions, suggestions, the key hints — so
    none of them can ever land on it at any window width. */
+/* An action waiting on a yes or no. Top centre, under the tool badge's band,
+   clear of the reactor's centre and the transcript below it. */
+.confirm {
+  position: absolute;
+  top: 118px;
+  left: 50%;
+  width: min(520px, 88vw);
+  padding: 18px 20px 16px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, rgba(1, 8, 14, 0.92));
+  box-shadow: 0 0 40px color-mix(in srgb, var(--accent) 22%, transparent);
+  pointer-events: auto;
+  z-index: 8;
+}
+.confirm-money { border-color: var(--attention); box-shadow: 0 0 40px color-mix(in srgb, var(--attention) 25%, transparent); }
+.confirm-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  letter-spacing: 0.26em;
+}
+.confirm-kicker { color: var(--accent); }
+.confirm-money .confirm-kicker { color: var(--attention); }
+.confirm-service { opacity: 0.8; }
+.confirm-action {
+  margin-top: 10px;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+.confirm-details {
+  margin: 12px 0 0;
+  display: grid;
+  gap: 6px;
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+.confirm-row { display: grid; grid-template-columns: 84px 1fr; gap: 12px; font-size: 14px; }
+.confirm-row dt {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  opacity: 0.8;
+  padding-top: 2px;
+}
+.confirm-row dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.confirm-actions {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.confirm-actions button {
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  padding: 9px 16px;
+  min-height: 40px;
+  cursor: pointer;
+  background: transparent;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.confirm-actions .confirm-yes {
+  color: #01060c;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  font-weight: 600;
+}
+.confirm-actions .confirm-yes:hover { filter: brightness(1.12); }
+.confirm-no {
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.confirm-actions .confirm-no:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.confirm-hint { margin-left: auto; font-size: 11px; letter-spacing: 0.18em; opacity: 0.8; }
+.confirm-timer {
+  flex: 1;
+  height: 3px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  overflow: hidden;
+}
+.confirm-timer-fill {
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left;
+  transition: transform 100ms linear;
+}
+.confirm-timer ~ .confirm-hint { margin-left: 0; }
+
 .command {
   position: absolute;
   left: 50%;

@@ -8,6 +8,7 @@ import { Effects } from './Effects'
 import { Pointer } from './Pointer'
 import { GestureGuide } from './GestureGuide'
 import { CommandBar } from './CommandBar'
+import { ConfirmCard } from './ConfirmCard'
 
 /**
  * The three things he can be doing, shown as words as well as light.
@@ -181,6 +182,7 @@ export function Hud() {
   const health = useStore((s) => s.health)
   const sessionCost = useStore((s) => s.sessionCost)
   const tier = useStore((s) => s.tier)
+  const confirm = useStore((s) => s.confirm)
   const error = useStore((s) => s.error)
   const level = useStore((s) => s.level)
   const voice = useStore((s) => s.voice)
@@ -311,7 +313,7 @@ export function Hud() {
       </aside>
 
       <AnimatePresence>
-        {activeTool && ui.chrome.toolBadge && (
+        {activeTool && ui.chrome.toolBadge && !confirm && (
           <motion.div
             className="tool-badge"
             // Anchored to the TOP of the frame, not the middle. The old home was
@@ -402,6 +404,10 @@ export function Hud() {
       )}
 
       <CommandBar />
+
+      {/* Above the transcript and the blades: an action waiting on a yes is
+          the most important thing on the screen while it is there. */}
+      <ConfirmCard />
 
       <footer className="hud-bottom">
         <span className="hint">

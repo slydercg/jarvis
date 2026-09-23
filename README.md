@@ -292,8 +292,9 @@ Restart `npm start` after changing it.
 | `JARVIS_FAST_MODEL` | `claude-sonnet-5` | Model for short, simple turns |
 | `JARVIS_FAST_EFFORT` | `low` | Effort for those turns |
 | `JARVIS_ROUTING` | on | `off` sends every turn to `JARVIS_MODEL` |
-| `JARVIS_ALLOW_WRITES` | off | `1` allows effectful tools (see below) |
-| `JARVIS_ALLOW_MONEY` | off | `1` (with writes) allows orders, trades, payments, invoices |
+| `JARVIS_ALLOW_WRITES` | off | `1` runs effectful tools without asking (see below) |
+| `JARVIS_CONFIRM` | on | `off` refuses effectful tools instead of asking you |
+| `JARVIS_ALLOW_MONEY` | off | `1` allows orders, trades, payments, invoices, each confirmed |
 | `JARVIS_ALLOWED_ORIGINS` | local dev | Extra WebSocket origins to accept |
 | `JARVIS_ALLOW_NO_ORIGIN` | off | Accept connections with no `Origin` header |
 | `JARVIS_FILE_ROOTS` | — | Roots the `/file` endpoint may serve from |
@@ -331,25 +332,37 @@ rejection instead of going deaf. The terminal says why.
 
 ## Enabling actions
 
-The tool gate starts **read-only**. Search, generation and lookups run freely;
-anything effectful — send, tap, delete, install, pay — is denied. Voice is a poor
-interface for a confirmation dialog, so the decision is made ahead of time in
-`decideTool()` in `bridge/server.mjs`, not at the moment of use. The bridge sets
-`settingSources: []`, which makes its own gate the only authority — filesystem
-settings and any global `bypassPermissions` cannot override it.
+Lookups, search and generation run freely. Anything that **changes something**
+(sending, replying, forwarding, creating or answering a calendar event, sharing
+a file) is **put to you first**:
 
-What runs without writes, beyond lookups: **drafting** email (it lands in
+1. He says what he's about to do, and a card comes up with the service, the
+   action and the details that matter: who it goes to, the subject, when.
+2. He asks "Shall I proceed, sir?" Answer **yes** or **no** by voice, type it in
+   the command bar, or press the button.
+3. A yes starts a **4-second undo window**. Say "cancel" or "undo", or press
+   Undo, and it doesn't happen. Silence for 45 seconds counts as no.
+
+The decision is made in `decideTool()` in `bridge/server.mjs` (allow, confirm or
+deny). The bridge sets `settingSources: []`, so filesystem settings and any
+global `bypassPermissions` cannot override it.
+
+What runs without asking, beyond lookups: **drafting** email (it lands in
 Drafts, nothing is sent) and **music and speaker control** (Sonos, Spotify).
-Sending, replying, forwarding, and creating or answering calendar events need
-writes.
 
-Money is a separate tier. Placing or cancelling orders, trades, payments,
-invoices and transfers stay blocked even with writes on, unless you also set
-`JARVIS_ALLOW_MONEY=1`. Reading balances, positions, orders and invoices is
-always allowed.
+**Money** is a separate tier. Placing or cancelling orders, trades, payments,
+invoices and transfers are refused unless you set `JARVIS_ALLOW_MONEY=1`, and
+even then each one is confirmed. Reading balances, positions, orders and
+invoices is always allowed.
 
-To allow effectful tools (phone, browser driving, sending), run the bridge this
-way instead:
+**Shell and file changes** (Bash, Write, Edit) are never offered for
+confirmation, because a spoken summary can't convey them safely. They need
+`JARVIS_ALLOW_WRITES`.
+
+`JARVIS_CONFIRM=off` goes back to refusing everything that changes something.
+
+To let everything run without asking (phone, browser driving, shell, sending),
+run the bridge this way instead:
 
 ```bash
 npm run bridge:writes
