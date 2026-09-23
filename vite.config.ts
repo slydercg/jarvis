@@ -21,6 +21,11 @@ export default defineConfig({
     // `Invalid language identifier: "en". Should be one of: .` at generate()
     // time, long after the model has loaded successfully. Serving these
     // untouched fixes it.
-    exclude: ['kokoro-js', 'phonemizer', '@huggingface/transformers'],
+    //
+    // onnxruntime-web (the on-device wake word) finds its WebAssembly next to
+    // its own module. Pre-bundled, "next to" is Vite's cache, which does not
+    // have it; served as-is from node_modules, it is exactly where expected,
+    // from our own origin, at the lockfile's version.
+    exclude: ['kokoro-js', 'phonemizer', '@huggingface/transformers', 'onnxruntime-web'],
   },
 })

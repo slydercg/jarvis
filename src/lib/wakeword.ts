@@ -1,6 +1,7 @@
 import { BuiltInKeyword, PorcupineWorker, type PorcupineKeyword } from '@picovoice/porcupine-web'
 import { WebVoiceProcessor } from '@picovoice/web-voice-processor'
 import { env } from '../config'
+import { getMic } from './audio'
 import { NAME } from './identity'
 
 /**
@@ -12,92 +13,97 @@ import { NAME } from './identity'
  * with the browser's recogniser, or to ElevenLabs (and billed) with Scribe —
  * and anything that transcribes as "Jarvis" wakes him: "travis", "service".
  *
- * Porcupine listens for the sound of the word itself, in WebAssembly, in the
- * page. Nothing leaves the machine until he is awake, it does not cost a
- * transcription per sentence, and it is far harder to fool. It needs a free
- * AccessKey from console.picovoice.ai (VITE_PICOVOICE_ACCESS_KEY in
- * .env.local); without one, the text search carries on exactly as before.
+ * On-device, the sound of the phrase itself is recognised in the page, in
+ * WebAssembly. Nothing leaves the machine until he is awake, nothing is
+ * billed while he sleeps, and it is far harder to fool. Two engines, tried in
+ * this order:
  *
- * "Jarvis" is one of Porcupine's built-in words, as are a few others (Computer,
- * Terminator, Bumblebee…), so a matching JARVIS_NAME needs nothing more. Any
- * other name needs a keyword file trained for it at console.picovoice.ai, put
- * in public/ and named with VITE_WAKE_KEYWORD_FILE.
+ *   Porcupine, when VITE_PICOVOICE_ACCESS_KEY is set. Answers to plain
+ *     "Jarvis". Picovoice now reviews each sign-up, so a key is not a given.
+ *   openWakeWord, with no key or account at all. Answers to "hey Jarvis" —
+ *     the phrase its open model was trained on. The model is licensed for
+ *     personal, non-commercial use (CC BY-NC-SA 4.0).
+ *
+ * If neither can start, the text search carries on exactly as before, so he
+ * can always be woken. VITE_WAKE_ENGINE=speech skips both.
  */
 
 export type WakeWord = { stop: () => void }
 
-/** The model every keyword runs on, served from public/ at a pinned version. */
-const MODEL = {
-  publicPath: '/porcupine/porcupine_params.pv',
-  customWritePath: 'jarvis_porcupine_params',
-  // Bump when the file in public/ changes, so a cached copy is replaced.
-  version: 1,
-}
-
-/** Why the on-device word is not in use, for the diagnostics panel. '' when it is. */
+/** What is listening for his name, or why nothing on-device is. For diagnostics. */
 export let wakeWordStatus = 'not started'
 
-function sensitivity(): number {
+const BASE = import.meta.env.BASE_URL
+
+function sensitivity(fallback: number): number {
   const n = Number(import.meta.env.VITE_WAKE_SENSITIVITY)
-  // Higher catches more quiet or accented "Jarvis"es and more false alarms.
-  return Number.isFinite(n) && n > 0 && n <= 1 ? n : 0.6
+  // Higher catches quieter or accented wake words, and false-triggers more.
+  return Number.isFinite(n) && n > 0 && n <= 1 ? n : fallback
 }
 
-/** The keyword for the configured name, or a reason there is none. */
-function keyword(): PorcupineKeyword | string {
-  const file = (import.meta.env.VITE_WAKE_KEYWORD_FILE as string | undefined)?.trim()
-  if (file) {
-    return {
-      publicPath: file.startsWith('/') ? file : `/${file}`,
-      label: NAME,
-      sensitivity: sensitivity(),
-      customWritePath: `jarvis_keyword_${file.replace(/\W+/g, '_')}`,
-      version: 1,
-    }
-  }
-  const builtin = Object.values(BuiltInKeyword).find((k) => k.toLowerCase() === NAME.toLowerCase())
-  if (builtin) return { builtin, sensitivity: sensitivity() }
-  return (
-    `"${NAME}" is not one of Porcupine's built-in words; train one at ` +
-    'console.picovoice.ai and set VITE_WAKE_KEYWORD_FILE'
-  )
-}
+const isJarvis = () => NAME.toLowerCase() === 'jarvis'
 
-/**
- * Start listening for his name. Resolves to null — and the caller keeps the
- * text search — when there is no key, no keyword for the name, or Porcupine
- * will not start (a bad or expired key says so in the console and in
- * `wakeWordStatus`).
- */
 export async function startWakeWord(onDetect: () => void): Promise<WakeWord | null> {
   if (import.meta.env.VITE_WAKE_ENGINE === 'speech') {
     wakeWordStatus = 'off (VITE_WAKE_ENGINE=speech)'
     return null
   }
-  if (!env.porcupineKey) {
-    wakeWordStatus = 'off (no VITE_PICOVOICE_ACCESS_KEY)'
-    return null
+  const reasons: string[] = []
+  if (env.porcupineKey) {
+    const p = await startPorcupine(onDetect, reasons)
+    if (p) return p
   }
-  const kw = keyword()
-  if (typeof kw === 'string') {
-    wakeWordStatus = `off (${kw})`
-    console.warn(`[wake] ${kw}; using speech recognition for the wake word`)
-    return null
+  const o = await startOpenWakeWord(onDetect, reasons)
+  if (o) return o
+  wakeWordStatus = `speech recognition (${reasons.join('; ')})`
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Porcupine
+// ---------------------------------------------------------------------------
+
+async function startPorcupine(onDetect: () => void, reasons: string[]): Promise<WakeWord | null> {
+  const file = (import.meta.env.VITE_WAKE_KEYWORD_FILE as string | undefined)?.trim()
+  let kw: PorcupineKeyword
+  if (file) {
+    kw = {
+      publicPath: file.startsWith('/') ? file : `/${file}`,
+      label: NAME,
+      sensitivity: sensitivity(0.6),
+      customWritePath: `jarvis_keyword_${file.replace(/\W+/g, '_')}`,
+      version: 1,
+    }
+  } else {
+    const builtin = Object.values(BuiltInKeyword).find((k) => k.toLowerCase() === NAME.toLowerCase())
+    if (!builtin) {
+      reasons.push(`Porcupine has no built-in "${NAME}"; set VITE_WAKE_KEYWORD_FILE`)
+      return null
+    }
+    kw = { builtin, sensitivity: sensitivity(0.6) }
   }
 
   let worker: PorcupineWorker | null = null
   try {
-    worker = await PorcupineWorker.create(env.porcupineKey, [kw], () => onDetect(), MODEL, {
-      processErrorCallback: (err) => {
-        wakeWordStatus = `error: ${err.message}`
-        console.warn(`[wake] ${err.message}`)
+    worker = await PorcupineWorker.create(
+      env.porcupineKey,
+      [kw],
+      () => onDetect(),
+      // The model every keyword runs on, served from public/ at a pinned
+      // version; bump `version` when the file changes so a cached copy goes.
+      { publicPath: `${BASE}porcupine/porcupine_params.pv`, customWritePath: 'jarvis_porcupine_params', version: 1 },
+      {
+        processErrorCallback: (err) => {
+          wakeWordStatus = `Porcupine error: ${err.message}`
+          console.warn(`[wake] ${err.message}`)
+        },
       },
-    })
+    )
     await WebVoiceProcessor.subscribe(worker)
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    wakeWordStatus = `off (${message.split('\n')[0]})`
-    console.warn(`[wake] on-device wake word unavailable, using speech recognition: ${message}`)
+    const message = (err instanceof Error ? err.message : String(err)).split('\n')[0]
+    reasons.push(`Porcupine: ${message}`)
+    console.warn(`[wake] Porcupine unavailable: ${message}`)
     try {
       worker?.terminate()
     } catch {
@@ -106,8 +112,8 @@ export async function startWakeWord(onDetect: () => void): Promise<WakeWord | nu
     return null
   }
 
-  wakeWordStatus = ''
-  console.log(`[wake] listening for "${NAME}" on this device`)
+  wakeWordStatus = `on-device (Porcupine, "${NAME}")`
+  console.log(`[wake] listening for "${NAME}" on this device (Porcupine)`)
   return {
     stop: () => {
       if (!worker) return
@@ -116,4 +122,90 @@ export async function startWakeWord(onDetect: () => void): Promise<WakeWord | nu
       void WebVoiceProcessor.unsubscribe(w).finally(() => w.terminate())
     },
   }
+}
+
+// ---------------------------------------------------------------------------
+// openWakeWord
+// ---------------------------------------------------------------------------
+
+/** How long the models may take to load before we give up and use speech. */
+const OWW_LOAD_MS = 20_000
+
+async function startOpenWakeWord(onDetect: () => void, reasons: string[]): Promise<WakeWord | null> {
+  const custom = (import.meta.env.VITE_WAKE_MODEL as string | undefined)?.trim()
+  if (!custom && !isJarvis()) {
+    reasons.push(
+      `openWakeWord has no "${NAME}" model; train one and set VITE_WAKE_MODEL`,
+    )
+    return null
+  }
+  const wakeModel = custom ? (custom.startsWith('/') ? custom : `/${custom}`) : `${BASE}oww/hey_jarvis_v0.1.onnx`
+  const phrase = custom ? NAME : 'hey Jarvis'
+
+  let worker: Worker | null = null
+  let ctx: AudioContext | null = null
+  const stop = () => {
+    worker?.terminate()
+    worker = null
+    void ctx?.close()
+    ctx = null
+  }
+
+  try {
+    worker = new Worker(new URL('./oww.worker.ts', import.meta.url), { type: 'module' })
+    const w = worker
+    // A score of 0.5 is openWakeWord's own default; sensitivity is its mirror.
+    const threshold = 1 - sensitivity(0.5)
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('models took too long to load')), OWW_LOAD_MS)
+      w.onmessage = (e) => {
+        if (e.data?.type === 'ready') {
+          clearTimeout(timer)
+          resolve()
+        } else if (e.data?.type === 'error') {
+          clearTimeout(timer)
+          reject(new Error(e.data.message))
+        }
+      }
+      w.onerror = (e) => {
+        clearTimeout(timer)
+        reject(new Error(e.message || 'worker failed to start'))
+      }
+      w.postMessage({ type: 'init', base: BASE, wakeModel, threshold })
+    })
+
+    w.onmessage = (e) => {
+      if (e.data?.type === 'wake') onDetect()
+      else if (e.data?.type === 'error') {
+        wakeWordStatus = `openWakeWord error: ${e.data.message}`
+        console.warn(`[wake] ${e.data.message}`)
+      }
+    }
+
+    // 16 kHz, the rate the models were trained at; the browser resamples the
+    // microphone to it. The worklet hands over 80 ms at a time.
+    ctx = new AudioContext({ sampleRate: 16000 })
+    await ctx.audioWorklet.addModule(`${BASE}oww/capture.js`)
+    const source = ctx.createMediaStreamSource(await getMic())
+    const node = new AudioWorkletNode(ctx, 'oww-capture')
+    node.port.onmessage = (e: MessageEvent<Float32Array>) =>
+      worker?.postMessage({ type: 'audio', samples: e.data }, [e.data.buffer])
+    // Through a silent gain to the output, so the graph is always pulled.
+    const mute = ctx.createGain()
+    mute.gain.value = 0
+    source.connect(node)
+    node.connect(mute)
+    mute.connect(ctx.destination)
+    await ctx.resume()
+  } catch (err) {
+    const message = (err instanceof Error ? err.message : String(err)).split('\n')[0]
+    reasons.push(`openWakeWord: ${message}`)
+    console.warn(`[wake] openWakeWord unavailable: ${message}`)
+    stop()
+    return null
+  }
+
+  wakeWordStatus = `on-device (openWakeWord, "${phrase}")`
+  console.log(`[wake] listening for "${phrase}" on this device (openWakeWord)`)
+  return { stop }
 }

@@ -330,32 +330,43 @@ subscription to API billing.
 
 ### Wake word on your own machine
 
-By default he finds his name by transcribing everything the microphone hears
-while he's asleep and searching the text for "Jarvis". That means everything
-said in the room is sent off to be transcribed: to Google with the browser's
-recognition, or to ElevenLabs with Scribe, which is billed. It also means
-anything that transcribes as "Jarvis" wakes him.
+He listens for his name **on your Mac**, with no setup. Without this, "Jarvis"
+would be found by transcribing everything the microphone hears while he's
+asleep and searching the text for it. Every sentence said in the room would
+go off to be transcribed: to Google with the browser's recognition, or to
+ElevenLabs with Scribe, which is billed. And anything that transcribes as
+"Jarvis" would wake him.
 
-With a free Picovoice key, he listens for the sound of his name **on your Mac**
-instead:
+Instead, the sound of the phrase is recognised in the page, in WebAssembly, by
+[openWakeWord](https://github.com/dscripka/openWakeWord). Nothing leaves the
+machine until he's awake, nothing is billed while he sleeps, and he
+false-triggers far less.
 
-1. Sign up at [console.picovoice.ai](https://console.picovoice.ai) (free for
-   personal use) and copy your AccessKey.
-2. Add it to `.env.local`: `VITE_PICOVOICE_ACCESS_KEY=...`
-3. Restart (`npm run autostart:restart`, or `npm start`).
+- **Say "hey Jarvis".** A plain "Jarvis", "OK Jarvis" or "hi Jarvis" on its own
+  works too. "Hey Jarvis, what's the weather" in one breath goes straight to
+  the question, without a greeting over the top of it.
+- **Check it:** press **D**. The `wake word` row says
+  `on-device (openWakeWord, "hey Jarvis")`. If it can't start, the row says why
+  and he falls back to the text search, so he can always be woken.
+- **Tune it:** `VITE_WAKE_SENSITIVITY` (default `0.5`). Higher catches quieter
+  wake words, and false-triggers more.
+- **Licence:** the "hey Jarvis" model is **CC BY-NC-SA 4.0: personal,
+  non-commercial use only**. See `public/oww/README.md`.
 
-Nothing leaves the machine until he's awake, and there's no transcription
-charge while he's asleep. He also false-triggers far less. Say "Jarvis" and he
-answers. Say "Jarvis, what's the weather" in one breath and he waits for the
-question rather than greeting over it. Press **D** and the `wake word` row
-shows `on-device` when it's working, or the reason it isn't (a bad key, for
-example). In either of those cases he falls back to the text search, so he can
-always be woken.
+**Porcupine (optional).** With a Picovoice AccessKey
+(`VITE_PICOVOICE_ACCESS_KEY` in `.env.local`), Porcupine is used instead. It
+answers to plain "Jarvis" in any sentence and allows commercial use. Picovoice
+now reviews each sign-up, so this is for once you're approved. If the key
+doesn't work, openWakeWord takes over.
 
-"Jarvis" is built in, as are Computer, Terminator, Bumblebee, Americano,
-Blueberry, Grapefruit, Grasshopper, Picovoice and Porcupine. For any other name,
-train a keyword at console.picovoice.ai, download the `.ppn` for **Web (WASM)**,
-put it in `public/`, and set `VITE_WAKE_KEYWORD_FILE=/my-name.ppn`.
+**Another name?** "Jarvis" is the only name that works out of the box.
+- With openWakeWord: train a model (see openWakeWord's docs), put the `.onnx`
+  in `public/`, and set `VITE_WAKE_MODEL=/my-name.onnx`.
+- With Porcupine: the built-in words (Computer, Terminator, Bumblebee…) work
+  as they are. Anything else needs a `.ppn` trained at console.picovoice.ai
+  and `VITE_WAKE_KEYWORD_FILE=/my-name.ppn`.
+
+`VITE_WAKE_ENGINE=speech` turns all of this off and uses the text search.
 
 ### Renaming him
 
@@ -404,10 +415,11 @@ Restart `npm start` after changing it.
 | `VITE_TTS_ENGINE` | `system` or `kokoro` |
 | `VITE_KOKORO_VOICE` | Voice for the Kokoro engine |
 | `VITE_USE_ELEVENLABS` | Force the ElevenLabs voice on |
-| `VITE_PICOVOICE_ACCESS_KEY` | Turns on the on-device wake word (see below) |
-| `VITE_WAKE_SENSITIVITY` | `0`–`1`, default `0.6`. Higher catches more and false-triggers more |
-| `VITE_WAKE_KEYWORD_FILE` | A `.ppn` in `public/` for a name that isn't built in |
-| `VITE_WAKE_ENGINE` | `speech` ignores the key and uses the old text search |
+| `VITE_WAKE_SENSITIVITY` | `0`–`1`. Higher catches more and false-triggers more (see below) |
+| `VITE_WAKE_MODEL` | An openWakeWord `.onnx` in `public/` for a name other than Jarvis |
+| `VITE_PICOVOICE_ACCESS_KEY` | Use Porcupine for the wake word instead (optional) |
+| `VITE_WAKE_KEYWORD_FILE` | A Porcupine `.ppn` in `public/` for a name that isn't built in |
+| `VITE_WAKE_ENGINE` | `speech` turns the on-device wake word off |
 | `VITE_ANTHROPIC_API_KEY` | Direct mode only |
 
 ### Adding an ElevenLabs key
