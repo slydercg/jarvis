@@ -1,4 +1,5 @@
 import { NAME_PATTERN } from './lib/identity'
+import { COMMAND_EVENT } from './ui/CommandBar'
 import { useEffect, useRef } from 'react'
 import { Scene } from './scene/Scene'
 import { Hud } from './ui/Hud'
@@ -86,6 +87,8 @@ export default function App() {
   const booting = useRef(false)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const voicePoll = useRef<ReturnType<typeof setInterval> | null>(null)
+  /** Ends the boot sequence early. Set only while it is playing. */
+  const skipBoot = useRef<(() => void) | null>(null)
 
   // -- helpers --------------------------------------------------------------
 
@@ -148,9 +151,9 @@ export default function App() {
     let filled = false
 
     try {
-      const { text } = await ask(said, history.current, {
+      const { text, costUsd, tier } = await ask(said, history.current, {
         onText: (delta) => {
-          if (stale()) return
+      if (stale()) return
           if (!started) {
             started = true
             store.getState().setPhase('speaking')
@@ -184,6 +187,7 @@ export default function App() {
       })
 
       if (stale()) return
+      if (costUsd != null) store.getState().setUsage(costUsd, tier ?? null)
 
       // The bridge keeps conversation state in its own session, so history is
       // only threaded through on the direct path.
@@ -319,6 +323,22 @@ export default function App() {
     void respond(said)
   }
 
+  /**
+   * A command typed into the command bar. The same turn as a spoken one, minus
+   * the wake word: typing is its own intent, and a typed "hey jarvis" prefix is
+   * stripped like a spoken one. If he is mid-answer, this interrupts him, the
+   * same as talking over him would.
+   */
+  const onTyped = (raw: string) => {
+    const phase = store.getState().phase
+    if (phase === 'offline' || phase === 'boot') return
+    const said = raw.replace(LEADING_NAME, '').trim()
+    if (!said) return
+    if (phase === 'thinking' || phase === 'tooling' || phase === 'speaking') onSpeechStart()
+    store.getState().setError(null)
+    void respond(said)
+  }
+
   const onPartial = (text: string) => {
     store.getState().setCaption(text)
   }
@@ -372,7 +392,10 @@ export default function App() {
 
     s.setPhase('boot')
 
-    watchServers((servers) => store.getState().setConnected(servers))
+    watchServers((servers, health) => {
+      store.getState().setConnected(servers)
+      store.getState().setHealth(health)
+    })
     watchPanels((panel) => store.getState().pushPanel(panel))
     watchBlades((blade) => store.getState().pushBlade(blade))
 
@@ -502,7 +525,15 @@ export default function App() {
     // status bar, rings, suit schematic, reactor power-up — before the live
     // interface takes over. Kept a touch under the boot cue so the music is
     // still rising as the reactor lands.
-    await new Promise((r) => setTimeout(r, 9200)) // boot sequence
+    // Skippable (Escape or Space), and short for anyone who has asked their
+    // system for less motion: nine seconds of animation is a performance the
+    // first time and a wait every time after.
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    await new Promise<void>((r) => {
+      skipBoot.current = r
+      setTimeout(r, reduceMotion ? 1500 : 9200)
+    })
+    skipBoot.current = null
     await warming
     store.getState().setConnected(connectedLabels())
     store.getState().setVoice(currentVoiceName())
@@ -666,7 +697,8 @@ export default function App() {
       // no key for at all.
       if (e.key === 'Escape') {
         e.preventDefault()
-        if (store.getState().phase !== 'offline') goDormant()
+        if (store.getState().phase === 'boot') skipBoot.current?.()
+        else if (store.getState().phase !== 'offline') goDormant()
         return
       }
 
@@ -679,7 +711,7 @@ export default function App() {
       if (phase === 'offline') {
         void powerOn()
       } else if (phase === 'boot') {
-        /* ignore — the boot sequence owns the phase until it finishes */
+        skipBoot.current?.()
       } else if (
         phase === 'thinking' ||
         phase === 'tooling' ||
@@ -693,7 +725,11 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
 
+    const onCommand = (e: Event) => onTyped(String((e as CustomEvent<string>).detail ?? ''))
+    window.addEventListener(COMMAND_EVENT, onCommand)
+
     return () => {
+      window.removeEventListener(COMMAND_EVENT, onCommand)
       cancelAnimationFrame(raf)
       window.removeEventListener('keydown', onKey)
       clearIdle()

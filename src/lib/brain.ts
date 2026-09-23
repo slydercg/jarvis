@@ -28,7 +28,7 @@ export async function ask(
   prompt: string,
   history: Msg[],
   handlers: AskHandlers,
-): Promise<{ text: string; tools: string[] }> {
+): Promise<bridge.AskResult> {
   return usingBridge
     ? bridge.ask(prompt, handlers)
     : direct.ask([...history, { role: 'user', content: prompt }], handlers)
@@ -40,7 +40,9 @@ export async function warm(): Promise<void> {
 
 /** The bridge reports its server list twice — from config on connect, then
  *  with live status once the agent boots — so the HUD subscribes. */
-export function watchServers(fn: (servers: string[]) => void): void {
+export function watchServers(
+  fn: (servers: string[], health: Record<string, bridge.ServerHealth>) => void,
+): void {
   if (usingBridge) bridge.watchServers(fn)
 }
 

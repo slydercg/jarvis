@@ -7,6 +7,31 @@ import { BladeSweep, Blades } from './Blades'
 import { Effects } from './Effects'
 import { Pointer } from './Pointer'
 import { GestureGuide } from './GestureGuide'
+import { CommandBar } from './CommandBar'
+
+/**
+ * The three things he can be doing, shown as words as well as light.
+ *
+ * The reactor's colour and glow already change with the phase, but colour
+ * alone does not read across a room and does not read at all for anyone who
+ * cannot tell the hues apart. So the phase is also a word, marked by weight
+ * and a filled dot, in the same place every time.
+ */
+const STATES: Array<{ label: string; phases: Phase[] }> = [
+  { label: 'LISTENING', phases: ['waking', 'listening'] },
+  { label: 'THINKING', phases: ['thinking', 'tooling'] },
+  { label: 'SPEAKING', phases: ['speaking'] },
+]
+
+/** Where "sign in again" sends you for a claude.ai connector. */
+const CONNECTORS_URL = 'https://claude.ai/settings/connectors'
+
+const HEALTH_LABEL = {
+  live: 'live',
+  pending: 'connecting',
+  auth: 'needs sign-in',
+  failed: 'failed to start',
+} as const
 
 const statusText: Record<Phase, string> = {
   offline: 'OFFLINE',
@@ -153,6 +178,9 @@ export function Hud() {
   const turns = useStore((s) => s.turns)
   const activeTool = useStore((s) => s.activeTool)
   const connected = useStore((s) => s.connected)
+  const health = useStore((s) => s.health)
+  const sessionCost = useStore((s) => s.sessionCost)
+  const tier = useStore((s) => s.tier)
   const error = useStore((s) => s.error)
   const level = useStore((s) => s.level)
   const voice = useStore((s) => s.voice)
@@ -197,8 +225,29 @@ export function Hud() {
         )}
 
         <div className="status">
-          <span className="dot" />
-          <span className="status-text">
+          <ol className="states" aria-hidden="true">
+            {STATES.map((st) => {
+              const on = st.phases.includes(phase)
+              return (
+                <li key={st.label} className={on ? 'state state-on' : 'state'}>
+                  <span className="state-dot" />
+                  {st.label}
+                </li>
+              )
+            })}
+          </ol>
+          {/* The three core phases are already on the strip above; the line
+              underneath only speaks up when it adds something (standby, boot,
+              a tool running). Screen readers always get it. */}
+          <span
+            className={
+              ['listening', 'thinking', 'speaking'].includes(phase)
+                ? 'status-text sr-only'
+                : 'status-text'
+            }
+            role="status"
+            aria-live="polite"
+          >
             {/* bootNote is the voice-model download readout. It is only ever
                 the right thing to show during boot — as a general fallback a
                 note that never got cleared (a stuck 'voice 97%') sits over
@@ -210,17 +259,30 @@ export function Hud() {
 
       {/* Left rail: which integrations are live */}
       {ui.chrome.systems && (
-        <aside className="rail rail-left">
-          <div className="rail-title">SYSTEMS</div>
+        <aside className="rail rail-left" aria-label="Connected systems">
+          <div className="rail-title">
+            SYSTEMS
+            {connected.length > 0 && <span className="rail-count">{connected.length}</span>}
+          </div>
           {connected.length === 0 && <div className="rail-item dim">none linked</div>}
-          {connected.map((c) => (
-            <div key={c} className="rail-item" title={c}>
-              <span className="tick" />
-              <span className="rail-label">{c}</span>
-            </div>
-          ))}
+          {connected.map((c) => {
+            const h = health[c] ?? 'live'
+            return (
+              <div key={c} className={`rail-item rail-${h}`} title={`${c} — ${HEALTH_LABEL[h]}`}>
+                <span className={`tick tick-${h}`} aria-hidden="true" />
+                <span className="rail-label">{c}</span>
+                {h === 'auth' && (
+                  <a className="rail-fix" href={CONNECTORS_URL} target="_blank" rel="noreferrer">
+                    sign in
+                  </a>
+                )}
+                {h === 'failed' && <span className="rail-fix">failed</span>}
+                <span className="sr-only">{HEALTH_LABEL[h]}</span>
+              </div>
+            )
+          })}
           <div className="rail-item">
-            <span className="tick" />
+            <span className="tick" aria-hidden="true" />
             Web
           </div>
         </aside>
@@ -233,6 +295,19 @@ export function Hud() {
           <div className="meter-fill" style={{ height: `${level * 100}%` }} />
         </div>
         <div className="rail-item mono">{(level * 100).toFixed(0).padStart(3, '0')}%</div>
+        {sessionCost != null && (
+          <>
+            <div className="rail-title rail-gap">SESSION</div>
+            <div className="rail-item mono" title="What this session has cost so far">
+              ${sessionCost.toFixed(2)}
+            </div>
+            {tier && (
+              <div className="rail-item mono dim-ish" title="Which model answered last">
+                {tier === 'fast' ? 'quick model' : 'main model'}
+              </div>
+            )}
+          </>
+        )}
       </aside>
 
       <AnimatePresence>
@@ -263,7 +338,7 @@ export function Hud() {
 
       {/* Conversation log — last few turns, fading upward */}
       {ui.chrome.transcript && (
-        <div className="log">
+        <div className="log" role="log" aria-live="polite" aria-label="Conversation">
           <AnimatePresence initial={false}>
             {turns.slice(-4).map((t) => (
               <motion.div
@@ -279,7 +354,18 @@ export function Hud() {
                     transmitted from anywhere — dressing it up as machine
                     output would be a lie about where the words came from. */}
                 <span className="log-text">
-                  {t.role === 'jarvis' ? <DecodeText text={t.text} /> : t.text}
+                  {t.role === 'jarvis' ? (
+                    <>
+                      {/* The scramble is for the eye; a screen reader gets the
+                          words themselves, not a stream of glyph noise. */}
+                      <span aria-hidden="true">
+                        <DecodeText text={t.text} />
+                      </span>
+                      <span className="sr-only">{t.text}</span>
+                    </>
+                  ) : (
+                    t.text
+                  )}
                 </span>
               </motion.div>
             ))}
@@ -309,7 +395,13 @@ export function Hud() {
 
       {ui.chrome.suggestions && <Suggestions />}
 
-      {error && <div className="error">{error}</div>}
+      {error && (
+        <div className="error" role="alert">
+          {error}
+        </div>
+      )}
+
+      <CommandBar />
 
       <footer className="hud-bottom">
         <span className="hint">

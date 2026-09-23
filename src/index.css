@@ -6,6 +6,9 @@
   --interface: #00e5ff;
   --accent: var(--interface);
   --bg: #01060c;
+  /* Bright body text, and the one colour that means "needs you". */
+  --ink: #e6f8ff;
+  --attention: #ffb547;
   font-family: 'Chakra Petch', system-ui, sans-serif;
   color-scheme: dark;
 }
@@ -95,16 +98,17 @@ body::after {
 .brand-sub {
   display: block;
   margin-top: 5px;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.22em;
-  opacity: 0.42;
+  opacity: 0.7;
 }
 
 .status {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 10px;
-  font-size: 10px;
+  font-size: 12px;
   /* The header is space-between, so with the wordmark hidden the status line
      would slide to the left edge on its own. Claiming the free space keeps it
      pinned right whether or not the brand is there — and with both present it
@@ -135,7 +139,7 @@ body::after {
   display: flex;
   flex-direction: column;
   gap: 9px;
-  font-size: 10px;
+  font-size: 12px;
 }
 .rail-left {
   left: 92px;
@@ -147,7 +151,7 @@ body::after {
   column-gap: 26px;
   align-content: flex-start;
 }
-.rail-left .rail-item { max-width: 150px; }
+.rail-left .rail-item { max-width: 230px; }
 .rail-left .tick { flex-shrink: 0; }
 .rail-label {
   overflow: hidden;
@@ -155,10 +159,136 @@ body::after {
   white-space: nowrap;
 }
 .rail-right { right: 92px; align-items: flex-end; }
+.rail-gap { margin-top: 14px; }
+.rail-item.dim-ish { opacity: 0.72; }
+.rail-count { margin-left: 10px; opacity: 0.85; }
+
+/* Connector health. Shape carries it as well as colour: a filled diamond is
+   live, a hollow one is still connecting, a ring asks for attention. */
+.tick-pending { background: transparent; box-shadow: none; border: 1px solid currentColor; }
+.tick-auth,
+.tick-failed {
+  background: transparent;
+  box-shadow: none;
+  border: 1.5px solid var(--attention);
+  border-radius: 50%;
+  transform: none;
+  width: 7px;
+  height: 7px;
+}
+.rail-auth,
+.rail-failed { color: var(--attention); }
+.rail-pending { opacity: 0.7; }
+.rail-fix {
+  margin-left: auto;
+  padding-left: 10px;
+  color: var(--attention);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  pointer-events: auto;
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--attention) 55%, transparent);
+}
+.rail-fix:hover { border-bottom-color: var(--attention); }
+
+/* The phase, as words. The active one is bright, heavier and has a filled dot;
+   the others stay readable but quiet. */
+.states {
+  display: flex;
+  gap: 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  letter-spacing: 0.26em;
+}
+.state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.55;
+}
+.state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+}
+.state-on { opacity: 1; font-weight: 600; text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent); }
+.state-on .state-dot { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+
+/* Content for screen readers only. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The typed way in. Anchored to the bottom edge, centred under everything that
+   stacks up the middle — transcript, captions, suggestions, the key hints — so
+   none of them can ever land on it at any window width. */
+.command {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 38px;
+  width: min(560px, 62vw);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, rgba(1, 8, 14, 0.82));
+  pointer-events: auto;
+  transition: border-color 200ms ease;
+}
+.command:focus-within { border-color: var(--accent); }
+.command-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--ink);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  caret-color: var(--accent);
+}
+.command-input::placeholder { color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.command-input:disabled { cursor: not-allowed; }
+.command-send {
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.command-send:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: var(--accent); }
+.command-send:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* A visible focus ring on everything a keyboard can reach. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.command-input:focus-visible { outline: none; }
 
 .rail-title {
-  font-size: 8px;
-  opacity: 0.4;
+  font-size: 11px;
+  opacity: 0.7;
   letter-spacing: 0.34em;
   margin-bottom: 4px;
 }
@@ -169,7 +299,7 @@ body::after {
   gap: 8px;
   opacity: 0.82;
 }
-.rail-item.dim { opacity: 0.3; }
+.rail-item.dim { opacity: 0.62; }
 .rail-item.mono { font-family: 'JetBrains Mono', monospace; letter-spacing: 0.1em; }
 
 .tick {
@@ -229,7 +359,7 @@ body::after {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: 0.36em;
   text-indent: 0.36em;
   opacity: 0.6;
@@ -273,7 +403,7 @@ body::after {
 .log {
   position: absolute;
   left: 50%;
-  bottom: 132px;
+  bottom: 176px;
   transform: translateX(-50%);
   width: min(760px, 68vw);
   display: flex;
@@ -287,20 +417,20 @@ body::after {
   display: flex;
   gap: 14px;
   align-items: baseline;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.55;
 }
 
 .log-who {
   flex: 0 0 54px;
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: 0.26em;
   text-transform: uppercase;
-  opacity: 0.45;
+  opacity: 0.7;
   padding-top: 3px;
 }
 
-.log-user .log-text { opacity: 0.52; }
+.log-user .log-text { opacity: 0.78; }
 .log-jarvis .log-text {
   color: #eaf9ff;
   text-shadow: 0 0 26px color-mix(in srgb, var(--accent) 45%, transparent);
@@ -311,7 +441,7 @@ body::after {
 .caption {
   position: absolute;
   left: 50%;
-  bottom: 88px;
+  bottom: 130px;
   transform: translateX(-50%);
   font-size: 16px;
   text-transform: none;
@@ -325,10 +455,10 @@ body::after {
 .error {
   position: absolute;
   left: 50%;
-  bottom: 52px;
+  bottom: 124px;
   transform: translateX(-50%);
   color: #ff6b6b;
-  font-size: 10px;
+  font-size: 12px;
   text-transform: none;
   letter-spacing: 0.04em;
   max-width: 70vw;
@@ -337,12 +467,12 @@ body::after {
 
 .hud-bottom {
   position: absolute;
-  bottom: 44px;
+  bottom: 98px;
   left: 0;
   right: 0;
   text-align: center;
-  font-size: 9px;
-  opacity: 0.38;
+  font-size: 11px;
+  opacity: 0.7;
   letter-spacing: 0.2em;
 }
 
@@ -350,7 +480,7 @@ kbd {
   font-family: 'JetBrains Mono', monospace;
   border: 1px solid currentColor;
   padding: 1px 5px;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 /* ----------------------------------------------------------------- panels */
@@ -389,7 +519,7 @@ kbd {
 .panels-wide {
   left: 0;
   right: 0;
-  bottom: 132px;
+  bottom: 176px;
   align-items: center;
   justify-content: flex-end;
 }
@@ -467,7 +597,7 @@ kbd {
 }
 
 .p-title {
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: 0.3em;
   opacity: 0.62;
 }
@@ -542,8 +672,8 @@ kbd {
 .hud-idx {
   flex: 0 0 auto;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
-  opacity: 0.45;
+  font-size: 11px;
+  opacity: 0.7;
   padding-top: 2px;
 }
 
@@ -567,7 +697,7 @@ kbd {
 }
 
 .hud-sub {
-  font-size: 10.5px;
+  font-size: 12px;
   line-height: 1.35;
   opacity: 0.5;
   white-space: nowrap;
@@ -577,10 +707,10 @@ kbd {
 
 .hud-tag {
   flex: 0 0 auto;
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  opacity: 0.42;
+  opacity: 0.7;
   padding-top: 3px;
 }
 
@@ -599,7 +729,7 @@ kbd {
 .hud-caption {
   display: block;
   margin-top: 8px;
-  font-size: 10px;
+  font-size: 12px;
   opacity: 0.5;
 }
 
@@ -727,7 +857,7 @@ kbd {
 .hud-unit {
   display: block;
   margin-top: 6px;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   opacity: 0.5;
@@ -767,12 +897,12 @@ kbd {
 /* Shown instead of a blank rectangle when a panel arrives with nothing in it. */
 .p-empty {
   margin: 0;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.16em;
-  opacity: 0.35;
+  opacity: 0.7;
 }
 
-.hud-dim { opacity: 0.45; }
+.hud-dim { opacity: 0.62; }
 .hud-hot {
   color: var(--accent);
   text-shadow: 0 0 16px color-mix(in srgb, var(--accent) 60%, transparent);
@@ -790,7 +920,7 @@ kbd {
 .suggest {
   position: absolute;
   left: 50%;
-  bottom: 96px;
+  bottom: 130px;
   transform: translateX(-50%);
   display: flex;
   align-items: baseline;
@@ -799,16 +929,16 @@ kbd {
 }
 
 .suggest-lead {
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: 0.34em;
-  opacity: 0.3;
+  opacity: 0.7;
 }
 
 .suggest-text {
   font-size: 13px;
   letter-spacing: 0.03em;
   text-transform: none;
-  opacity: 0.45;
+  opacity: 0.7;
 }
 
 /* --------------------------------------------------------------- ignition */
@@ -850,9 +980,9 @@ kbd {
 }
 
 .ignition-sub {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.28em;
-  opacity: 0.4;
+  opacity: 0.7;
   text-transform: uppercase;
 }
 
@@ -927,10 +1057,21 @@ kbd {
   box-shadow: 0 0 10px var(--accent);
 }
 
+.boot-skip {
+  position: absolute;
+  right: 92px;
+  bottom: 44px;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--interface);
+  opacity: 0.7;
+}
+
 .boot-log {
   margin-top: 14px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.9;
   letter-spacing: 0.06em;
   opacity: 0.6;
@@ -984,7 +1125,7 @@ kbd {
   fill: var(--accent);
   opacity: 0.55;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.14em;
   text-anchor: middle;
 }
@@ -1023,6 +1164,8 @@ kbd {
 
 @media (max-width: 900px) {
   .hud-top { padding: 0 46px; }
+  .command { left: 30px; right: 30px; width: auto; transform: none; bottom: 34px; }
+  .states { display: none; }
   .rail-left { left: 30px; }
   .rail-right { right: 30px; }
   .log { width: 84vw; }
@@ -1122,7 +1265,7 @@ kbd {
 }
 
 .ins-hex-inner {
-  opacity: 0.45;
+  opacity: 0.7;
 }
 
 .ins-label {
@@ -1281,7 +1424,7 @@ kbd {
   display: block;
   white-space: nowrap;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.3em;
   text-transform: uppercase;
   color: #e6f9ff;
@@ -1627,7 +1770,7 @@ kbd {
 }
 
 .bl-title {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.2em;
   color: color-mix(in srgb, var(--accent) 92%, white);
   white-space: nowrap;
@@ -1636,9 +1779,9 @@ kbd {
 }
 
 .bl-kind {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.14em;
-  opacity: 0.45;
+  opacity: 0.7;
   margin-right: auto;
 }
 
@@ -1722,9 +1865,9 @@ kbd {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.14em;
-  opacity: 0.42;
+  opacity: 0.7;
   pointer-events: none;
 }
 .bl-hint kbd {
@@ -1807,7 +1950,7 @@ kbd {
   align-items: center;
   gap: 7px;
   padding: 4px 10px;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.18em;
   color: color-mix(in srgb, var(--accent) 90%, white);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
@@ -1846,7 +1989,7 @@ kbd {
   letter-spacing: normal;
 }
 .gguide-head {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   opacity: 0.6;
@@ -1862,7 +2005,7 @@ kbd {
 .gguide-icon { width: 17px; font-size: 13px; line-height: 1; filter: saturate(0.2) }
 .gguide-name {
   width: 44px;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--accent) 95%, white);
@@ -1872,9 +2015,9 @@ kbd {
   margin-top: 8px;
   padding-top: 7px;
   border-top: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.1em;
-  opacity: 0.45;
+  opacity: 0.7;
 }
 .gguide-foot kbd {
   font: inherit;
