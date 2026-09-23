@@ -1,3 +1,4 @@
+import { NAME } from '../lib/identity'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore } from '../store'
@@ -52,7 +53,7 @@ export function Suggestions() {
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.35 }}
         >
-          “hey jarvis, {EXAMPLES[i]}”
+          “hey {NAME.toLowerCase()}, {EXAMPLES[i]}”
         </motion.span>
       </AnimatePresence>
     </div>

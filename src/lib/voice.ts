@@ -1,3 +1,4 @@
+import { NAME_PATTERN } from './identity'
 import { BRIDGE_HTTP_URL } from '../config'
 import { getMic } from './audio'
 import { speakingNow, speakingSince } from './tts'
@@ -65,7 +66,8 @@ export type Voice = {
 const WAKE_DEBOUNCE = 1500
 
 /**
- * His name, and the only wake phrase.
+ * His name, and the only wake phrase. The name itself comes from JARVIS_NAME
+ * (see identity.ts); what follows is about the default.
  *
  * The optional prefix is genuinely optional: addressing him by name alone is
  * correct, and during an answer "Jarvis" on its own is the natural way to cut
@@ -77,8 +79,10 @@ const WAKE_DEBOUNCE = 1500
  * used to be silently discarded, so the wake word "just didn't work" with no
  * indication why. Better a rare false wake than a name that does not answer.
  */
-const WAKE =
-  /\b(?:hey|hi|ok|okay|yo)?\s*(?:jarvis|jarvys|jervis|jarvis's|travis|jarviss|java's|jarv)\b(?!'s)/i
+const WAKE = new RegExp(
+  `\\b(?:hey|hi|ok|okay|yo)?\\s*${NAME_PATTERN}\\b(?!'s)`,
+  'i',
+)
 
 /** Everything after the wake phrase, which is usually the actual command. */
 function afterWake(text: string): string {
@@ -267,7 +271,10 @@ const norm = (s: string) =>
  * would be the single most infuriating failure this file could have.
  */
 const OVERRIDE =
-  /\b(stop|wait|jarvis|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no)\b/i
+  new RegExp(
+    `\\b(stop|wait|${NAME_PATTERN}|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no)\\b`,
+    'i',
+  )
 
 /**
  * Words too common to be evidence of anything.

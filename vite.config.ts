@@ -4,6 +4,10 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // VITE_* as usual, plus the three naming settings, which the bridge reads
+  // under the same names — so one JARVIS_NAME line renames him everywhere.
+  // None of them is a secret; nothing else JARVIS_* reaches the page.
+  envPrefix: ['VITE_', 'JARVIS_NAME', 'JARVIS_TAGLINE', 'JARVIS_WAKE_ALIASES'],
   server: {
     // Honour PORT so a second instance can run alongside the first. The bridge
     // only accepts sockets from localhost:5173-5199, so stay inside that range
