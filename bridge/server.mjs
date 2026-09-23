@@ -367,7 +367,32 @@ const EFFECTFUL_VERB =
  */
 const MONEY_VERB =
   /(order|exercise|purchase|buy|\bpay|_pay|payment|charge|invoice|transfer|withdraw|renew|subscri|payroll|credit|refund|loan|trade|billing|checkout)/i
-const ALLOW_MONEY = ALLOW_WRITES && process.env.JARVIS_ALLOW_MONEY === '1'
+const ALLOW_MONEY = process.env.JARVIS_ALLOW_MONEY === '1'
+
+/**
+ * Ask first, instead of refusing outright.
+ *
+ * Read-only by default was safe but blunt: "send that reply" got a flat no
+ * unless the whole bridge had been restarted with writes on, after which
+ * everything went through without a word. A voice assistant can do better
+ * than either. With confirmation on (the default), an action that changes
+ * something — sending, replying, creating or moving an event, sharing a
+ * file — is put to the user first: a card on screen, "Shall I proceed?", and
+ * a yes or no by voice, keyboard or click, then a few seconds to undo. Money
+ * is confirmed every time, even when JARVIS_ALLOW_MONEY allows it at all.
+ *
+ * Shell and file-system built-ins (Bash, Write, Edit) are not offered for
+ * confirmation: what they would do is not something a spoken summary can
+ * convey safely. They still need JARVIS_ALLOW_WRITES.
+ *
+ * JARVIS_CONFIRM=off restores the old behaviour: refuse unless writes are on.
+ */
+const CONFIRM = process.env.JARVIS_CONFIRM !== 'off'
+
+/** An action that changes something: allowed outright, put to the user, or refused. */
+const writeGate = () => (ALLOW_WRITES ? 'allow' : CONFIRM ? 'confirm' : 'deny')
+/** Money is never allowed outright: asked every time, and only if enabled. */
+const moneyGate = () => (ALLOW_MONEY ? 'confirm' : 'deny')
 
 /**
  * Drafting mail is allowed without write access.
@@ -402,9 +427,10 @@ const VETO_EXEMPT = new Set([
   'google_drive__download_file_content',
 ])
 
+/** 'allow' | 'confirm' | 'deny' for one tool call. */
 function decideTool(name) {
-  if (READ_ONLY_BUILTINS.has(name)) return true
-  if (WRITE_BUILTINS.has(name)) return ALLOW_WRITES
+  if (READ_ONLY_BUILTINS.has(name)) return 'allow'
+  if (WRITE_BUILTINS.has(name)) return ALLOW_WRITES ? 'allow' : 'deny'
 
   const server = mcpServerOf(name)
   if (server) {
@@ -413,7 +439,7 @@ function decideTool(name) {
     // without them JARVIS has no display at all. They also have to be named
     // here rather than left to the verb rules below, which read `ui_theme` as
     // a write and would hold the whole surface back behind ALLOW_WRITES.
-    if (server === 'jarvis' || server === 'jarvis_ui') return true
+    if (server === 'jarvis' || server === 'jarvis_ui') return 'allow'
 
     // The browser server gates itself, at construction: chromeServer() only
     // builds the acting tools — click, type, form input, close tab — when
@@ -422,30 +448,30 @@ function decideTool(name) {
     // reading verbs out of the name would only get it wrong: `chrome_navigate`
     // begins with no read verb and would fall to the write branch, which would
     // withhold the one tool the whole server is for.
-    if (server === 'jarvis_chrome') return true
+    if (server === 'jarvis_chrome') return 'allow'
 
     // The camera. Not withheld behind ALLOW_WRITES: looking changes nothing,
     // and the real gate is the browser's own camera permission plus an
     // indicator the user can see for as long as it is live.
-    if (server === 'jarvis_eyes') return true
+    if (server === 'jarvis_eyes') return 'allow'
 
     const tool = mcpToolOf(name)
     const key = serverKey(server)
-    if (DRAFT_TOOL.test(tool)) return true
-    if (VETO_EXEMPT.has(`${key}__${tool}`)) return true
+    if (DRAFT_TOOL.test(tool)) return 'allow'
+    if (VETO_EXEMPT.has(`${key}__${tool}`)) return 'allow'
     const vetoed = EFFECTFUL_VERB.test(tool)
     // Music and speakers: "play something", "turn it down" and "skip this" are
     // what a voice assistant is for, and a wrong guess costs one song. Removing
     // speakers from a group or deleting a playlist still trips the veto.
-    if (MEDIA_SERVER.test(key) && !vetoed) return true
+    if (MEDIA_SERVER.test(key) && !vetoed) return 'allow'
     // The session tools this bridge is developed inside count as read-only too.
     const readOnly =
       !vetoed &&
       (READ_ONLY_MCP.has(key) || server.startsWith('ccd_session') || READ_VERB.test(tool))
-    if (readOnly) return true
-    return MONEY_VERB.test(tool) ? ALLOW_MONEY : ALLOW_WRITES
+    if (readOnly) return 'allow'
+    return MONEY_VERB.test(tool) ? moneyGate() : writeGate()
   }
-  return ALLOW_WRITES
+  return ALLOW_WRITES ? 'allow' : 'deny'
 }
 
 /**
@@ -454,6 +480,55 @@ function decideTool(name) {
  * persona always agree.
  */
 const NAME = (process.env.JARVIS_NAME ?? '').trim() || 'JARVIS'
+
+/**
+ * What a confirmation card says: which service, which action, and the few
+ * fields that tell you whether it is the right one — who it goes to, what it
+ * is called, when it happens, how much. Never the whole payload: a card is
+ * read at a glance, and a full email body belongs in the draft, not here.
+ */
+const CONFIRM_FIELDS = [
+  ['to', 'To'], ['recipients', 'To'], ['recipient', 'To'], ['cc', 'Cc'],
+  ['subject', 'Subject'], ['title', 'Title'], ['summary', 'Title'], ['name', 'Name'],
+  ['start', 'Starts'], ['startTime', 'Starts'], ['start_time', 'Starts'], ['date', 'Date'],
+  ['end', 'Ends'], ['attendees', 'Guests'], ['symbol', 'Symbol'], ['side', 'Side'],
+  ['quantity', 'Quantity'], ['amount', 'Amount'], ['price', 'Price'],
+  ['body', 'Message'], ['text', 'Message'], ['message', 'Message'], ['content', 'Message'],
+]
+
+const clip = (v, n) => {
+  const s = typeof v === 'string' ? v : JSON.stringify(v)
+  const flat = String(s ?? '').replace(/\s+/g, ' ').trim()
+  return flat.length > n ? `${flat.slice(0, n - 1)}…` : flat
+}
+
+function describeAction(toolName, input = {}) {
+  const server = mcpServerOf(toolName)
+  const service = server ? displayName(server.replace(/^claude_ai_/i, '')) : 'System'
+  const verb = (server ? mcpToolOf(toolName) : toolName).replace(/[_-]+/g, ' ').trim()
+  const details = []
+  const seen = new Set()
+  for (const [key, label] of CONFIRM_FIELDS) {
+    const v = input?.[key]
+    if (v == null || v === '' || seen.has(label)) continue
+    seen.add(label)
+    const value =
+      typeof v === 'object' && !Array.isArray(v)
+        ? (v.dateTime ?? v.date ?? v.email ?? JSON.stringify(v))
+        : Array.isArray(v)
+          ? v.map((x) => (typeof x === 'object' ? (x.email ?? x.name ?? JSON.stringify(x)) : x)).join(', ')
+          : v
+    details.push({ label, value: clip(value, label === 'Message' ? 160 : 90) })
+    if (details.length >= 5) break
+  }
+  return {
+    service,
+    action: verb,
+    summary: `${service} · ${verb}${details[0] ? ` · ${details[0].value}` : ''}`,
+    details,
+    money: MONEY_VERB.test(verb),
+  }
+}
 
 const SYSTEM_PROMPT = `You are ${NAME}. You are speaking out loud to one person.
 
@@ -568,11 +643,16 @@ Their accounts — the connectors:
   next meeting is the design review at two, sir." Mention a clash if you see one.
 - Drafting a reply is always permitted and lands in their Drafts folder; say
   that it is there. Sending, replying, forwarding, and creating, moving or
-  answering calendar events change the world: before one, say in a sentence
-  what you are about to do, and if it is refused, say the action is unavailable.
+  answering calendar events change the world: say in one sentence exactly what
+  you are about to do — to whom, what, when — and then call the tool. The
+  interface puts it to the user for a yes or no; do NOT ask "shall I?"
+  yourself, and do not wait for an answer before calling. If it comes back
+  declined, acknowledge it in a few words and drop it. If it comes back
+  refused outright, say that action is unavailable.
 - Money is never moved on inference. Orders, trades, payments, invoices and
   transfers are blocked unless the user has explicitly enabled them, and even
-  then happen only when asked for in so many words, in this turn. Reading
+  then happen only when asked for in so many words, in this turn, and each one
+  is confirmed by the user before it runs. Reading
   balances, positions and prices is always fine. Figures, not advice, unless
   they ask for an opinion.
 
@@ -1270,11 +1350,14 @@ if (process.env.ANTHROPIC_API_KEY) {
   )
 }
 if (ALLOW_MONEY) {
-  console.warn('[jarvis] MONEY ENABLED — orders, payments and transfers are permitted')
+  console.warn('[jarvis] MONEY ENABLED — orders, payments and transfers are possible, each confirmed with you first')
 }
 console.log(
-  `[jarvis] writes ${ALLOW_WRITES ? 'ENABLED' : 'disabled'}` +
-    (ALLOW_WRITES ? '' : ' — set JARVIS_ALLOW_WRITES=1 to permit shell/file/device actions'),
+  ALLOW_WRITES
+    ? '[jarvis] writes ENABLED — actions run without asking'
+    : CONFIRM
+      ? '[jarvis] actions that change things are confirmed with you first (yes / no, then a few seconds to undo)'
+      : '[jarvis] writes disabled — set JARVIS_ALLOW_WRITES=1 to permit them, or JARVIS_CONFIRM=on to be asked',
 )
 // Asynchronous, so it lands a beat after the rest of the banner. Worth printing
 // at all because an extension that is simply not running is indistinguishable
@@ -1404,6 +1487,9 @@ wss.on('connection', (socket) => {
   let answering = null
   const sendTurn = (msg) => send({ ...msg, ask: answering })
 
+  /** Whether any words have gone out yet in the turn in flight. */
+  let spoke = false
+
   /** Which route the session is on now, and the queue that switches it. */
   let tier = 'deep'
   let delivering = Promise.resolve()
@@ -1517,7 +1603,7 @@ wss.on('connection', (socket) => {
     // interface is the interface talking about itself, not work being done for
     // the user, and the badge would be describing the very thing they can see.
     if (name.startsWith('mcp__jarvis_ui__')) return
-    if (decideTool(name)) return sendTurn({ type: 'tool', name })
+    if (decideTool(name) === 'allow') return sendTurn({ type: 'tool', name })
     if (id) heldTools.set(id, name)
   }
 
@@ -1605,10 +1691,32 @@ wss.on('connection', (socket) => {
       // through a `Bash: echo hello` without asking, and only reaches us for
       // something with a consequence, like a `touch`. So a deny here is
       // reliable; an absence of a call here is not proof nothing ran.
-      canUseTool: async (toolName) => {
-        const ok = decideTool(toolName)
-        console.log(`[jarvis] tool ${toolName} -> ${ok ? 'allow' : 'deny'}`)
-        return ok
+      canUseTool: async (toolName, input) => {
+        let verdict = decideTool(toolName)
+        if (verdict === 'confirm') {
+          const action = describeAction(toolName, input)
+          console.log(`[jarvis] tool ${toolName} -> asking: ${action.summary}`)
+          let ok = false
+          try {
+            // Long enough for the prompt, a considered answer and the undo
+            // window. The page always replies, so this is only the backstop
+            // for a tab that closed with the card still up.
+            const reply = await ask('confirm', action, 90_000)
+            ok = reply?.ok === true
+          } catch {
+            ok = false
+          }
+          console.log(`[jarvis] tool ${toolName} -> ${ok ? 'confirmed' : 'declined'}`)
+          if (ok) return { behavior: 'allow', updatedInput: input }
+          return {
+            behavior: 'deny',
+            message:
+              'The user declined this action, or did not confirm it in time. It was not' +
+              ' done. Acknowledge that in a few words and do not try it again unless asked.',
+          }
+        }
+        console.log(`[jarvis] tool ${toolName} -> ${verdict}`)
+        return verdict === 'allow'
           ? { behavior: 'allow' }
           : {
               behavior: 'deny',
@@ -1679,11 +1787,18 @@ wss.on('connection', (socket) => {
           // JARVIS goes completely mute.
           case 'stream_event': {
             const ev = msg.event
+            // A new text block after one already spoken this turn — words on
+            // either side of a tool call — would otherwise butt straight onto
+            // the last one: "sending it now, sir.The email has been sent".
+            if (ev?.type === 'content_block_start' && ev.content_block?.type === 'text' && spoke) {
+              sendTurn({ type: 'text', delta: ' ' })
+            }
             if (
               ev?.type === 'content_block_delta' &&
               ev.delta?.type === 'text_delta' &&
               ev.delta.text
             ) {
+              spoke = true
               sendTurn({ type: 'text', delta: ev.delta.text })
             }
             if (
@@ -1763,6 +1878,7 @@ wss.on('connection', (socket) => {
             finishTurn?.()
             finishTurn = null
             turnFailed = false
+            spoke = false
             // One turn's tool ids are never referred to again, and these
             // otherwise grow for as long as the socket is open.
             seenTools.clear()

@@ -40,6 +40,13 @@ export async function warm(): Promise<void> {
 
 /** The bridge reports its server list twice — from config on connect, then
  *  with live status once the agent boots — so the HUD subscribes. */
+/** The bridge asking the user to approve an action. Bridge mode only. */
+export function watchConfirm(
+  fn: (req: bridge.ConfirmRequest) => Promise<{ ok: boolean }>,
+): void {
+  if (usingBridge) bridge.watchConfirm(fn)
+}
+
 export function watchServers(
   fn: (servers: string[], health: Record<string, bridge.ServerHealth>) => void,
 ): void {

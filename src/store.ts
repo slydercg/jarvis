@@ -1,5 +1,25 @@
 import { create } from 'zustand'
 
+/** How long a confirmed action can still be taken back before it runs. */
+export const UNDO_MS = 4000
+
+/**
+ * A confirmation in progress. `stage` is 'ask' while waiting for a yes or no,
+ * then 'undo' for the few seconds before a yes takes effect. `answer` is how
+ * voice, typing and the buttons all reach the same decision.
+ */
+export type PendingConfirm = {
+  service: string
+  action: string
+  summary: string
+  details: Array<{ label: string; value: string }>
+  money: boolean
+  stage: 'ask' | 'undo'
+  /** When the undo window closes, as a Date.now() value. */
+  until: number
+  answer: (yes: boolean) => void
+}
+
 export type Phase =
   | 'offline'   // waiting for the click that unlocks audio
   | 'boot'      // startup sequence
@@ -226,6 +246,8 @@ type State = {
   sessionCost: number | null
   /** Which route answered last: 'fast' or 'deep'. */
   tier: string | null
+  /** An action waiting on the user's yes or no, or counting down to run. */
+  confirm: PendingConfirm | null
   /** Name of the speech-synthesis voice in use, shown in the HUD. */
   voice: string
   /** Whether the camera is on and hands are being tracked. Store-backed rather
@@ -266,6 +288,7 @@ type State = {
   setConnected: (c: string[]) => void
   setHealth: (h: Record<string, 'live' | 'pending' | 'auth' | 'failed'>) => void
   setUsage: (cost: number | null, tier: string | null) => void
+  setConfirm: (c: PendingConfirm | null) => void
   pushTurn: (t: Turn) => void
   appendToLastTurn: (text: string) => void
 
@@ -289,6 +312,7 @@ export const useStore = create<State>((set) => ({
   health: {},
   sessionCost: null,
   tier: null,
+  confirm: null,
   voice: '',
   gestures: false,
   looking: null,
@@ -365,6 +389,7 @@ export const useStore = create<State>((set) => ({
   setConnected: (connected) => set({ connected }),
   setHealth: (health) => set({ health }),
   setUsage: (sessionCost, tier) => set({ sessionCost, tier }),
+  setConfirm: (confirm) => set({ confirm }),
   pushTurn: (turn) => set((s) => ({ turns: [...s.turns.slice(-40), turn] })),
   appendToLastTurn: (text) =>
     set((s) => {

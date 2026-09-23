@@ -6,9 +6,9 @@ import { Hud } from './ui/Hud'
 import { Boot } from './ui/Boot'
 import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
-import { useStore } from './store'
+import { useStore, UNDO_MS } from './store'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
-import { createSpeaker, cycleVoice, currentVoiceName } from './lib/tts'
+import { createSpeaker, cycleVoice, currentVoiceName, speakingSince } from './lib/tts'
 import * as sfx from './lib/sfx'
 import * as music from './lib/music'
 import * as hands from './lib/hands'
@@ -24,6 +24,7 @@ import {
   watchServers,
   watchPanels,
   watchBlades,
+  watchConfirm,
   watchCapture,
   watchUi,
   watchConnection,
@@ -71,6 +72,34 @@ const BARE_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}[\\s,.!?]*$`, 'i
 /** A leading vocative on a real command: "Jarvis, what's the weather". */
 const LEADING_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}\\b[\\s,.:!?-]*`, 'i')
 
+/** Silence this long on a confirmation is a no. */
+const CONFIRM_TIMEOUT_MS = 45_000
+
+const YES =
+  /^(yes|yeah|yep|yup|sure|ok|okay|do it|go ahead|go for it|confirm(ed)?|proceed|send it|please do|affirmative|correct|absolutely|right)\b/i
+const NO =
+  /^(no|nope|nah|cancel|stop|undo|don'?t|do not|abort|wait|hold on|never ?mind|negative|scratch that)\b/i
+
+/** true, false, or null when the reply is neither. "No" wins a tie. */
+function yesOrNo(said: string): boolean | null {
+  const s = said.replace(/^[\s,.!?-]+/, '')
+  if (NO.test(s)) return false
+  if (YES.test(s)) return true
+  return null
+}
+
+/** Resolves once he has stopped talking, or after a few seconds regardless. */
+function afterSpeech(maxMs = 8000): Promise<void> {
+  const until = Date.now() + maxMs
+  return new Promise((resolve) => {
+    const check = () => {
+      if (speakingSince() === 0 || Date.now() > until) resolve()
+      else setTimeout(check, 150)
+    }
+    check()
+  })
+}
+
 export default function App() {
   const store = useStore
   const phase = useStore((s) => s.phase)
@@ -97,12 +126,21 @@ export default function App() {
     idleTimer.current = null
   }
 
+  /** A short line of his own, outside any turn's speaker. */
+  const say = (line: string) => {
+    const p = createSpeaker()
+    p.say(line)
+    void p.end()
+  }
+
   const silence = () => {
     speaker.current?.cancel()
     speaker.current = null
   }
 
   const goDormant = () => {
+    // Standing down while an action waits on a yes is a no.
+    store.getState().confirm?.answer(false)
     clearIdle()
     silence()
     turn.current++
@@ -153,7 +191,7 @@ export default function App() {
     try {
       const { text, costUsd, tier } = await ask(said, history.current, {
         onText: (delta) => {
-      if (stale()) return
+          if (stale()) return
           if (!started) {
             started = true
             store.getState().setPhase('speaking')
@@ -163,6 +201,9 @@ export default function App() {
             music.working(false)
             store.getState().pushTurn({ id: turnId, role: 'jarvis', text: '' })
           }
+          // A confirmation in the middle of an answer drops the phase to
+          // listening; the words resuming afterwards are speech again.
+          if (store.getState().phase !== 'speaking') store.getState().setPhase('speaking')
           store.getState().appendToLastTurn(delta)
           spk.push(delta)
         },
@@ -304,9 +345,30 @@ export default function App() {
     store.getState().setPhase('listening')
   }
 
+  /**
+   * A reply while an action is waiting on the user. Checked before anything
+   * else, so "yes" confirms rather than starting a new turn — which would
+   * interrupt the very turn that is waiting for it.
+   */
+  const answerConfirm = (raw: string): boolean => {
+    const pending = store.getState().confirm
+    if (!pending) return false
+    const said = raw.replace(LEADING_NAME, '').trim()
+    const verdict = yesOrNo(said)
+    if (verdict === null) {
+      // Not an answer. Asked again once per stray phrase, only while asking;
+      // during the undo window anything but a "no" simply lets it run.
+      if (pending.stage === 'ask') say('Yes or no, sir?')
+      return true
+    }
+    pending.answer(verdict)
+    return true
+  }
+
   const onUtterance = (text: string) => {
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot' || phase === 'dormant') return
+    if (answerConfirm(text)) return
 
     // People keep using his name as a vocative once they're already talking to
     // him. Strip it rather than sending "jarvis" to the model as a question.
@@ -332,6 +394,7 @@ export default function App() {
   const onTyped = (raw: string) => {
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot') return
+    if (answerConfirm(raw)) return
     const said = raw.replace(LEADING_NAME, '').trim()
     if (!said) return
     if (phase === 'thinking' || phase === 'tooling' || phase === 'speaking') onSpeechStart()
@@ -398,6 +461,57 @@ export default function App() {
     })
     watchPanels((panel) => store.getState().pushPanel(panel))
     watchBlades((blade) => store.getState().pushBlade(blade))
+
+    /**
+     * The bridge asking whether an action may run.
+     *
+     * The card goes up, the phase drops to listening so the next thing said is
+     * heard as an answer rather than a barge-in, and once his current sentence
+     * has finished he asks. A yes starts a short undo window; a no, a stand
+     * down, or silence past the timeout all mean no. Every path resolves, so
+     * the bridge is never left holding a turn open.
+     */
+    watchConfirm(
+      (req) =>
+        new Promise<{ ok: boolean }>((resolve) => {
+          let settled = false
+          let askTimer = 0
+          let undoTimer = 0
+          const finish = (ok: boolean) => {
+            if (settled) return
+            settled = true
+            clearTimeout(askTimer)
+            clearTimeout(undoTimer)
+            const st = store.getState()
+            st.setConfirm(null)
+            // Back to the turn in flight: the tool runs, or is refused, and he
+            // will say which.
+            if (st.phase === 'listening') st.setPhase('tooling')
+            sfx.play(ok ? 'tool' : 'error')
+            resolve({ ok })
+          }
+          const answer = (yes: boolean) => {
+            const current = store.getState().confirm
+            if (settled || !current) return
+            if (current.stage === 'ask') {
+              if (!yes) return finish(false)
+              clearTimeout(askTimer)
+              store.getState().setConfirm({ ...current, stage: 'undo', until: Date.now() + UNDO_MS })
+              undoTimer = window.setTimeout(() => finish(true), UNDO_MS)
+            } else if (!yes) {
+              finish(false)
+            }
+          }
+          clearIdle()
+          store.getState().setConfirm({ ...req, stage: 'ask', until: 0, answer })
+          store.getState().setPhase('listening')
+          sfx.play('listen')
+          askTimer = window.setTimeout(() => finish(false), CONFIRM_TIMEOUT_MS)
+          void afterSpeech().then(() => {
+            if (!settled) say(req.money ? 'This moves money, sir. Shall I proceed?' : 'Shall I proceed, sir?')
+          })
+        }),
+    )
 
     /**
      * JARVIS asking to see something.
@@ -706,6 +820,9 @@ export default function App() {
       // a missed wake word doesn't cost a take.
       if (e.code !== 'Space' || e.repeat) return
       e.preventDefault()
+      // Mid-confirmation, Space would start a fresh turn over the one waiting
+      // for the answer. The card's buttons, a typed or a spoken reply answer it.
+      if (store.getState().confirm) return
 
       const phase = store.getState().phase
       if (phase === 'offline') {
