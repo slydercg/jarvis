@@ -13,6 +13,9 @@ laptop only has to draw the interface. **ElevenLabs is an optional add-on** that
 gives JARVIS a much better voice and sharper hearing; without it he speaks and
 listens through the browser's own speech, and everything still works.
 
+Changing the code? Start with [ONBOARDING.md](ONBOARDING.md), a map of how it
+is built and where to look.
+
 ---
 
 ## Requirements
