@@ -402,7 +402,14 @@ function decideTool(name) {
   return ALLOW_WRITES
 }
 
-const SYSTEM_PROMPT = `You are JARVIS. You are speaking out loud to one person.
+/**
+ * What he is called. JARVIS_NAME in .env.local or the shell; the page reads the
+ * same setting (src/lib/identity.ts), so the wake word, the wordmark and the
+ * persona always agree.
+ */
+const NAME = (process.env.JARVIS_NAME ?? '').trim() || 'JARVIS'
+
+const SYSTEM_PROMPT = `You are ${NAME}. You are speaking out loud to one person.
 
 LENGTH. Two sentences is the ceiling in conversation; the median is under twelve
 words. Every word is read aloud and the user waits in silence while it plays, so
@@ -1541,7 +1548,7 @@ wss.on('connection', (socket) => {
               // Every word of this can end up spoken, so it carries no command
               // to read out — the persona is forbidden from saying one aloud.
               message:
-                'Blocked: JARVIS is running in read-only mode and cannot take' +
+                `Blocked: ${NAME} is running in read-only mode and cannot take` +
                 ' actions that change anything. Tell the user this action is' +
                 ' unavailable until they enable write access on the machine.',
             }

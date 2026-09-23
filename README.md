@@ -254,6 +254,22 @@ rest. Anything already set in your shell wins over the file. The bridge refuses
 `ANTHROPIC_API_KEY` from the file, because it would quietly switch you from your
 subscription to API billing.
 
+### Renaming him
+
+One line in `.env.local` renames him everywhere: the wake word, the wordmark,
+the tab title, the transcript and the way he refers to himself.
+
+```
+JARVIS_NAME=Friday
+JARVIS_WAKE_ALIASES=fridey,frida   # optional: how speech recognition mishears it
+JARVIS_TAGLINE=                    # optional: the line under the wordmark
+```
+
+A single word is dotted out like the original (`F.R.I.D.A.Y.`), and a name of
+several words is shown as written (`MY DUDE`). Pick a name with two or more
+syllables that you don't say in ordinary conversation: it is also the wake word.
+Restart `npm start` after changing it.
+
 ### Bridge
 
 | Variable | Default | Effect |
