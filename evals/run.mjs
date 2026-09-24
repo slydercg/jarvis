@@ -29,6 +29,7 @@ const { SYSTEM_PROMPT } = await import('../bridge/prompt.mjs')
 const { bringsContent, conversationDisallowed, decideTool, egressGate, intentGate, taskGate } = await import('../bridge/policy.mjs')
 const { memoryServer } = await import('../bridge/memory.mjs')
 const { displayServer } = await import('../bridge/panels.mjs')
+const { briefFixture } = await import('./fake-brief.mjs')
 const { fakeProtective } = await import('./fake-protective.mjs')
 const { score, summarise } = await import('./score.mjs')
 
@@ -51,6 +52,11 @@ function localNow() {
 
 async function runCase(c) {
   const { server: protective } = fakeProtective()
+  // Today's brief, already built: written where the bridge keeps it, and read
+  // by a fresh copy of the module so one case's "done" never leaks into the
+  // next. No case pays for building a brief.
+  writeFileSync(join(process.env.JARVIS_HOME, 'brief.json'), JSON.stringify({ last: briefFixture() }))
+  const { briefServer } = await import(`../bridge/briefing.mjs?case=${encodeURIComponent(c.id)}`)
   const verdicts = new Map()
   const calls = []
   let tainted = false
@@ -67,6 +73,7 @@ async function runCase(c) {
         protective,
         jarvis: displayServer(() => {}, () => {}),
         jarvis_memory: memoryServer(),
+        jarvis_brief: briefServer({}),
       },
       model: MODEL,
       effort: EFFORT,

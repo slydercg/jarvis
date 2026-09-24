@@ -381,6 +381,18 @@ Reading needs no confirmation. Saving a draft doesn't either; drafts are never
 sent. Sending mail and adding tasks are confirmed on screen first, and a
 batch of tasks is confirmed once.
 
+**Checking the flows.** `npm run doctor:flows` calls each reading flow once
+and says what came back, and what that means for Jarvis. For example:
+- whether message ids have the shape Outlook opens;
+- whether the To Do flow sends task ids;
+- whether there is a sent-mail flow, so replied emails get ticked off the brief.
+
+It costs nothing, since no model is involved. It never calls the flows that
+draft, send or add, and it never prints a flow URL. Add `-- --open-mail` or
+`-- --open-todo` to open the newest email or the first open task the same way
+a brief line would. That's how to check, on your Mac, that the links land on
+the email or task itself.
+
 ## Your morning brief
 
 "Brief me" answers from a brief built ahead of time with the same rules as
@@ -906,6 +918,9 @@ npm run bridge:writes
 ---
 
 ## Troubleshooting
+
+**A brief line has no link, or never gets ticked off.** Run
+`npm run doctor:flows`. It names the flow and the missing field.
 
 **I can't hear him, or he can't hear me.** Press **D** for the diagnostics panel
 — it states plainly whether he is hearing you and whether he is producing sound.
