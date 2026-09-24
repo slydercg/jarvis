@@ -411,6 +411,13 @@ async function build(deps) {
  * Returns { brief, builtAt } or throws.
  */
 export function getBrief(deps, { refresh = false } = {}) {
+  // This morning's saved brief, after a restart. Every auto-update restarts
+  // the bridge, and without this the next "brief me" rebuilt a brief that was
+  // minutes old: a minute's wait and a model's worth of spend for nothing.
+  if (!cached) {
+    const saved = readSaved().last
+    if (saved?.day === today() && Number.isFinite(saved.builtAt)) cached = saved
+  }
   const fresh = cached && cached.day === today() && Date.now() - cached.builtAt < MAX_AGE_MS
   if (fresh && !refresh) return Promise.resolve(cached)
   if (building) return building
