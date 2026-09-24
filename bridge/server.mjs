@@ -21,6 +21,7 @@ import { WebSocketServer } from 'ws'
 import { query, getSessionMessages } from '@anthropic-ai/claude-agent-sdk'
 import { alertsSummary, startAlerts } from './alerts.mjs'
 import {
+  carriedPrompt,
   forgetSession,
   JARVIS_HOME,
   MISSING_CONVERSATION,
@@ -1866,6 +1867,7 @@ wss.on('connection', (socket) => {
    */
   let interrupted = false
   let inFlight = false
+  let sessionCost = 0
   let lastTool = ''
   let failedInARow = 0
   const FRESH_AFTER_FAILURES = 2
@@ -2041,7 +2043,7 @@ wss.on('connection', (socket) => {
       // keeps answers short enough to speak, and cuts cost per turn.
       // Read per connection, so a note remembered (or edited by hand) in one
       // conversation is known in the next.
-      systemPrompt: SYSTEM_PROMPT + memoryPrompt(),
+      systemPrompt: SYSTEM_PROMPT + memoryPrompt() + carriedPrompt(convo.carried),
       // Run from the home directory so project-scoped MCP servers don't shadow
       // the global ones, and so file tools have a sane root.
       cwd: homedir(),
@@ -2191,6 +2193,10 @@ wss.on('connection', (socket) => {
         console.log(`[jarvis] resumed the conversation (${messages.length} messages)`)
       })
       .catch(() => {})
+  } else if (convo.carried?.length) {
+    // A fresh conversation that picks up where a long one stopped: the same
+    // last few exchanges stay on screen that the model was given.
+    send({ type: 'history', turns: convo.carried })
   }
 
   // Pump the session's output stream to the browser for as long as it lives.
@@ -2263,8 +2269,18 @@ wss.on('connection', (socket) => {
             break
           }
 
-          case 'result':
+          case 'result': {
             touch()
+            // What this turn cost, for the log: total_cost_usd is the
+            // session's running total (the HUD shows it as such), so a turn
+            // is the difference. Voice turns were the one cost never logged.
+            const total = Number(msg.total_cost_usd ?? 0)
+            const turnCost = total >= sessionCost ? total - sessionCost : total
+            sessionCost = total
+            console.log(
+              `[jarvis] turn ${msg.subtype === 'success' && !msg.is_error ? 'done' : 'ended'}` +
+                ` in ${((msg.duration_ms ?? 0) / 1000).toFixed(1)}s ($${turnCost.toFixed(3)})`,
+            )
             // A result is not automatically a success. The error subtypes
             // carry no `result` field at all, so reporting them as 'done' with
             // empty text is indistinguishable from a turn that simply had
@@ -2363,6 +2379,7 @@ wss.on('connection', (socket) => {
             seenTools.clear()
             heldTools.clear()
             break
+          }
 
           case 'system':
             if (msg.subtype === 'api_retry') {
