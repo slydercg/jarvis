@@ -5,6 +5,7 @@ import { BRIDGE_HTTP_URL } from '../config'
 import { sanitisePanelHtml } from './sanitise'
 import { frameSpan, peaceScroll, pinchCount } from '../lib/hands'
 import * as camera from '../lib/camera'
+import { COMMAND_EVENT } from './CommandBar'
 
 /**
  * The blades.
@@ -528,7 +529,8 @@ function Card({
           <span className="bl-title">{blade.title}</span>
           <span className="bl-kind">{blade.kind}</span>
           <span className="bl-acts">
-            {(size || pos.x || pos.y) && !expanded && (
+            {/* Boolean, or a blade at x 0 renders a stray "0" in its header. */}
+            {Boolean(size || pos.x || pos.y) && !expanded && (
               <button
                 className="bl-btn"
                 onClick={(e) => {
@@ -567,6 +569,30 @@ function Card({
         <div className="bl-body" ref={body} onPointerDown={onBodyDown}>
           <Body blade={blade} />
         </div>
+
+        {/* The obvious next steps, one click each. A click asks exactly what
+            the button says it will (the full request is its tooltip), through
+            the same path as typing it — so anything that sends or changes is
+            still confirmed. */}
+        {blade.actions && blade.actions.length > 0 && (
+          <footer className="bl-actions">
+            {blade.actions.map((a) => (
+              <button
+                key={a.label}
+                type="button"
+                className="bl-action"
+                title={`Asks: ${a.ask}`}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: a.ask }))
+                }}
+              >
+                {a.label}
+              </button>
+            ))}
+          </footer>
+        )}
 
         {/* Resize grip. Absent while expanded, where the size is the point. */}
         {!expanded && <span className="bl-grip" onPointerDown={onGrip} title="Drag to resize" />}

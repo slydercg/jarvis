@@ -36,9 +36,17 @@ import { protectiveConfigured, protectiveServer } from './protective.mjs'
 import { briefServer, maybeOfferBrief } from './briefing.mjs'
 import { localFilesServer } from './localfiles.mjs'
 import { loopServer, logMeetings, maybeOfferWrap } from './loop.mjs'
-import { commitmentOpen, commitmentsEnabled, dueNudges, scanCommitments, scanDue } from './commitments.mjs'
+import {
+  closeCommitment,
+  commitmentOpen,
+  commitmentsEnabled,
+  dueNudges,
+  scanCommitments,
+  scanDue,
+} from './commitments.mjs'
 import {
   closeKind,
+  findItem,
   keepAlert,
   listStratum,
   markAllSeen,
@@ -54,6 +62,8 @@ import { portfolioServer } from './portfolio.mjs'
 import { maybeOfferReview, reviewServer } from './review.mjs'
 import { firstToday, inWindow } from './days.mjs'
 import { onToday, refreshToday, setPortfolio, setWatcherEvents, todayView } from './today.mjs'
+import { describeStep, JOB_PHRASE } from './steps.mjs'
+import { appendTurn, readTranscript, searchTranscripts, transcriptDays } from './transcript.mjs'
 import {
   VERSION,
   checkElevenKey,
@@ -250,9 +260,9 @@ const MCP_SERVERS = configuredServers()
 
 /**
  * ~/.jarvis holds the session id, remembered notes, the promise ledger, the
- * logs and the Protective flow URLs. Owner-only, whatever the umask made the
- * folder: a closed folder covers every file in it, including ones written
- * with the default mode.
+ * conversation history, the logs and the Protective flow URLs. Owner-only,
+ * whatever the umask made the folder: a closed folder covers every file in it,
+ * including ones written with the default mode.
  */
 try {
   mkdirSync(JARVIS_HOME, { recursive: true })
@@ -494,6 +504,11 @@ The blades — the ONLY surface:
   refuse to be embedded. Choose the live page when the layout carries the
   meaning — a dashboard, a chart, a profile, a table.
 - Never read a blade aloud. Say what it means and let them look.
+- When what you show has an obvious next step, give the panel or blade
+  \`actions\`: up to four buttons, each one asking you something in his words
+  ("Draft reply" → "Draft a reply to Chris about the APD scope"). A click is
+  the same as him saying it, so anything that sends or changes is still
+  confirmed. Never an action you would not take if he asked in words.
 
 The interface itself:
 - The interface is yours as well. \`ui_theme\` retints it, \`ui_reactor\` reshapes
@@ -1597,6 +1612,13 @@ const backgroundServers = () => ({
  */
 const toPages = (alert) => {
   console.log(`[jarvis] alert: ${alert.kind} — ${alert.title}`)
+  // What came in, not what was said: the page may hold it (quiet hours), so
+  // the history must not claim he said it aloud.
+  appendTurn({
+    role: 'alert',
+    kind: alert.kind,
+    text: `${alert.title}${alert.detail ? ` — ${alert.detail}` : ''}`,
+  })
   recentAlerts.push({ at: Date.now(), line: alert.say ?? `${alert.title}${alert.detail ? ` — ${alert.detail}` : ''}` })
   while (recentAlerts.length > 10) recentAlerts.shift()
   for (const deliver of pages) deliver({ type: 'alert', alert })
@@ -1646,6 +1668,12 @@ const briefDeps = () => ({
   isReadOnly: readOnlyTool,
   localNow,
   model: FAST_MODEL,
+  // Each step a background job takes, for the badge under whatever the
+  // conversation is waiting on: "Building your brief · Checking Jira".
+  onStep: (job, step) => {
+    const phrase = JOB_PHRASE[job] ?? job
+    for (const deliver of pages) deliver({ type: 'progress', job: phrase, step })
+  },
 })
 
 function ensureWatcher() {
@@ -1793,6 +1821,12 @@ wss.on('connection', (socket) => {
 
   /** Whether any words have gone out yet in the turn in flight. */
   let spoke = false
+  /**
+   * Everything said in the turn in flight, for the history. Not `result`,
+   * which is only the text after the last tool call: an answer spoken before
+   * a `display` would have been kept as "On screen, sir."
+   */
+  let said = ''
 
   /** Which route the session is on now, and the queue that switches it. */
   let tier = 'deep'
@@ -1910,7 +1944,8 @@ wss.on('connection', (socket) => {
     // Saving a note is instant and he acknowledges it himself; a badge and a
     // "working on it" line for it would be louder than the thing itself.
     if (name.startsWith('mcp__jarvis_memory__')) return
-    if (decideForTurn(name) === 'allow') return sendTurn({ type: 'tool', name })
+    // `label` is what the badge says: "Checking Jira", not the tool's name.
+    if (decideForTurn(name) === 'allow') return sendTurn({ type: 'tool', name, label: describeStep(name) })
     if (id) heldTools.set(id, name)
   }
 
@@ -1918,7 +1953,7 @@ wss.on('connection', (socket) => {
     const name = heldTools.get(id)
     if (name === undefined) return
     heldTools.delete(id)
-    if (!failed) sendTurn({ type: 'tool', name })
+    if (!failed) sendTurn({ type: 'tool', name, label: describeStep(name) })
   }
 
   const session = query({
@@ -2145,6 +2180,7 @@ wss.on('connection', (socket) => {
             // the last one: "sending it now, sir.The email has been sent".
             if (ev?.type === 'content_block_start' && ev.content_block?.type === 'text' && spoke) {
               sendTurn({ type: 'text', delta: ' ' })
+              said += ' '
             }
             if (
               ev?.type === 'content_block_delta' &&
@@ -2152,6 +2188,7 @@ wss.on('connection', (socket) => {
               ev.delta.text
             ) {
               spoke = true
+              said += ev.delta.text
               sendTurn({ type: 'text', delta: ev.delta.text })
             }
             if (
@@ -2234,6 +2271,7 @@ wss.on('connection', (socket) => {
                 message: 'The request to Claude failed. The details are in the terminal.',
               })
             } else if (msg.subtype === 'success') {
+              appendTurn({ role: 'jarvis', text: said.trim() || (msg.result ?? '') })
               sendTurn({
                 type: 'done',
                 text: msg.result ?? '',
@@ -2256,6 +2294,7 @@ wss.on('connection', (socket) => {
             finishTurn = null
             turnFailed = false
             spoke = false
+            said = ''
             // Keep an active conversation resumable after a reload — only
             // one that has actually answered. Saving on every result kept a
             // conversation Claude Code had never heard of "recent" for ever.
@@ -2326,6 +2365,7 @@ wss.on('connection', (socket) => {
 
     if (msg.type === 'ask' && typeof msg.text === 'string') {
       touch()
+      appendTurn({ role: 'user', text: msg.text })
       /**
        * Queued behind any interrupt that is still settling.
        *
@@ -2377,12 +2417,28 @@ wss.on('connection', (socket) => {
       }
     }
 
-    // "Start fresh": drop the conversation. Closing the socket makes the page
-    // reconnect, and the next connection opens a new session.
+    // The history drawer asks for a day of the conversation. With `q`, a
+    // search across every kept day instead.
+    if (msg.type === 'transcript') {
+      if (typeof msg.q === 'string' && msg.q.trim()) {
+        send({ type: 'transcript', day: '', q: msg.q, days: transcriptDays(), turns: searchTranscripts(msg.q) })
+        return
+      }
+      const day = typeof msg.day === 'string' ? msg.day : new Date().toLocaleDateString('en-CA')
+      send({ type: 'transcript', day, days: transcriptDays(), turns: readTranscript(day) })
+      return
+    }
+
     // The review column: done, open again, snoozed, or looked at.
     if (msg.type === 'stratum') {
       if (msg.op === 'seen') markAllSeen()
-      else if (typeof msg.id === 'string') {
+      else if (msg.op === 'kept' && typeof msg.id === 'string') {
+        // "Kept it" on one of his promises: the ledger closes it, so it is
+        // not nudged again tomorrow, and the item is done.
+        const ref = findItem(msg.id)?.ref ?? ''
+        if (ref.startsWith('commitment:')) closeCommitment(ref.slice('commitment:'.length), 'done')
+        updateItem(msg.id, { state: 'done' })
+      } else if (typeof msg.id === 'string') {
         if (msg.op === 'done' || msg.op === 'open') updateItem(msg.id, { state: msg.op })
         if (msg.op === 'snooze') {
           const until = parseWhen(String(msg.when ?? ''))
@@ -2392,6 +2448,8 @@ wss.on('connection', (socket) => {
       return
     }
 
+    // "Start fresh": drop the conversation. Closing the socket makes the page
+    // reconnect, and the next connection opens a new session.
     if (msg.type === 'reset') {
       console.log('[jarvis] starting a fresh conversation')
       forgetSession()

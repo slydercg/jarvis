@@ -1,3 +1,5 @@
+import { DEFAULT_QUIET, type Quiet } from './quiet'
+
 /**
  * Preferences set in the settings panel that belong to this browser: which
  * engine speaks, and how long he listens after answering. Anything the bridge
@@ -24,15 +26,23 @@ export type Prefs = {
   followUpSeconds: number | null
   readMode: ReadMode
   textSize: TextSize
+  /** Quiet hours: nothing spoken or popped up (see quiet.ts). */
+  quiet: Quiet
 }
 
 const KEY = 'jarvis.prefs'
-const DEFAULTS: Prefs = { voiceEngine: 'auto', followUpSeconds: null, readMode: 'clear', textSize: 'normal' }
+const DEFAULTS: Prefs = {
+  voiceEngine: 'auto',
+  followUpSeconds: null,
+  readMode: 'clear',
+  textSize: 'normal',
+  quiet: DEFAULT_QUIET,
+}
 
 export function prefs(): Prefs {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Prefs>
-    return { ...DEFAULTS, ...saved }
+    return { ...DEFAULTS, ...saved, quiet: { ...DEFAULT_QUIET, ...(saved.quiet ?? {}) } }
   } catch {
     return DEFAULTS
   }

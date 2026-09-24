@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import { pick, until } from '../lib/today'
+import { prefs } from '../lib/prefs'
+import { quietUntil } from '../lib/quiet'
 import { COMMAND_EVENT } from './CommandBar'
 
 /**
@@ -18,6 +20,10 @@ export function NowStrip() {
   const stratum = useStore((s) => s.stratum)
   const setListOpen = useStore((s) => s.setStratumOpen)
   const listOpen = useStore((s) => s.stratumOpen)
+  // Quiet hours live in this browser's prefs, not the store. Reading this
+  // redraws the strip when Settings closes, so a change shows straight away
+  // rather than on the next tick.
+  useStore((s) => s.settingsOpen)
   const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
@@ -31,11 +37,21 @@ export function NowStrip() {
   const meeting = current ?? next
   const portfolio = today?.portfolio
   const focusUntil = focus.active && focus.until ? Date.parse(focus.until) : null
+  const quietEnd = quietUntil(prefs().quiet, new Date(now))
 
   const ask = (text: string) => window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: text }))
 
   return (
     <nav className="now-strip" aria-label="Right now">
+      {quietEnd ? (
+        <span
+          className="now-chip now-quiet-hours"
+          title={`Quiet until ${when(quietEnd, now)}: nothing is spoken; it all waits on your review list. Change it in Settings.`}
+        >
+          Quiet<span className="now-quiet-until"> until {when(quietEnd, now)}</span>
+        </span>
+      ) : null}
+
       {focusUntil ? (
         <span className="now-chip now-focus" title="Alerts are held except VIPs and meetings">
           <span className="now-dot" aria-hidden="true" />
@@ -85,4 +101,12 @@ export function NowStrip() {
 
 function clock(t: number): string {
   return new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+/** "7:00 AM", or "Mon 7:00 AM" when it is not today. */
+function when(t: number, now: number): string {
+  const d = new Date(t)
+  return d.toDateString() === new Date(now).toDateString()
+    ? clock(t)
+    : `${d.toLocaleDateString([], { weekday: 'short' })} ${clock(t)}`
 }

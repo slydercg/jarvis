@@ -6,9 +6,17 @@
   --interface: #00e5ff;
   --accent: var(--interface);
   --bg: #01060c;
-  /* Bright body text, and the one colour that means "needs you". */
   --ink: #e6f8ff;
+  /* Three colours carry meaning, and each means one thing everywhere:
+       --interface  cyan   information: what is, what's next, a link
+       --attention  amber  needs you: a decision, a reply, something unseen
+       --failure    red    something broke
+     Nothing else is drawn in amber or red, so either one on screen always
+     means the same. Now lines, highlights and hover states use ink or cyan.
+     The one exception is the camera's live dot (.hands-live), which keeps the
+     red of a recording light because everyone already reads it that way. */
   --attention: #ffb547;
+  --failure: #ff6b6b;
   font-family: 'Chakra Petch', system-ui, sans-serif;
   color-scheme: dark;
 }
@@ -176,8 +184,10 @@ body::after {
   width: 7px;
   height: 7px;
 }
-.rail-auth,
-.rail-failed { color: var(--attention); }
+/* Signed out asks him to sign in (amber); failed is broken (red). */
+.tick-failed { border-color: var(--failure); }
+.rail-auth { color: var(--attention); }
+.rail-failed { color: var(--failure); }
 .rail-pending { opacity: 0.7; }
 .rail-fix {
   margin-left: auto;
@@ -190,6 +200,7 @@ body::after {
   border-bottom: 1px solid color-mix(in srgb, var(--attention) 55%, transparent);
 }
 .rail-fix:hover { border-bottom-color: var(--attention); }
+.rail-failed .rail-fix { color: var(--failure); border-bottom: 0; }
 
 /* The phase, as words. The active one is bright, heavier and has a filled dot;
    the others stay readable but quiet. */
@@ -236,6 +247,9 @@ body::after {
 /* Proactive alerts, top right under the status line, clear of the right rail
    (which sits at mid-height) and of the confirmation card (top centre). */
 .alerts {
+  /* Pinned like .panel-default: a card is a record, and should not re-tint
+     blue, violet, green as the phase moves underneath it. */
+  --accent: var(--interface);
   position: absolute;
   top: 112px;
   right: 92px;
@@ -260,9 +274,11 @@ body::after {
   border-left: 2px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 6%, rgba(1, 8, 14, 0.88));
 }
+/* The kinds that need him, amber here as on the review list (Stratum.tsx). */
 .alert-mail,
-.alert-overdue,
-.alert-portfolio { border-left-color: var(--attention); }
+.alert-promise,
+.alert-portfolio,
+.alert-reminder { border-left-color: var(--attention); }
 .alerts-focus { color: var(--accent); }
 .alert-head {
   display: flex;
@@ -274,8 +290,9 @@ body::after {
 }
 .alert-kind { color: var(--accent); }
 .alert-mail .alert-kind,
-.alert-overdue .alert-kind,
-.alert-portfolio .alert-kind { color: var(--attention); }
+.alert-promise .alert-kind,
+.alert-portfolio .alert-kind,
+.alert-reminder .alert-kind { color: var(--attention); }
 .alert-when { opacity: 0.8; }
 .alert-dismiss {
   margin-left: auto;
@@ -531,7 +548,19 @@ body::after {
   text-shadow: 0 0 24px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
+.tool-step {
+  padding-left: 12px;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  opacity: 0.8;
+  max-width: 30vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 1100px) {
+  .tool-step { display: none; }
   .tool-name { font-size: 12px; letter-spacing: 0.18em; max-width: 60vw; }
   .tool-badge { top: 60px; }
 }
@@ -626,7 +655,7 @@ body::after {
 }
 
 .error {
-  color: #ff6b6b;
+  color: var(--failure);
   font-size: 12px;
   text-transform: none;
   letter-spacing: 0.04em;
@@ -656,6 +685,21 @@ kbd {
   padding: 1px 5px;
   font-size: 11px;
 }
+
+/* "H history · ? keys" in the hint line: clickable, but set as the hint is. */
+.hint-link {
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.hint-link:hover,
+.hint-link:focus-visible { color: var(--ink); outline: none; }
 
 /* ----------------------------------------------------------------- panels */
 
@@ -708,10 +752,10 @@ kbd {
    while every explicitly accented panel holds still. A panel is a record of a
    moment; it should stop changing colour once it has landed. */
 .panel-default { --accent: var(--interface); }
-.panel-amber  { --accent: #ffb547; }
+.panel-amber  { --accent: var(--attention); }
 .panel-violet { --accent: #c77dff; }
 .panel-green  { --accent: #5affc8; }
-.panel-red    { --accent: #ff6b6b; }
+.panel-red    { --accent: var(--failure); }
 
 .panel {
   position: relative;
@@ -1869,7 +1913,7 @@ kbd {
 .diag-k { color: #6d8886; }
 .diag-v { color: #cfe6e3; overflow-wrap: anywhere; }
 .diag-ok { color: #3ef2a8; }
-.diag-bad { color: #ff6b6b; }
+.diag-bad { color: var(--failure); }
 
 /* ------------------------------------------------------------------ blades */
 /*
@@ -2398,13 +2442,14 @@ kbd {
 
 .settings-hint { margin: 4px 0 8px; font-size: 12px; line-height: 1.5; opacity: 0.72; }
 .settings-ok { color: #6ff0b0; font-size: 12px; }
-.settings-warn-inline { color: var(--attention); font-size: 12px; }
+.settings-bad { color: var(--failure); font-size: 12px; }
+.settings-off { font-size: 12px; opacity: 0.72; }
 .settings-warn {
   margin: 8px 0 0;
   padding: 8px 10px;
   font-size: 12px;
-  color: var(--attention);
-  border: 1px solid color-mix(in srgb, var(--attention) 50%, transparent);
+  color: var(--failure);
+  border: 1px solid color-mix(in srgb, var(--failure) 50%, transparent);
 }
 
 .settings-reload {
@@ -2540,9 +2585,8 @@ kbd {
   overflow-wrap: anywhere;
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
-  color: var(--accent);
+  color: var(--interface);
 }
-.alert-portfolio .alert-key { color: var(--attention); }
 .alert-item-title { min-width: 0; overflow-wrap: anywhere; }
 .alert-item-meta {
   margin-top: 2px;
@@ -2563,7 +2607,7 @@ kbd {
 }
 .ticket-link:hover,
 .ticket-link:focus-visible { text-decoration-color: currentColor; }
-.bl-markup .ticket-link { color: var(--attention); }
+.bl-markup .ticket-link { color: var(--interface); }
 
 :root[data-read='clear'] .alert-item-meta { opacity: 0.9; font-family: var(--read-face); }
 :root[data-read='clear'] .alert-item-title { font-family: var(--read-face); }
@@ -2729,6 +2773,13 @@ kbd {
 }
 .stratum-acts button:hover { border-color: var(--interface); }
 .stratum-acts button.primary { color: var(--bg); background: var(--interface); border-color: var(--interface); }
+/* The keyboard's place in the list (L, then ↑ ↓ or J K). */
+.stratum-row:focus { outline: none; }
+.stratum-row:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--interface) 70%, transparent);
+  outline-offset: 3px;
+  background: color-mix(in srgb, var(--interface) 6%, transparent);
+}
 
 /* Room at the sides: the day timeline on the left, the review list on the
    right. The conversation and the blades centre in whatever is left, rather
@@ -2738,15 +2789,16 @@ kbd {
 :root[data-timeline='on'] { --reserve-l: 340px; --reserve-r: 150px; }
 @media (min-width: 1100px) {
   :root[data-stratum='open'] { --reserve-r: 424px; }
+  :root[data-history='open'] { --reserve-l: 484px; }
 }
-:root:root:is([data-timeline='on'], [data-stratum='open']) .lower {
+:root:root:is([data-timeline='on'], [data-stratum='open'], [data-history='open']) .lower {
   left: calc(var(--reserve-l) + (100vw - var(--reserve-l) - var(--reserve-r)) / 2);
   width: min(760px, calc(100vw - var(--reserve-l) - var(--reserve-r) - 56px));
 }
-:root:root[data-size='large']:is([data-timeline='on'], [data-stratum='open']) .lower {
+:root:root[data-size='large']:is([data-timeline='on'], [data-stratum='open'], [data-history='open']) .lower {
   width: min(920px, calc(100vw - var(--reserve-l) - var(--reserve-r) - 56px));
 }
-:root:root:is([data-timeline='on'], [data-stratum='open']) .blades-stack:not(.blades-stack-full) {
+:root:root:is([data-timeline='on'], [data-stratum='open'], [data-history='open']) .blades-stack:not(.blades-stack-full) {
   left: var(--reserve-l);
   right: var(--reserve-r);
 }
@@ -2809,6 +2861,7 @@ button.now-chip:hover { background: color-mix(in srgb, var(--interface) 10%, tra
 .now-review.has, .now-portfolio.has { color: var(--attention); }
 .now-review.unseen { font-weight: 600; }
 .now-focus { color: var(--interface); }
+.now-quiet-hours { color: var(--interface); opacity: 0.85; flex: 0 0 auto; }
 .now-dot {
   width: 7px;
   height: 7px;
@@ -2816,7 +2869,9 @@ button.now-chip:hover { background: color-mix(in srgb, var(--interface) 10%, tra
   background: var(--interface);
   box-shadow: 0 0 8px var(--interface);
 }
-@media (max-width: 1400px) { .now-portfolio { display: none; } }
+/* Short of room, the portfolio goes and quiet hours say only "Quiet" (the
+   time is in its tooltip), so the next meeting keeps its place. */
+@media (max-width: 1400px) { .now-portfolio, .now-quiet-until { display: none; } }
 @media (max-width: 1200px) { .now-strip { display: none; } }
 
 /* ------------------------------------------------------------ Day timeline */
@@ -2936,7 +2991,7 @@ button.now-chip:hover { background: color-mix(in srgb, var(--interface) 10%, tra
   left: -4px;
   right: 0;
   height: 0;
-  border-top: 1px solid var(--attention);
+  border-top: 1px solid var(--ink);
   z-index: 2;
   pointer-events: none;
 }
@@ -2948,7 +3003,7 @@ button.now-chip:hover { background: color-mix(in srgb, var(--interface) 10%, tra
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--attention);
+  background: var(--ink);
 }
 .timeline-now span {
   position: absolute;
@@ -2957,11 +3012,10 @@ button.now-chip:hover { background: color-mix(in srgb, var(--interface) 10%, tra
   width: 52px;
   text-align: right;
   white-space: nowrap;
-  font-size: 9.5px;
   background: var(--bg);
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
-  color: var(--attention);
+  color: var(--ink);
 }
 .timeline-empty { margin: 12px 0 0; font-size: 13px; opacity: 0.7; }
 
@@ -2969,3 +3023,249 @@ button.now-chip:hover { background: color-mix(in srgb, var(--interface) 10%, tra
 :root[data-read='clear'] :is(.now-when, .now-flag) { font-family: 'Chakra Petch', system-ui, sans-serif; }
 :root[data-size='large'] .now-chip { font-size: 15px; }
 :root[data-size='large'] .timeline-name { font-size: 13.5px; }
+
+/* ----------------------------------------------------------------- Actions
+   One-click next steps: on blades (the model offers them, bridge/panels.mjs),
+   on alert cards and on review rows (lib/actions.ts). A click asks Jarvis in
+   words, the same path as typing, so anything that sends or changes is still
+   confirmed. Outlined in the interface cyan: an action is an offer, not
+   something asking for him, and amber stays for that. */
+.bl-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+.alert-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.bl-action,
+.alert-act {
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--interface) 40%, transparent);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+.bl-action:hover,
+.alert-act:hover,
+.bl-action:focus-visible,
+.alert-act:focus-visible {
+  border-color: var(--interface);
+  background: color-mix(in srgb, var(--interface) 12%, transparent);
+  outline: none;
+}
+:root[data-size='large'] :is(.bl-action, .alert-act) { font-size: 14px; }
+
+/* ----------------------------------------------------------------- History
+   Everything said, a day at a time and searchable (ui/History.tsx). The
+   review list's twin on the left: the same glass and the same type. Who
+   spoke is carried by the rule down the left: ink for him, cyan for Jarvis,
+   dashed for an alert that came in. */
+.history {
+  position: fixed;
+  top: 96px;
+  left: 24px;
+  bottom: 140px;
+  z-index: 7;
+  width: min(460px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  color: var(--ink);
+  background: rgba(2, 9, 15, 0.95);
+  border: 1px solid color-mix(in srgb, var(--interface) 26%, transparent);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  text-transform: none;
+  letter-spacing: 0.01em;
+  pointer-events: auto;
+}
+.history-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 14px 12px 18px;
+  border-bottom: 1px solid color-mix(in srgb, var(--interface) 18%, transparent);
+}
+.history-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--interface);
+}
+.history-head .stratum-close { margin-left: 0; flex: 0 0 auto; }
+.history-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid color-mix(in srgb, var(--interface) 26%, transparent);
+  outline: none;
+}
+.history-search:focus { border-color: var(--interface); }
+/* Esc clears it instead: a second × beside the drawer's own read as "close". */
+.history-search::-webkit-search-cancel-button { display: none; }
+.history-search::placeholder { color: color-mix(in srgb, var(--ink) 45%, transparent); }
+.history-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 18px 2px;
+}
+.history-days button {
+  padding: 4px 9px;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--interface);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--interface) 22%, transparent);
+  cursor: pointer;
+}
+.history-days button:hover { border-color: color-mix(in srgb, var(--interface) 55%, transparent); }
+.history-days button.on { color: var(--bg); background: var(--interface); border-color: var(--interface); }
+.history-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 4px 18px 18px;
+}
+.history-turn {
+  margin-top: 10px;
+  padding: 8px 0 8px 12px;
+  border-left: 2px solid color-mix(in srgb, var(--interface) 55%, transparent);
+}
+.history-turn.role-user { border-left-color: color-mix(in srgb, var(--ink) 60%, transparent); }
+.history-turn.role-alert { border-left: 2px dashed color-mix(in srgb, var(--interface) 35%, transparent); }
+.history-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.history-who { color: var(--interface); }
+.role-user .history-who { color: var(--ink); opacity: 0.8; }
+.history-time { margin-left: auto; opacity: 0.6; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; }
+.history-text {
+  margin: 5px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.role-user .history-text { color: #ffffff; }
+.role-alert .history-text { font-size: 13px; opacity: 0.82; }
+/* A search hit: cyan, like any other highlight. */
+.history-text mark { padding: 0 2px; color: var(--bg); background: var(--interface); }
+.history-empty { margin: 18px; font-size: 14px; line-height: 1.5; opacity: 0.75; }
+
+:root[data-read='clear'] .history { font-family: var(--read-face); }
+:root[data-read='clear'] :is(.history-head h2, .history-meta, .history-days button) {
+  font-family: 'Chakra Petch', system-ui, sans-serif;
+}
+:root[data-size='large'] .history { width: min(520px, calc(100vw - 48px)); }
+:root[data-size='large'] .history-text { font-size: 16px; }
+:root[data-size='large'] .role-alert .history-text { font-size: 15px; }
+@media (min-width: 1100px) {
+  :root[data-size='large'][data-history='open'] { --reserve-l: 544px; }
+  :root[data-size='large'][data-stratum='open'] { --reserve-r: 484px; }
+}
+
+/* ------------------------------------------------------------- Keys sheet */
+.keys-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(1, 6, 12, 0.62);
+  backdrop-filter: blur(3px);
+  pointer-events: auto;
+}
+.keys {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 16px 22px 22px;
+  color: var(--ink);
+  background: rgba(2, 9, 15, 0.96);
+  border: 1px solid color-mix(in srgb, var(--interface) 30%, transparent);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+.keys-head { display: flex; align-items: center; }
+.keys-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--interface);
+}
+.keys-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 36px; }
+.keys-group h3 {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--interface);
+  opacity: 0.8;
+}
+.keys-group dl { margin: 0; }
+.keys-row {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-top: 1px solid color-mix(in srgb, var(--interface) 10%, transparent);
+}
+.keys-row dt { margin: 0; white-space: nowrap; }
+.keys-row dd { margin: 0; font-size: 13.5px; line-height: 1.4; }
+.keys kbd { color: var(--interface); white-space: pre; }
+@media (max-width: 640px) {
+  .keys-grid { grid-template-columns: 1fr; }
+}
+:root[data-read='clear'] .keys-row dd { font-family: var(--read-face); }
+:root[data-size='large'] .keys-row dd { font-size: 15px; }
+
+/* ------------------------------------------------------------ Quiet hours */
+.settings input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--interface);
+  cursor: pointer;
+}
+.settings-quiet .settings-seg { margin-left: auto; }
+.settings-quiet .settings-seg button { padding: 5px 14px; }
+.settings-quiet-times { flex-wrap: wrap; row-gap: 8px; }
+.settings-quiet-times select { flex: 1 1 90px; }
+.settings-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}

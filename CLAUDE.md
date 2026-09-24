@@ -16,6 +16,7 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 - Files are camelCase in `src/lib`, PascalCase components in `src/ui` and `src/scene`, and lowercase `.mjs` in `bridge/`.
 - All model-authored markup (panels, blades) must go through `src/ui/sanitise.ts`, which is the single allowlist. Don't render model HTML anywhere else.
 - All bridge outbound HTTP must go through `bridge/net.mjs` (the SSRF gate). Never call `fetch` directly on a model-chosen URL.
+- Colour carries meaning: amber (`--attention`) only for what needs him, red (`--failure`) only for what broke, cyan (`--interface`) for information. Don't use either of the first two for emphasis or decoration; the token comment at the top of `src/index.css` has the rule and its one exception.
 
 ## Testing
 
@@ -44,6 +45,8 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 | `bridge/chrome.mjs` | `jarvis_chrome`: drives the user's real Chrome through the extension's native host |
 | `bridge/vision.mjs` | `jarvis_eyes`: asks the page for a camera frame (request/reply) |
 | `bridge/alerts.mjs` / `briefing.mjs` | Separate long-lived and read-only agent sessions for proactive alerts and the daily brief |
+| `bridge/agent.mjs` / `steps.mjs` | `askReadOnly()`, the read-only session every background job uses; `steps.mjs` names tool calls in plain words for the tool badge and the `progress` frames a job sends as it goes |
+| `bridge/transcript.mjs` / `src/ui/History.tsx` | The conversation history: every question, answer and alert (`appendTurn` in `server.mjs`), a JSONL file a day in `~/.jarvis/transcripts`, pruned after `JARVIS_HISTORY_DAYS`; the drawer reads a day or searches all of them over the `transcript` frame |
 | `bridge/protective.mjs` | Protective M365 mail/calendar/To Do through Power Automate flow URLs, which are credentials kept in `~/.jarvis`, never in the repo |
 | `bridge/stratum.mjs` / `src/ui/Stratum.tsx` | The review list: every alert is kept (in `broadcastAlert`, before the focus gate) in `~/.jarvis/stratum.json` until done; snoozes and reminders wake on the minute clock; `jarvis_stratum` tools for the conversation |
 | `bridge/today.mjs` / `src/lib/today.ts` | Today for the now strip (`ui/NowStrip.tsx`) and day timeline (`ui/DayTimeline.tsx`): Protective straight from its flow, other calendars from the watcher's calendar check, merged and clash-marked; `src/lib/today.ts` is the pure pick/lane layout |
@@ -53,9 +56,9 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 | `bridge/settings.mjs` | Settings panel backend: writes the ElevenLabs key to `.env.local`, everything else to `~/.jarvis/settings.json` |
 | `src/App.tsx`, `src/store.ts` | Main loop wiring and zustand state |
 | `src/config.ts` | Every `import.meta.env` read. `VITE_BACKEND` = `bridge` (default) or `direct` (browser calls the API, `src/lib/anthropic.ts`) |
-| `src/lib/` | Voice loop (`voice.ts`, `vad.ts`, `echo.ts`, `wakeword.ts` + `oww*`), TTS (`tts.ts`, `kokoro.ts`), bridge client (`bridge.ts`, `brain.ts`), hands/camera |
+| `src/lib/` | Voice loop (`voice.ts`, `vad.ts`, `echo.ts`, `wakeword.ts` + `oww*`), TTS (`tts.ts`, `kokoro.ts`), bridge client (`bridge.ts`, `brain.ts`), hands/camera; pure and tested: `actions.ts` (each item's one-click next step), `quiet.ts` (quiet hours, checked in `App.tsx` before an alert is shown or said), `history.ts` |
 | `src/scene/` | Reactor (R3F + GLSL shaders) |
-| `src/ui/` | HUD overlays: panels, blades, confirm card, settings, diagnostics |
+| `src/ui/` | HUD overlays: panels, blades, confirm card, settings, diagnostics, the ? keys sheet (`KeysHelp.tsx`; keep it in step with the key handlers in `App.tsx`, `Blades.tsx`, `Stratum.tsx`, `Diagnostics.tsx`) |
 | `scripts/` | `start`, `setup`, `browser-doctor`, `autostart` (LaunchAgents), `update` (self-updater) |
 
 ## Conventions

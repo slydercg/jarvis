@@ -4,6 +4,7 @@ import { BRIDGE_HTTP_URL } from '../config'
 import { useStore } from '../store'
 import { probeCapabilities } from '../lib/capabilities'
 import { applyDisplay, prefs, setPrefs, type ReadMode, type TextSize, type VoiceEngine } from '../lib/prefs'
+import type { Quiet } from '../lib/quiet'
 import {
   currentVoiceName,
   previewVoice,
@@ -19,9 +20,9 @@ import { NAME } from '../lib/identity'
  * Opened with the gear at the bottom right or the comma key. Voice: which
  * engine speaks, the ElevenLabs key (checked with ElevenLabs before it is
  * saved, and never shown back), and which voice. Listening: how long he keeps
- * listening after an answer. Display: the Clear or Cinematic look and the
- * text size. About: which version is actually running, which
- * is the first question whenever a fix "didn't work".
+ * listening after an answer, and the quiet hours (lib/quiet.ts). Display: the
+ * Clear or Cinematic look and the text size. About: which version is actually
+ * running, which is the first question whenever a fix "didn't work".
  *
  * He stands down while this is open, so a preview is never heard as a question.
  */
@@ -81,6 +82,11 @@ export function Settings() {
     setReadMode(next.readMode)
     setTextSize(next.textSize)
     applyDisplay(next)
+  }
+  const [quiet, setQuiet] = useState<Quiet>(prefs().quiet)
+  const chooseQuiet = (patch: Partial<Quiet>) => {
+    const next = setPrefs({ quiet: { ...prefs().quiet, ...patch } })
+    setQuiet(next.quiet)
   }
   const [needsReload, setNeedsReload] = useState(false)
 
@@ -269,7 +275,7 @@ export function Settings() {
                 <div className="settings-block">
                   <div className="settings-row">
                     <span className="settings-label">ElevenLabs key</span>
-                    <span className={configured ? 'settings-ok' : 'settings-warn-inline'}>
+                    <span className={configured ? 'settings-ok' : 'settings-off'}>
                       {configured ? `connected · from ${bridge?.eleven.source}` : 'not set up'}
                     </span>
                   </div>
@@ -301,7 +307,7 @@ export function Settings() {
                     Voices (read). It's checked with ElevenLabs, then saved to .env.local on this Mac.
                   </p>
                   {keyMsg && (
-                    <p className={keyMsg.ok ? 'settings-ok' : 'settings-warn-inline'} role="status">
+                    <p className={keyMsg.ok ? 'settings-ok' : 'settings-bad'} role="status">
                       {keyMsg.text}
                     </p>
                   )}
@@ -394,6 +400,68 @@ export function Settings() {
                 <span className="settings-label">Wake word</span>
                 <span className="settings-value">{wakeWord}</span>
               </div>
+
+              <div className="settings-row settings-quiet">
+                <span className="settings-label" id="quiet-label">
+                  Quiet hours
+                </span>
+                <div className="settings-seg" role="radiogroup" aria-labelledby="quiet-label">
+                  {(
+                    [
+                      [false, 'Off'],
+                      [true, 'On'],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      role="radio"
+                      aria-checked={quiet.on === value}
+                      className={quiet.on === value ? 'on' : ''}
+                      onClick={() => chooseQuiet({ on: value })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {quiet.on && (
+                <div className="settings-row settings-pick settings-quiet-times">
+                  <label className="settings-label" htmlFor="quiet-from">
+                    From
+                  </label>
+                  <select id="quiet-from" value={quiet.from} onChange={(e) => chooseQuiet({ from: Number(e.target.value) })}>
+                    {HOURS.map((h) => (
+                      <option key={h} value={h}>
+                        {hourName(h)}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="settings-label" htmlFor="quiet-to">
+                    to
+                  </label>
+                  <select id="quiet-to" value={quiet.to} onChange={(e) => chooseQuiet({ to: Number(e.target.value) })}>
+                    {HOURS.map((h) => (
+                      <option key={h} value={h}>
+                        {hourName(h)}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="settings-check">
+                    <input
+                      type="checkbox"
+                      checked={quiet.weekends}
+                      onChange={(e) => chooseQuiet({ weekends: e.target.checked })}
+                    />
+                    All weekend
+                  </label>
+                </div>
+              )}
+              <p className="settings-hint">
+                {quiet.on
+                  ? 'Nothing is spoken and no card pops up; everything waits on your review list. Reminders you set, meetings about to start and VIP mail still come through.'
+                  : 'Alerts are spoken whenever they arrive.'}
+              </p>
             </section>
 
             <section aria-labelledby="set-display">
@@ -467,4 +535,12 @@ export function Settings() {
       )}
     </AnimatePresence>
   )
+}
+
+const HOURS = Array.from({ length: 24 }, (_, h) => h)
+
+function hourName(h: number): string {
+  const d = new Date()
+  d.setHours(h, 0, 0, 0)
+  return d.toLocaleTimeString([], { hour: 'numeric' })
 }

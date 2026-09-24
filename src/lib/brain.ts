@@ -45,6 +45,19 @@ export function watchAlerts(fn: (a: bridge.AlertFrame) => void): void {
   if (usingBridge) bridge.watchAlerts(fn)
 }
 
+/** A background job's steps, for the badge. Bridge mode only. */
+export function watchProgress(fn: (job: string, step: string | null) => void): void {
+  if (usingBridge) bridge.watchProgress(fn)
+}
+
+/** The kept conversation, a day at a time. Bridge mode only. */
+export function watchTranscript(fn: (t: bridge.TranscriptFrame) => void): void {
+  if (usingBridge) bridge.watchTranscript(fn)
+}
+export function requestTranscript(day?: string, q?: string): boolean {
+  return usingBridge ? bridge.requestTranscript(day, q) : false
+}
+
 /** Today's meetings and the portfolio's standing. Bridge mode only. */
 export function watchToday(fn: (t: bridge.TodayFrame) => void): void {
   if (usingBridge) bridge.watchToday(fn)
@@ -54,7 +67,7 @@ export function watchToday(fn: (t: bridge.TodayFrame) => void): void {
 export function watchStratum(fn: (items: bridge.StratumItem[]) => void): void {
   if (usingBridge) bridge.watchStratum(fn)
 }
-export function sendStratum(op: 'done' | 'open' | 'snooze' | 'seen', id?: string, when?: string): void {
+export function sendStratum(op: 'done' | 'open' | 'snooze' | 'seen' | 'kept', id?: string, when?: string): void {
   if (usingBridge) bridge.sendStratum(op, id, when)
 }
 

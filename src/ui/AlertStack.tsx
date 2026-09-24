@@ -4,6 +4,8 @@ import { useStore, type Alert } from '../store'
 import { LABELS } from './alertLabels'
 import type { AlertItem } from '../lib/bridge'
 import { isTicketLink } from '../lib/tickets'
+import { primaryAction } from '../lib/actions'
+import { COMMAND_EVENT } from './CommandBar'
 
 
 /**
@@ -88,6 +90,8 @@ export function AlertStack() {
             {a.items && a.items.length > 0 && (
               <AlertItems items={a.items} label={a.kind === 'digest' ? 'Held back' : 'Items'} />
             )}
+            {/* Last, so it reads: what it is, the detail, then what to do. */}
+            <CardAction alert={a} onDone={() => dismiss(a.id)} />
           </motion.div>
         ))}
       </AnimatePresence>
@@ -146,5 +150,30 @@ export function AlertItems({ items, label, limit }: { items: AlertItem[]; label:
         </button>
       )}
     </>
+  )
+}
+
+/**
+ * The card's one-click next step, when it has one that is a question for
+ * Jarvis ("Draft reply", "Prep me"). Operations such as "kept it" live on the
+ * review list, which knows which item they belong to.
+ */
+function CardAction({ alert, onDone }: { alert: Alert; onDone: () => void }) {
+  const act = primaryAction(alert)
+  if (!act?.ask) return null
+  return (
+    <div className="alert-acts">
+      <button
+        type="button"
+        className="alert-act"
+        title={`Asks: ${act.ask}`}
+        onClick={() => {
+          window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: act.ask }))
+          onDone()
+        }}
+      >
+        {act.label}
+      </button>
+    </div>
   )
 }

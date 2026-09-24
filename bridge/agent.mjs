@@ -2,6 +2,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import { protectiveServer, protectiveConfigured } from './protective.mjs'
 import { connectorDenylist } from './connectors.mjs'
 import { BACKGROUND_DISALLOWED } from './policy.mjs'
+import { describeStep } from './steps.mjs'
 
 /**
  * One read-only question to a separate agent session, answered in JSON.
@@ -13,10 +14,14 @@ import { BACKGROUND_DISALLOWED } from './policy.mjs'
  * own session so the conversation stays responsive while they work, and so a
  * slow one can be cached and reused.
  *
- *   deps      { mcpServers, isReadOnly, localNow, model } — see server.mjs
+ *   deps      { mcpServers, isReadOnly, localNow, model, onStep? } — see server.mjs
  *   system    the job's instructions; it must end by describing the JSON
  *   question  the one message sent
- *   label     for the log
+ *   label     for the log, and the job name its progress is reported under
+ *
+ * `onStep(label, phrase)` hears each step as the job takes it ("Checking
+ * Jira"), and `onStep(label, null)` once it is over, so the screen can show a
+ * job that takes a minute is moving rather than stuck.
  */
 export async function askReadOnly(deps, { system, question, label, maxTurns = 30, timeoutMs = 5 * 60_000, effort = 'medium' }) {
   const servers = { ...deps.mcpServers }
@@ -45,8 +50,23 @@ export async function askReadOnly(deps, { system, question, label, maxTurns = 30
   const timer = setTimeout(() => session.close?.(), timeoutMs)
   let result = ''
   let cost = 0
+  let lastStep = ''
+  const step = (phrase) => {
+    if (phrase === lastStep) return
+    lastStep = phrase
+    try {
+      deps.onStep?.(label, phrase)
+    } catch {
+      // Progress is a courtesy; it never stops the job.
+    }
+  }
   try {
     for await (const msg of session) {
+      if (msg.type === 'assistant') {
+        for (const block of msg.message?.content ?? msg.content ?? []) {
+          if (block?.type === 'tool_use') step(describeStep(block.name))
+        }
+      }
       if (msg.type === 'result') {
         result = msg.subtype === 'success' ? (msg.result ?? '') : ''
         cost = msg.total_cost_usd ?? 0
@@ -56,6 +76,7 @@ export async function askReadOnly(deps, { system, question, label, maxTurns = 30
   } finally {
     clearTimeout(timer)
     session.close?.()
+    step(null)
   }
   console.log(`[jarvis] ${label}: done ($${cost.toFixed(3)})`)
   return parseJson(result)
