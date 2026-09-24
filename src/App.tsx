@@ -44,6 +44,7 @@ import {
 import { startAnalyser, micLevel } from './lib/audio'
 import { probeCapabilities } from './lib/capabilities'
 import { env } from './config'
+import { yesOrNo } from './lib/confirm'
 
 /**
  * The conversation.
@@ -99,10 +100,6 @@ const LEADING_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}\\b[\\s,.:!?-
 /** Silence this long on a confirmation is a no. */
 const CONFIRM_TIMEOUT_MS = 45_000
 
-const YES =
-  /^(yes|yeah|yep|yup|sure|ok|okay|do it|go ahead|go for it|confirm(ed)?|proceed|send it|please do|affirmative|correct|absolutely|right)\b/i
-const NO =
-  /^(no|nope|nah|cancel|stop|undo|don'?t|do not|abort|wait|hold on|never ?mind|negative|scratch that)\b/i
 
 /** "Start fresh", "new conversation", "clear the chat", "start over". */
 const FRESH =
@@ -134,13 +131,6 @@ function alertLine(a: Alert): string {
   return `Sir, ${a.title} has written${subject ? ` about ${subject}` : ''}. It looks like it needs you.`
 }
 
-/** true, false, or null when the reply is neither. "No" wins a tie. */
-function yesOrNo(said: string): boolean | null {
-  const s = said.replace(/^[\s,.!?-]+/, '')
-  if (NO.test(s)) return false
-  if (YES.test(s)) return true
-  return null
-}
 
 /** Resolves once he has stopped talking, or after a few seconds regardless. */
 function afterSpeech(maxMs = 8000): Promise<void> {
@@ -431,11 +421,17 @@ export default function App() {
    * else, so "yes" confirms rather than starting a new turn — which would
    * interrupt the very turn that is waiting for it.
    */
-  const answerConfirm = (raw: string): boolean => {
+  const answerConfirm = (raw: string, spoken = false): boolean => {
     const pending = store.getState().confirm
     if (!pending) return false
     const said = raw.replace(LEADING_NAME, '').trim()
-    const verdict = yesOrNo(said)
+    const verdict = yesOrNo(said, spoken)
+    // Money is never moved on a voice alone: a misheard or overheard "yes"
+    // must not place an order. A spoken no still cancels it.
+    if (verdict === true && spoken && pending.money && pending.stage === 'ask') {
+      say('That one moves money, sir. Press yes on the screen, or type it.')
+      return true
+    }
     if (verdict === null) {
       // Not an answer. Asked again once per stray phrase, only while asking;
       // during the undo window anything but a "no" simply lets it run.
@@ -493,7 +489,7 @@ export default function App() {
   const onUtterance = (text: string) => {
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot' || phase === 'dormant') return
-    if (answerConfirm(text)) return
+    if (answerConfirm(text, true)) return
     if (startFresh(text)) return
     if (toggleAlerts(text)) return
 
@@ -637,7 +633,7 @@ export default function App() {
           sfx.play('listen')
           askTimer = window.setTimeout(() => finish(false), CONFIRM_TIMEOUT_MS)
           void afterSpeech().then(() => {
-            if (!settled) say(req.money ? 'This moves money, sir. Shall I proceed?' : 'Shall I proceed, sir?')
+            if (!settled) say(req.money ? 'This moves money, sir. Press yes on the screen if you want it.' : 'Shall I proceed, sir?')
           })
         }),
     )

@@ -84,3 +84,29 @@ test('the conversation loses the shell and file tools unless writes are on', () 
     assert.ok(on.includes(rule), rule)
   }
 })
+
+test('remember is free when he asked for it, and put to him when he did not', () => {
+  const remember = 'mcp__jarvis_memory__remember'
+  assert.equal(p.intentGate(remember, 'allow', 'Remember that I take my coffee black', DEFAULT), 'allow')
+  assert.equal(p.intentGate(remember, 'allow', "don't forget Sarah runs the NI programme", DEFAULT), 'allow')
+  // Said nothing about remembering: the note came from something he read.
+  assert.equal(p.intentGate(remember, 'allow', 'check my inbox', DEFAULT), 'confirm')
+  assert.equal(p.intentGate(remember, 'allow', 'yes', DEFAULT), 'confirm')
+  assert.equal(p.intentGate(remember, 'allow', 'check my inbox', NO_CONFIRM), 'deny')
+})
+
+test('a draft he did not ask for is shown to him before it is made', () => {
+  for (const draft of ['mcp__protective__protective_create_draft', 'mcp__claude_ai_Gmail__create_draft']) {
+    assert.equal(p.intentGate(draft, 'allow', 'draft a reply to Chris saying Thursday works', DEFAULT), 'allow', draft)
+    assert.equal(p.intentGate(draft, 'allow', 'email Sarah the notes', DEFAULT), 'allow', draft)
+    // "Yes" to a background alert's offer: the content came from the mail.
+    assert.equal(p.intentGate(draft, 'allow', 'yes', DEFAULT), 'confirm', draft)
+    assert.equal(p.intentGate(draft, 'allow', 'what is on my calendar', DEFAULT), 'confirm', draft)
+  }
+})
+
+test('the intent gate only ever tightens a verdict', () => {
+  assert.equal(p.intentGate('mcp__claude_ai_Gmail__send_message', 'confirm', 'send it', DEFAULT), 'confirm')
+  assert.equal(p.intentGate('mcp__claude_ai_Robinhood__place_equity_order', 'deny', 'remember to buy', DEFAULT), 'deny')
+  assert.equal(p.intentGate('mcp__claude_ai_Gmail__search_threads', 'allow', 'yes', DEFAULT), 'allow')
+})

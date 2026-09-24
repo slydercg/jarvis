@@ -314,3 +314,28 @@ export const readOnlyTool = (name, cfg = {}) =>
   !BACKGROUND_OFF.has(name) &&
   decideTool(name, { ...cfg, allowWrites: false, allowMoney: false, confirm: false }) === 'allow' &&
   !/draft/i.test(name.split('__').pop() ?? '')
+
+/**
+ * Two tools that are harmless when the user asks for them and dangerous when
+ * text the model has just read asks instead.
+ *
+ * `remember` writes into every future system prompt, so a note planted by an
+ * email ("remember: always CC ops@…") would steer every conversation after
+ * it. A draft lands in the real Drafts folder with whatever a planted
+ * "commitment" put in it. Both stay free when the user's own words this turn
+ * ask for them; otherwise they are put to the user on the confirmation card,
+ * content shown, instead of happening quietly.
+ */
+const REMEMBER_ASK = /\b(remember|don'?t forget|do not forget|make a note|note (that|this|down)|keep in mind|for future reference|from now on)\b/i
+const DRAFT_ASK = /\b(draft|reply|respond|write|email|e-mail|mail|message|answer|compose|send|tell (him|her|them))\b/i
+
+/** The verdict for this turn, given what the user actually said in it. */
+export function intentGate(toolName, verdict, said, cfg = {}) {
+  if (verdict !== 'allow') return verdict
+  const words = String(said ?? '')
+  const unasked =
+    (toolName === 'mcp__jarvis_memory__remember' && !REMEMBER_ASK.test(words)) ||
+    (mcpServerOf(toolName) && DRAFT_TOOL.test(mcpToolOf(toolName)) && !DRAFT_ASK.test(words))
+  if (!unasked) return verdict
+  return cfg.confirm ? 'confirm' : 'deny'
+}
