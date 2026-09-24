@@ -2287,9 +2287,15 @@ wss.on('connection', (socket) => {
             const total = Number(msg.total_cost_usd ?? 0)
             const turnCost = total >= sessionCost ? total - sessionCost : total
             sessionCost = total
+            // Cache figures too: each model keeps its own prompt cache, so the
+            // first turn on a model in a while re-sends the whole conversation
+            // at the write price. These say how often that happens in real use.
+            const k = (n) => `${((n ?? 0) / 1000).toFixed(1)}k`
             console.log(
               `[jarvis] turn ${msg.subtype === 'success' && !msg.is_error ? 'done' : 'ended'}` +
-                ` in ${((msg.duration_ms ?? 0) / 1000).toFixed(1)}s ($${turnCost.toFixed(3)})`,
+                ` in ${((msg.duration_ms ?? 0) / 1000).toFixed(1)}s ($${turnCost.toFixed(3)};` +
+                ` ${ROUTES[tier].model}/${ROUTES[tier].effort}, cache read ${k(msg.usage?.cache_read_input_tokens)},` +
+                ` written ${k(msg.usage?.cache_creation_input_tokens)})`,
             )
             // A result is not automatically a success. The error subtypes
             // carry no `result` field at all, so reporting them as 'done' with
