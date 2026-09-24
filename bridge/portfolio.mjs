@@ -113,6 +113,8 @@ export function getPulse(deps, { question, refresh = false } = {}) {
         `\nDashboards on this Mac: ${boards.length ? JSON.stringify(boards) : 'none found'}`,
       label: 'portfolio pulse',
       maxTurns: 25,
+      // Jira and Azure DevOps only; the Protective snapshot is not needed.
+      protectiveData: false,
     })
     if (!pulse?.summary) throw new Error('the portfolio pulse did not come back as expected')
     // Links are built here from known sites, never taken from the model.

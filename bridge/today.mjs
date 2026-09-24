@@ -1,5 +1,6 @@
 import { localDay, readJsonFile, writeJsonFile } from './days.mjs'
-import { protective, protectiveConfigured } from './protective.mjs'
+import { protectiveConfigured } from './protective.mjs'
+import { read } from './snapshot.mjs'
 
 /**
  * Today, for the screen: every meeting on every calendar, with clashes marked,
@@ -102,7 +103,9 @@ export async function refreshToday({ force = false } = {}) {
   if (!protectiveConfigured() || (!force && Date.now() - lastFetch < REFRESH_MS)) return
   lastFetch = Date.now()
   try {
-    const events = await protective.calendar('today')
+    // Shared with the watcher and the read-only jobs (snapshot.mjs).
+    const events = await read('calendar')
+    if (!events) return
     const next = events
       .filter((e) => !e.allDay && e.showAs !== 'free')
       .map((e) => event(e, 'Protective'))

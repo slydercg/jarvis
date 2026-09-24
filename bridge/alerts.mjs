@@ -5,6 +5,7 @@ import { learnSites, ticketUrl } from './tickets.mjs'
 import { connectorDenylist } from './connectors.mjs'
 import { BACKGROUND_DISALLOWED } from './policy.mjs'
 import { createStreaks, stuckAlert } from './health.mjs'
+import { asData, read, watcherEvent } from './snapshot.mjs'
 
 /**
  * Proactive alerts: a heads-up before a meeting, and a word when mail arrives
@@ -89,7 +90,28 @@ first (protective_get_calendar, protective_get_inbox) — it is the main one —
 Microsoft 365 / Outlook (the SCG account), then Gmail and Google Calendar. Search
 for tools with ToolSearch if they are not in front of you ("calendar", "gmail",
 "outlook", "granola", "jira"). If a source is not connected, answer as if it
-were empty. Never take any action that changes anything — you only read.`
+were empty. When a question says Protective is already known, do not call the
+protective tools for it. Never take any action that changes anything — you only read.`
+
+/** Same meeting on two calendars: same start (within a minute) and a matching title. */
+const sameMeeting = (a, b) => {
+  const t = (x) => String(x ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const ta = t(a.title)
+  const tb = t(b.title)
+  return Math.abs(Date.parse(a.start) - Date.parse(b.start)) <= 60_000 && Boolean(ta) && (ta === tb || ta.includes(tb) || tb.includes(ta))
+}
+
+/**
+ * The day's events: Protective from its flow, exactly, and the rest from the
+ * model — minus any that are the same meeting on a second calendar, which
+ * would otherwise schedule two heads-ups.
+ */
+export function mergeWatcherEvents(protectiveEvents, modelEvents) {
+  const others = (modelEvents ?? []).filter(
+    (e) => e && e.account !== 'Protective' && !protectiveEvents.some((p) => sameMeeting(p, e)),
+  )
+  return [...protectiveEvents, ...others]
+}
 
 export function alertsEnabled() {
   return ENABLED
@@ -250,18 +272,25 @@ export function startAlerts({
   const scheduled = new Map()
 
   async function checkCalendar() {
+    // Protective straight from its flow (shared with the timeline): exact, and
+    // no model turns spent fetching it. The model reads only the others.
+    const direct = await read('calendar')
+    const mine = direct ? direct.filter((e) => !e.allDay && e.showAs !== 'free').map(watcherEvent) : null
     const { text, spent } = await ask(
-      `It is ${localNow()}. List events on every calendar that start at any time today, ` +
+      `It is ${localNow()}. List events on ${mine ? 'the SCG (Microsoft 365 / Outlook) and Google calendars' : 'every calendar'} that start at any time today, ` +
         `or between now and ${HORIZON_MIN} minutes from now — earlier ones today included, ` +
         `for the day's timeline. Skip all-day events and events the user ` +
         `declined, and list a meeting that appears on two calendars once. Mark "focus": true ` +
         `on blocks he set aside for himself — Focus time, Heads down, Deep work, Do not book, ` +
-        `no other attendees and a title that says so. Answer exactly: ` +
+        `no other attendees and a title that says so. ` +
+        (mine ? 'Protective is already known: do not call protective_get_calendar and do not list Protective events. ' : '') +
+        `Answer exactly: ` +
         `{"events":[{"id":"...","title":"...","start":"<ISO 8601 with offset>","end":"<ISO 8601 with offset>",` +
         `"where":"<room, link or empty>","who":["<up to 8 attendee names or addresses>"],"focus":false,` +
-        `"account":"Protective|SCG|Google"}]}`,
+        `"account":"${mine ? 'SCG|Google' : 'Protective|SCG|Google'}"}]}`,
     )
-    const events = parseJson(text)?.events
+    const answered = parseJson(text)?.events
+    const events = Array.isArray(answered) && mine ? mergeWatcherEvents(mine, answered) : answered
     if (!Array.isArray(events)) {
       console.warn('[jarvis] alerts: the calendar check did not come back as expected')
       health.fail('calendar', 'no usable answer')
@@ -388,16 +417,27 @@ export function startAlerts({
   async function checkMail() {
     const since = mailSince
     mailSince = new Date()
+    // Protective's new mail fetched directly and handed over; the model reads
+    // only SCG and Gmail itself, then judges all of it together.
+    const box = await read('inbox', { maxAgeMs: 60_000 })
+    const newMail = box
+      ? box
+          .filter((m) => m.unread && Date.parse(m.received) >= since.getTime())
+          .map(({ id, from, subject, preview, received, importance }) => ({ id, from, subject, preview, received, importance }))
+      : null
     const { text, spent } = await ask(
       `It is ${localNow()}. Look at unread email received since ${since.toISOString()} ` +
-        'in every mailbox — Protective first, then SCG and Gmail. ' +
+        (newMail
+          ? 'in the SCG and Gmail mailboxes, and at the Protective mail given below (already fetched: do not call protective_get_inbox). '
+          : 'in every mailbox — Protective first, then SCG and Gmail. ') +
         'Pick only messages from a real person that need the user\'s attention or a reply ' +
         'soon: a direct question, a deadline today, something blocked on them. Never ' +
         'newsletters, notifications, receipts, marketing or automated mail. At most three. ' +
         `Mark "vip": true when the sender is one of these people — ${JSON.stringify(vips())} — or ` +
         'it is about a production incident, outage or security event. ' +
         'Answer exactly: {"emails":[{"id":"...","from":"<name>","subject":"...",' +
-        '"why":"<under ten words>","vip":false}]}',
+        '"why":"<under ten words>","vip":false}]}' +
+        (newMail ? asData(`Protective mail received since then (${newMail.length}).`, newMail) : ''),
     )
     const emails = parseJson(text)?.emails
     if (!Array.isArray(emails)) {
