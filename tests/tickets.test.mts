@@ -66,3 +66,12 @@ test('the page accepts every link the bridge builds, and nothing else', () => {
     assert.equal(isTicketLink(url), false, String(url))
   }
 })
+
+test('only an Outlook message link of the exact shape counts as a mail link', async () => {
+  const { isMailLink } = await import('../src/lib/tickets.ts')
+  assert.equal(isMailLink('https://outlook.office.com/mail/deeplink/read/AAMkAGI2TG93AAA%3D%2Fx'), true)
+  assert.equal(isMailLink('https://outlook.office.com/mail/deeplink/read/AAMk?redirect=evil.com'), false)
+  assert.equal(isMailLink('https://evil.com/mail/deeplink/read/AAMkAGI2TG93'), false)
+  assert.equal(isMailLink('http://outlook.office.com/mail/deeplink/read/AAMkAGI2TG93'), false)
+  assert.equal(isMailLink('https://outlook.office.com.evil.com/mail/deeplink/read/AAMkAGI2TG93'), false)
+})

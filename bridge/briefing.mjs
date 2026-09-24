@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import { JARVIS_HOME } from './memory.mjs'
 import { askReadOnly } from './agent.mjs'
 import { recordDay } from './days.mjs'
+import { protective, protectiveConfigured } from './protective.mjs'
+import { mailLink, matchMail } from './maillinks.mjs'
 
 /**
  * The brief: what needs doing today, ranked, from every mailbox and calendar.
@@ -102,6 +104,37 @@ function dayWord(d, now) {
 export function withSources(brief, now = new Date()) {
   const items = Array.isArray(brief?.items) ? brief.items : []
   return { ...brief, items: items.map((i) => ({ ...i, sourceLine: sourceLine(i, now) })) }
+}
+
+/**
+ * Give each Protective email item a link that opens it in Outlook, by finding
+ * its message in the inbox and flagged mail (flow calls, no model). A line
+ * that cannot be matched simply has no link. Failures leave the brief as it was.
+ */
+export async function withLinks(brief, lookup = protectiveMail) {
+  const items = Array.isArray(brief?.items) ? brief.items : []
+  if (!items.some((i) => i.account === 'Protective' && String(i.source ?? '').includes('email'))) return brief
+  let messages = []
+  try {
+    messages = await lookup()
+  } catch (err) {
+    console.warn(`[jarvis] brief links: ${err.message}`)
+    return brief
+  }
+  return {
+    ...brief,
+    items: items.map((i) => {
+      if (i.account !== 'Protective' || !String(i.source ?? '').includes('email')) return i
+      const link = mailLink(matchMail(i, messages)?.id)
+      return link ? { ...i, link } : i
+    }),
+  }
+}
+
+async function protectiveMail() {
+  if (!protectiveConfigured()) return []
+  const [inbox, flagged] = await Promise.all([protective.inbox(25), protective.flagged().catch(() => [])])
+  return [...inbox, ...flagged]
 }
 
 let cached = null
@@ -247,7 +280,7 @@ export function briefServer(deps) {
           try {
             const { brief, builtAt } = await getBrief(deps, { refresh: Boolean(refresh) })
             const age = Math.round((Date.now() - builtAt) / 60_000)
-            return { content: [{ type: 'text', text: JSON.stringify({ builtMinutesAgo: age, ...withSources(brief) }) }] }
+            return { content: [{ type: 'text', text: JSON.stringify({ builtMinutesAgo: age, ...(await withLinks(withSources(brief))) }) }] }
           } catch (err) {
             return {
               content: [{ type: 'text', text: `The brief could not be built: ${err.message}. Gather what you can directly.` }],
