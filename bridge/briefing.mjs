@@ -6,7 +6,7 @@ import { JARVIS_HOME } from './memory.mjs'
 import { askReadOnly } from './agent.mjs'
 import { recordDay } from './days.mjs'
 import { protective, protectiveConfigured } from './protective.mjs'
-import { mailLink, matchMail } from './maillinks.mjs'
+import { mailLink, matchMail, readerId } from './maillinks.mjs'
 
 /**
  * The brief: what needs doing today, ranked, from every mailbox and calendar.
@@ -55,7 +55,7 @@ Calendar: today's meetings across all calendars in local time, marking any overl
 
 Answer exactly:
 {"focus":"<one or two spoken sentences: the single most important thing first, then the next two>",
- "items":[{"priority":"now|soon|fyi","account":"Protective|SCG|Gmail","who":"<person or list>","action":"<verb phrase>","why":"<under 12 words>","source":"email|task|email+task","from":"<the sender's name as it appears on the email, or the To Do list for a task>","subject":"<the email subject or task title, exactly as written>","received":"<when the email arrived or the task was created, ISO 8601, if known>"}],
+ "items":[{"priority":"now|soon|fyi","account":"Protective|SCG|Gmail","who":"<person or list>","action":"<verb phrase>","why":"<under 12 words>","source":"email|task|email+task","from":"<the sender's name as it appears on the email, or the To Do list for a task>","subject":"<the email subject or task title, exactly as written>","received":"<when the email arrived or the task was created, ISO 8601, if known>","messageId":"<for an email, its id exactly as the mail tool returned it, character for character; leave out for a task>"}],
  "meetings":[{"time":"<h:mm am/pm>","title":"...","account":"Protective|SCG|Google","clash":false}],
  "sources":{"protective":"ok|<why not>","scg":"ok|<why not>","todo":"ok|<why not>","google":"ok|none"}}`
 
@@ -107,28 +107,33 @@ export function withSources(brief, now = new Date()) {
 }
 
 /**
- * Give each Protective email item a link that opens it in Outlook, by finding
- * its message in the inbox and flagged mail (flow calls, no model). A line
- * that cannot be matched simply has no link. Failures leave the brief as it was.
+ * Give each email item a link that opens it in Outlook.
+ *
+ * Protective: found in the inbox and flagged mail by subject (flow calls, no
+ * model), falling back to the id the brief recorded. SCG: the bridge cannot
+ * read that mailbox itself (it is a claude.ai connector), so the id the brief
+ * builder copied from the Outlook tool is used, if it has the shape of one.
+ * A line that cannot be matched simply has no link. Failures leave the brief
+ * as it was.
  */
 export async function withLinks(brief, lookup = protectiveMail) {
   const items = Array.isArray(brief?.items) ? brief.items : []
-  if (!items.some((i) => i.account === 'Protective' && String(i.source ?? '').includes('email'))) return brief
+  const email = (i) => String(i.source ?? '').includes('email')
   let messages = []
-  try {
-    messages = await lookup()
-  } catch (err) {
-    console.warn(`[jarvis] brief links: ${err.message}`)
-    return brief
+  if (items.some((i) => i.account === 'Protective' && email(i))) {
+    try {
+      messages = await lookup()
+    } catch (err) {
+      console.warn(`[jarvis] brief links: ${err.message}`)
+    }
   }
-  return {
-    ...brief,
-    items: items.map((i) => {
-      if (i.account !== 'Protective' || !String(i.source ?? '').includes('email')) return i
-      const link = mailLink(matchMail(i, messages)?.id)
-      return link ? { ...i, link } : i
-    }),
-  }
+  const linked = items.map((i) => {
+    if (!email(i) || (i.account !== 'Protective' && i.account !== 'SCG')) return i
+    const matched = i.account === 'Protective' ? matchMail(i, messages)?.id : null
+    const link = mailLink(matched ?? readerId(i.messageId))
+    return link ? { ...i, link } : i
+  })
+  return linked.some((i, n) => i !== items[n]) ? { ...brief, items: linked } : brief
 }
 
 async function protectiveMail() {

@@ -46,3 +46,27 @@ test('the brief gets links only on Protective email lines that match', async () 
   // A mailbox that cannot be read leaves the brief as it was.
   assert.equal(await withLinks(brief, async () => { throw new Error('down') }), brief)
 })
+
+const SCG_ID = 'AAMkAGEwOGU0MTY1LTVlOGMtNDg2ZS1iYjEzLTUwOWQwNmEzMTA0NABGAAAAAABfFpOGaWo_S4HMnNqnfe2GBwCfYuMRKYJsS5ug61qFIu-cAACBrOelAAA='
+
+test('an SCG email line links by the id the brief recorded, if it looks like one', async () => {
+  const brief = {
+    items: [
+      { account: 'SCG', source: 'email', subject: 'Scope', messageId: SCG_ID },
+      { account: 'SCG', source: 'email', subject: 'Scope', messageId: 'https://evil.example/x' },
+      { account: 'SCG', source: 'email', subject: 'Scope', messageId: 'AAMk-too-short' },
+      { account: 'SCG', source: 'task', subject: 'Scope', messageId: SCG_ID },
+      { account: 'Gmail', source: 'email', subject: 'Scope', messageId: SCG_ID },
+    ],
+  }
+  let looked = false
+  const out = await withLinks(brief, async () => { looked = true; return [] })
+  assert.deepEqual(out.items.map((i) => i.link ?? null), [mailLink(SCG_ID), null, null, null, null])
+  // No Protective lines, so the Protective mailbox is not read at all.
+  assert.equal(looked, false)
+})
+
+test('a Protective line falls back to its recorded id when no subject matches', async () => {
+  const out = await withLinks({ items: [{ account: 'Protective', source: 'email', subject: 'Gone', messageId: SCG_ID }] }, async () => [])
+  assert.equal(out.items[0].link, mailLink(SCG_ID))
+})

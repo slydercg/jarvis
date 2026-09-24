@@ -14,6 +14,16 @@ export function mailLink(id) {
   return `https://outlook.office.com/mail/deeplink/read/${encodeURIComponent(s)}`
 }
 
+/**
+ * An id the brief builder copied from the Outlook tool, only if it looks like
+ * an Exchange message id ("AAMk…", long, base64 characters). Anything else —
+ * a subject, a URL, a truncated copy — gives no link rather than a wrong one.
+ */
+export function readerId(id) {
+  const s = String(id ?? '').trim()
+  return /^AA[A-Za-z0-9+/=_-]{60,500}$/.test(s) ? s : null
+}
+
 /** "RE: Fwd: Q4 renewal" -> "q4 renewal". */
 export const plainSubject = (s) =>
   String(s ?? '')
