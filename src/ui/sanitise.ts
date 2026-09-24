@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify'
 import { BRIDGE_HTTP_URL } from '../config'
 import { isMailLink, isTicketLink } from '../lib/tickets'
+import { briefOps } from '../lib/brief'
 
 /**
  * The safety boundary for model-authored markup.
@@ -234,7 +235,12 @@ export function sanitisePanelHtml(html: string): string {
         'controls', 'poster', 'loop', 'muted', 'playsinline', 'preload',
         'width', 'height', 'allow', 'allowfullscreen', 'referrerpolicy',
         'type', 'title',
+        // A brief line's ref, judged by addBriefButtons below.
+        'data-brief',
       ],
+      // Only data-brief: every other data-* attribute is dropped, so markup
+      // can never carry one of the attributes the page acts on.
+      ALLOW_DATA_ATTR: false,
       // Attributes that are not URLs and must not be judged as if they were.
       //
       // DOMPurify tests ALLOWED_URI_REGEXP against the value of *every*
@@ -248,6 +254,7 @@ export function sanitisePanelHtml(html: string): string {
       ADD_URI_SAFE_ATTR: [
         'controls', 'loop', 'muted', 'playsinline', 'preload', 'width',
         'height', 'allow', 'allowfullscreen', 'referrerpolicy', 'type',
+        'data-brief',
       ],
       // http(s) is permitted here and then immediately taken away again:
       // rewriteMedia below turns every remote src into a bridge URL, so nothing
@@ -280,6 +287,7 @@ export function sanitisePanelHtml(html: string): string {
   // narrowClasses so a dropped element takes its classes with it.
   rewriteMedia(doc.body)
   keepTicketLinks(doc.body)
+  addBriefButtons(doc.body)
   rewriteEmbeds(doc.body)
   hardenMedia(doc.body)
   return doc.body.innerHTML
@@ -304,5 +312,35 @@ function keepTicketLinks(root: Element) {
     a.setAttribute('target', '_blank')
     a.setAttribute('rel', 'noopener noreferrer')
     a.classList.add(mail ? 'mail-link' : 'ticket-link')
+  })
+}
+
+/**
+ * The one-click buttons on a brief line (lib/brief.ts). data-brief survives
+ * only on a .hud-row and only as a well-formed ref; the buttons are made here,
+ * after sanitising, so the model can name a line but never write a control.
+ * Clicks are handled in ui/briefActions.ts.
+ */
+function addBriefButtons(root: Element) {
+  root.querySelectorAll('[data-brief]').forEach((el) => {
+    const ops = el.classList.contains('hud-row') ? briefOps(el.getAttribute('data-brief') ?? '') : []
+    if (!ops.length) {
+      el.removeAttribute('data-brief')
+      return
+    }
+    const bar = el.ownerDocument.createElement('span')
+    bar.className = 'brief-acts'
+    for (const { op, label, title } of ops) {
+      const b = el.ownerDocument.createElement('button')
+      b.type = 'button'
+      b.className = 'brief-act'
+      b.setAttribute('data-brief-op', op)
+      b.title = title
+      b.textContent = label
+      bar.append(b)
+    }
+    // Under the text when the row has a .hud-main column, else at its end.
+    const host = el.querySelector(':scope > .hud-main') ?? el
+    host.append(bar)
   })
 }

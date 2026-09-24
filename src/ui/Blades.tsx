@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useStore, type Blade } from '../store'
 import { BRIDGE_HTTP_URL } from '../config'
 import { sanitisePanelHtml } from './sanitise'
+import { onBriefClick } from './briefActions'
 import { frameSpan, peaceScroll, pinchCount } from '../lib/hands'
 import * as camera from '../lib/camera'
 import { COMMAND_EVENT } from './CommandBar'
@@ -228,6 +229,7 @@ const Body = memo(function Body({ blade }: { blade: Blade }) {
     return (
       <div
         className="bl-markup p-body"
+        onClick={onBriefClick}
         dangerouslySetInnerHTML={{ __html: sanitisePanelHtml(blade.html) }}
       />
     )

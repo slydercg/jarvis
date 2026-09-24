@@ -7,6 +7,7 @@ import { askReadOnly } from './agent.mjs'
 import { recordDay } from './days.mjs'
 import { hasFlow, protective, protectiveConfigured } from './protective.mjs'
 import { mailLink, matchMail, matchTask, plainSubject, readerId, todoLink } from './maillinks.mjs'
+import { addReminder, parseWhen } from './stratum.mjs'
 
 /**
  * The brief: what needs doing today, ranked, from every mailbox and calendar.
@@ -234,7 +235,10 @@ export async function serveBrief({ brief, builtAt }, sources = PROTECTIVE_SOURCE
   const items = Array.isArray(brief?.items) ? brief.items : []
   const got = await readForBrief(items, sources)
   const anchored = anchorTasks(items, got.tasks)
-  const served = tickDone(linkItems(withSources({ items: anchored }, now).items, got), { ...got, builtAt })
+  const served = tickDone(linkItems(withSources({ items: anchored }, now).items, got), { ...got, builtAt }).map((i, n) => ({
+    ...i,
+    ref: briefRef(builtAt, n, i),
+  }))
   const linkable = (i) => (isEmail(i) && (i.account === 'Protective' || i.account === 'SCG')) || (i.source === 'task' && i.account === 'Protective')
   const notes = []
   if (items.some((i) => i.account === 'Protective') && !protectiveConfigured()) {
@@ -259,6 +263,85 @@ export async function serveBrief({ brief, builtAt }, sources = PROTECTIVE_SOURCE
     notes,
   }
   return { brief: { ...brief, items: served }, anchored: anchored === items ? null : anchored, health }
+}
+
+/**
+ * A brief line's handle for the one-click buttons: which build of the brief,
+ * which line, and whether it is mail ("m", so it can be replied to) or a task
+ * ("t"). "k3f9-2m". The page checks the shape (src/lib/brief.ts) before it
+ * adds a button; the bridge checks the build before it acts, so a click on
+ * yesterday's panel, or one from before a rebuild, never acts on a different
+ * line.
+ */
+export const BRIEF_REF = /^([a-z0-9]{4})-([1-8])([mt])$/
+const stampOf = (builtAt) => Number(builtAt).toString(36).slice(-4)
+export const briefRef = (builtAt, n, item) => `${stampOf(builtAt)}-${n + 1}${isEmail(item) ? 'm' : 't'}`
+
+/**
+ * One click on a brief line:
+ * - "done": marked done on the brief (a finished line stays out of the three
+ *   he shows, as if To Do or a reply had said so);
+ * - "snooze": off today's brief, and back tomorrow at 9 as a reminder on the
+ *   review list;
+ * - "reply": the question to put to the conversation, so drafting passes the
+ *   same gates as asking for it out loud.
+ * Returns { ok, message } and, for reply, { ask }.
+ */
+let actionListeners = []
+/** Told when a line is marked done or moved, by a button or by voice, so every page shows it. */
+export function onBriefAction(fn) {
+  actionListeners.push(fn)
+  return () => (actionListeners = actionListeners.filter((l) => l !== fn))
+}
+
+export function briefAction(ref, op, now = new Date()) {
+  const m = BRIEF_REF.exec(String(ref ?? ''))
+  if (!m || !['done', 'snooze', 'reply'].includes(op)) return { ok: false, message: 'Not a brief line.' }
+  const entry = todaysBrief()
+  if (!entry || stampOf(entry.builtAt) !== m[1]) {
+    return { ok: false, message: 'That brief has been rebuilt. Ask for it again.' }
+  }
+  const items = Array.isArray(entry.brief?.items) ? entry.brief.items : []
+  const n = Number(m[2]) - 1
+  const item = items[n]
+  if (!item) return { ok: false, message: 'That line is no longer on the brief.' }
+  if (op === 'reply') {
+    if (!isEmail(item)) return { ok: false, message: 'That line is a task, not an email.' }
+    const to = String(item.from || item.who || 'them').trim()
+    const subject = String(item.subject ?? '').trim()
+    const account = item.account ? ` from my ${item.account} account` : ''
+    return { ok: true, message: 'Drafting a reply', ask: `Draft a reply to ${to}${subject ? ` about "${subject}"` : ''}${account}.` }
+  }
+  let done = 'marked done'
+  let message = 'Done'
+  if (op === 'snooze') {
+    const until = parseWhen('tomorrow', now)
+    addReminder({
+      title: String(item.action || item.subject || 'A line from the brief').slice(0, 200),
+      detail: [item.why, sourceLine(item, now)].filter(Boolean).join(' · '),
+      until,
+    })
+    done = 'moved to tomorrow'
+    message = 'Back tomorrow at 9'
+  }
+  const next = items.map((i, k) => (k === n ? { ...i, done } : i))
+  const updated = { ...entry, brief: { ...entry.brief, items: next } }
+  if (cached === entry || !cached) cached = updated
+  save({ last: updated })
+  for (const fn of actionListeners) {
+    try {
+      fn({ ref, op, ok: true, message })
+    } catch {
+      // A page that could not be told still catches up on the next brief.
+    }
+  }
+  return { ok: true, message }
+}
+
+/** The conversation's `update_brief_line`: "that one's done", "push it to tomorrow". */
+export async function updateBriefLine({ ref, action }) {
+  const r = briefAction(ref, action === 'tomorrow' ? 'snooze' : 'done')
+  return { content: [{ type: 'text', text: r.message }], ...(r.ok ? {} : { isError: true }) }
 }
 
 async function protectiveTasks() {
@@ -439,6 +522,14 @@ export function briefServer(deps) {
             }
           }
         },
+      ),
+      tool(
+        'update_brief_line',
+        "Mark a line of today's brief done, or move it to tomorrow (off today's brief, back on the review " +
+          'list as a reminder at 9am). By the item\'s ref from get_brief. Only when he says so: "that one\'s ' +
+          'done", "the VAS invoice is done", "push the SOW to tomorrow".',
+        { ref: z.string().max(16), action: z.enum(['done', 'tomorrow']) },
+        updateBriefLine,
       ),
     ],
   })
