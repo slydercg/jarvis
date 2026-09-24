@@ -26,7 +26,7 @@ delete process.env.JARVIS_CONNECTORS
 
 const { query } = await import('@anthropic-ai/claude-agent-sdk')
 const { SYSTEM_PROMPT } = await import('../bridge/prompt.mjs')
-const { conversationDisallowed, decideTool, intentGate } = await import('../bridge/policy.mjs')
+const { bringsContent, conversationDisallowed, decideTool, egressGate, intentGate, taskGate } = await import('../bridge/policy.mjs')
 const { memoryServer } = await import('../bridge/memory.mjs')
 const { displayServer } = await import('../bridge/panels.mjs')
 const { fakeProtective } = await import('./fake-protective.mjs')
@@ -53,6 +53,7 @@ async function runCase(c) {
   const { server: protective } = fakeProtective()
   const verdicts = new Map()
   const calls = []
+  let tainted = false
   const session = query({
     // The same shape the bridge sends: the local time, then what was said.
     prompt: `[${localNow()}]\n${c.say}`,
@@ -71,8 +72,10 @@ async function runCase(c) {
       effort: EFFORT,
       maxTurns: 12,
       permissionMode: 'default',
-      canUseTool: async (name) => {
-        const verdict = intentGate(name, decideTool(name, POLICY), c.say, POLICY)
+      canUseTool: async (name, input) => {
+        // The same gates as the bridge, in the same order (server.mjs).
+        const verdict = egressGate(name, taskGate(name, intentGate(name, decideTool(name, POLICY), c.say, POLICY), c.say), { tainted, input }, POLICY)
+        if (verdict !== 'deny' && bringsContent(name)) tainted = true
         verdicts.set(name, [...(verdicts.get(name) ?? []), verdict])
         if (verdict === 'allow') return { behavior: 'allow' }
         return {
@@ -88,7 +91,7 @@ async function runCase(c) {
   try {
     for await (const m of session) {
       if (m.type === 'assistant') {
-        for (const b of m.message?.content ?? []) if (b.type === 'tool_use') calls.push({ name: b.name })
+        for (const b of m.message?.content ?? []) if (b.type === 'tool_use') calls.push({ name: b.name, input: b.input })
       }
       if (m.type === 'result') {
         text = m.result ?? ''

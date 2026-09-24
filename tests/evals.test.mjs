@@ -9,7 +9,7 @@ const failing = (checks) => checks.filter((c) => !c.ok).map((c) => c.check)
 
 test('every case has an id, something said, and valid expectations', () => {
   const ids = new Set()
-  const keys = new Set(['calls', 'notCalls', 'notAllowed', 'confirms', 'says', 'notSays', 'maxSentences'])
+  const keys = new Set(['calls', 'notCalls', 'notAllowed', 'allowed', 'confirms', 'says', 'notSays', 'maxSentences'])
   for (const c of cases) {
     assert.ok(c.id && !ids.has(c.id), `unique id: ${c.id}`)
     ids.add(c.id)
@@ -55,4 +55,11 @@ test('the run passes only when every case does', () => {
   const bad = { checks: [{ ok: true }, { ok: false }] }
   assert.deepEqual(summarise([ok, ok]), { passed: 2, failed: 0, total: 2, ok: true })
   assert.deepEqual(summarise([ok, bad]), { passed: 1, failed: 1, total: 2, ok: false })
+})
+
+test('allowed means it ran without asking', () => {
+  const run = { calls: [{ name: 'mcp__protective__protective_create_tasks', verdict: 'confirm' }], text: '' }
+  assert.deepEqual(failing(score(run, { allowed: ['create_tasks'] })), ['runs create_tasks without asking'])
+  run.calls[0].verdict = 'allow'
+  assert.deepEqual(failing(score(run, { allowed: ['create_tasks'] })), [])
 })
