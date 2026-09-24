@@ -24,7 +24,7 @@ test('HTML gives up its title, visible text and embedded data, not its scripts',
 })
 
 test('reads a dashboard in the home folder, narrowed to the filter', async () => {
-  const dir = mkdtempSync(join(homedir(), '.jarvis-test-'))
+  const dir = mkdtempSync(join(homedir(), 'jarvis-test-'))
   try {
     mkdirSync(join(dir, 'APD Dashboard'))
     const file = join(dir, 'APD Dashboard', 'dash.html')
@@ -43,10 +43,23 @@ test('refuses files outside the home folder and non-document types', async () =>
   if (!outside.startsWith(homedir())) {
     await assert.rejects(readLocalPage({ location: outside }), /home folder/)
   }
-  const dir = mkdtempSync(join(homedir(), '.jarvis-test-'))
+  const dir = mkdtempSync(join(homedir(), 'jarvis-test-'))
   try {
     writeFileSync(join(dir, 'key.pem'), 'secret')
     await assert.rejects(readLocalPage({ location: join(dir, 'key.pem') }), /not read this way/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('refuses documents in hidden folders and Library, where credentials live', async () => {
+  const dir = mkdtempSync(join(homedir(), 'jarvis-test-'))
+  try {
+    mkdirSync(join(dir, '.secrets'))
+    writeFileSync(join(dir, '.secrets', 'flows.json'), '{"url":"https://example.com/x?sig=1"}')
+    await assert.rejects(readLocalPage({ location: join(dir, '.secrets', 'flows.json') }), /hidden folders/)
+    writeFileSync(join(dir, '.hidden.json'), '{}')
+    await assert.rejects(readLocalPage({ location: join(dir, '.hidden.json') }), /hidden folders/)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

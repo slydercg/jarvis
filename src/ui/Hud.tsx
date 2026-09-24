@@ -208,7 +208,9 @@ export function Hud() {
     // reactor rather than sit behind it. --bg is what html, body, #root and the
     // boot screen all pin themselves to.
     const root = document.documentElement
-    if (ui.background) root.style.setProperty('--bg', ui.background)
+    // Checked again here: --bg feeds the background shorthand, which would
+    // fetch a url(…). The bridge already only passes colours through.
+    if (ui.background && CSS.supports('color', ui.background)) root.style.setProperty('--bg', ui.background)
     else root.style.removeProperty('--bg')
   }, [ui.background])
 

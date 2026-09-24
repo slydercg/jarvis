@@ -1,6 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { protectiveServer, protectiveConfigured } from './protective.mjs'
 import { connectorDenylist } from './connectors.mjs'
+import { BACKGROUND_DISALLOWED } from './policy.mjs'
 
 /**
  * One read-only question to a separate agent session, answered in JSON.
@@ -27,7 +28,8 @@ export async function askReadOnly(deps, { system, question, label, maxTurns = 30
       systemPrompt: system,
       settingSources: [],
       strictMcpConfig: false,
-      disallowedTools: connectorDenylist(),
+      // No files, shell, web or subagents for a job reading unvetted mail.
+      disallowedTools: [...connectorDenylist(), ...BACKGROUND_DISALLOWED],
       model: deps.model,
       effort,
       maxTurns,

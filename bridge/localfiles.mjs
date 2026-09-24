@@ -121,6 +121,14 @@ export async function readLocalPage({ location, focus, maxChars = 30_000 }) {
     throw new Error(`there is no file at ${path.replace(homedir(), '~')}`)
   }
   if (real !== home && !real.startsWith(home + sep)) throw new Error('only files in your home folder can be read')
+  // Hidden folders and ~/Library are where credentials and app state live —
+  // ~/.jarvis's flow URLs, ~/.claude.json, ~/.aws, browser profiles — and a
+  // .json or .txt among them reads as a document. Nothing he needs to read
+  // for the user is kept there.
+  const parts = real.slice(home.length + 1).split(sep)
+  if (parts[0] === 'Library' || parts.some((p) => p.startsWith('.'))) {
+    throw new Error('files in hidden folders and Library are not read this way')
+  }
   const type = extname(real).toLowerCase()
   if (!TYPES.has(type)) throw new Error(`${type || 'that'} files are not read this way`)
   const info = await stat(real)
