@@ -26,7 +26,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # onnxruntime-node (pulled in by the on-device voice) downloads a ~450MB
+      # CUDA build from GitHub on Linux x64 during install. CI never runs it,
+      # and a GitHub hiccup there failed #42 before a single test ran. Macs are
+      # unaffected: the download is Linux-only.
       - run: npm ci --no-audit --no-fund
+        env:
+          ONNXRUNTIME_NODE_INSTALL_CUDA: skip
       - run: npm run lint
       - run: npm run build
       - run: npm test
