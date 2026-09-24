@@ -52,6 +52,7 @@ import { focusGate, focusServer, focusState, startFocus, vips } from './focus.mj
 import { portfolioServer } from './portfolio.mjs'
 import { maybeOfferReview, reviewServer } from './review.mjs'
 import { firstToday, inWindow } from './days.mjs'
+import { onToday, refreshToday, setPortfolio, setWatcherEvents, todayView } from './today.mjs'
 import {
   VERSION,
   checkElevenKey,
@@ -1835,6 +1836,10 @@ registerResolver('commitment', commitmentOpen)
 onStratumChange((items) => {
   for (const deliver of pages) deliver({ type: 'stratum', items })
 })
+// Today — the timeline and the now strip — to every page when it changes.
+onToday((today) => {
+  for (const deliver of pages) deliver({ type: 'today', today })
+})
 /** Asking for these is dealing with them: their "ready" item closes. */
 const CLOSES_KIND = {
   jarvis_brief__get_brief: 'brief',
@@ -1869,6 +1874,10 @@ function ensureWatcher() {
         // Already over.
       }
     },
+    // The whole day, every calendar, for the timeline; and the portfolio's
+    // standing, for the now strip.
+    onCalendar: setWatcherEvents,
+    onPortfolio: setPortfolio,
     model: FAST_MODEL,
     effort: FAST_EFFORT,
   })
@@ -1886,6 +1895,7 @@ const ALERT_DAYS = process.env.JARVIS_ALERT_WEEKENDS === 'on' ? 'every' : 'weekd
 setInterval(() => {
   focus.tick()
   if (!pages.size) return
+  void refreshToday()
   const deps = briefDeps()
   maybeOfferWrap(deps, broadcastAlert)
   maybeOfferReview(deps, broadcastAlert)
@@ -1964,6 +1974,8 @@ wss.on('connection', (socket) => {
   })
   send({ type: 'focus', focus: focusState() })
   send({ type: 'stratum', items: listStratum() })
+  send({ type: 'today', today: todayView() })
+  void refreshToday()
 
   /**
    * Which question the agent is currently answering.

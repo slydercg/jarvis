@@ -46,6 +46,32 @@ type Frame = {
   alert?: AlertFrame
   focus?: FocusFrame
   items?: StratumItem[]
+  today?: TodayFrame
+}
+
+/** One meeting on today's timeline (bridge/today.mjs). Times are Date.now() values. */
+export type TodayEvent = {
+  id: string
+  title: string
+  start: number
+  end: number
+  where: string
+  account: 'Protective' | 'SCG' | 'Google'
+  people: number
+  clash: boolean
+  focus?: boolean
+}
+
+/** Today: every meeting on every calendar, and the portfolio's standing. */
+export type TodayFrame = {
+  day: string
+  events: TodayEvent[]
+  portfolio: { blocked: number; behind: string[]; at: number } | null
+}
+
+let onToday: ((t: TodayFrame) => void) | null = null
+export function watchToday(fn: (t: TodayFrame) => void) {
+  onToday = fn
 }
 
 /** One entry in the review column (bridge/stratum.mjs). */
@@ -337,6 +363,8 @@ function dispatch(ws: WebSocket) {
       onFocus?.(msg.focus)
     } else if (msg.type === 'stratum' && Array.isArray(msg.items)) {
       onStratum?.(msg.items)
+    } else if (msg.type === 'today' && msg.today) {
+      onToday?.(msg.today)
     } else if (msg.type === 'history' && Array.isArray(msg.turns)) {
       onHistory?.(msg.turns)
     } else if (msg.type === 'confirm' && msg.id) {

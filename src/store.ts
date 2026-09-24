@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AlertItem, AlertKind, FocusFrame, StratumItem } from './lib/bridge'
+import type { AlertItem, AlertKind, FocusFrame, StratumItem, TodayFrame } from './lib/bridge'
 
 /** Where things stand before a meeting, gathered ahead of the heads-up. */
 export type MeetingPrep = { summary: string; points: string[] }
@@ -299,6 +299,10 @@ type State = {
   stratum: StratumItem[]
   /** Whether the column is open. Remembered per browser. */
   stratumOpen: boolean
+  /** Today's meetings and the portfolio's standing, for the strip and timeline. */
+  today: TodayFrame | null
+  /** The full list of connected systems, unfolded over the timeline. */
+  systemsOpen: boolean
   /** The settings panel is open. */
   settingsOpen: boolean
   /** Name of the speech-synthesis voice in use, shown in the HUD. */
@@ -348,6 +352,8 @@ type State = {
   setFocus: (focus: FocusFrame) => void
   setStratum: (items: StratumItem[]) => void
   setStratumOpen: (open: boolean) => void
+  setToday: (today: TodayFrame) => void
+  setSystemsOpen: (open: boolean) => void
   setSettingsOpen: (open: boolean) => void
   pushTurn: (t: Turn) => void
   /** Replace the transcript: a restored conversation, or a fresh start. */
@@ -379,6 +385,8 @@ export const useStore = create<State>((set) => ({
   alertsMuted: readMuted(),
   focus: { active: false },
   stratum: [],
+  today: null,
+  systemsOpen: false,
   stratumOpen: readStratumOpen(),
   settingsOpen: false,
   voice: '',
@@ -463,6 +471,8 @@ export const useStore = create<State>((set) => ({
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setFocus: (focus) => set({ focus }),
   setStratum: (stratum) => set({ stratum }),
+  setToday: (today) => set({ today }),
+  setSystemsOpen: (systemsOpen) => set({ systemsOpen }),
   setStratumOpen: (stratumOpen) => {
     try {
       localStorage.setItem(STRATUM_KEY, stratumOpen ? '1' : '0')

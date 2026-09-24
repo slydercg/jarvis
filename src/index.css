@@ -2730,11 +2730,25 @@ kbd {
 .stratum-acts button:hover { border-color: var(--interface); }
 .stratum-acts button.primary { color: var(--bg); background: var(--interface); border-color: var(--interface); }
 
-/* Room for the column: the conversation and the blades centre in what is
-   left, rather than sliding under it. */
+/* Room at the sides: the day timeline on the left, the review list on the
+   right. The conversation and the blades centre in whatever is left, rather
+   than sliding under either. Doubled :root for specificity over the text-size
+   and display-mode widths above, whose job this now is when a side is taken. */
+:root { --reserve-l: 0px; --reserve-r: 0px; }
+:root[data-timeline='on'] { --reserve-l: 340px; --reserve-r: 150px; }
 @media (min-width: 1100px) {
-  :root[data-stratum='open'] .lower { left: calc((100vw - 424px) / 2); }
-  :root[data-stratum='open'] .blades-stack:not(.blades-stack-full) { right: 424px; }
+  :root[data-stratum='open'] { --reserve-r: 424px; }
+}
+:root:root:is([data-timeline='on'], [data-stratum='open']) .lower {
+  left: calc(var(--reserve-l) + (100vw - var(--reserve-l) - var(--reserve-r)) / 2);
+  width: min(760px, calc(100vw - var(--reserve-l) - var(--reserve-r) - 56px));
+}
+:root:root[data-size='large']:is([data-timeline='on'], [data-stratum='open']) .lower {
+  width: min(920px, calc(100vw - var(--reserve-l) - var(--reserve-r) - 56px));
+}
+:root:root:is([data-timeline='on'], [data-stratum='open']) .blades-stack:not(.blades-stack-full) {
+  left: var(--reserve-l);
+  right: var(--reserve-r);
 }
 
 :root[data-read='clear'] .stratum { font-family: var(--read-face); }
@@ -2744,3 +2758,214 @@ kbd {
 :root[data-size='large'] .stratum { width: min(460px, calc(100vw - 48px)); }
 :root[data-size='large'] .stratum-title { font-size: 17px; }
 :root[data-size='large'] .stratum-detail { font-size: 15px; }
+
+/* --------------------------------------------------------------- Now strip
+   One line across the top: the next meeting, focus, the review count, the
+   portfolio. Centred between the wordmark and the status line. */
+.now-strip {
+  position: absolute;
+  top: 38px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* The wordmark takes about 420px on the left and the status line about
+     440px on the right; the strip keeps clear of both. */
+  max-width: calc(100vw - 940px);
+  display: flex;
+  align-items: stretch;
+  pointer-events: auto;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  background: rgba(2, 9, 15, 0.9);
+  border: 1px solid color-mix(in srgb, var(--interface) 26%, transparent);
+}
+.now-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--interface) 18%, transparent);
+}
+.now-chip:first-child { border-left: 0; }
+button.now-chip { cursor: pointer; }
+button.now-chip:hover { background: color-mix(in srgb, var(--interface) 10%, transparent); }
+.now-when {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--interface);
+}
+.now-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.now-meeting { flex: 1 1 auto; }
+.now-flag, .now-meeting.clash .now-when { color: var(--attention); }
+.now-flag { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; }
+.now-quiet { opacity: 0.7; }
+.now-review.has, .now-portfolio.has { color: var(--attention); }
+.now-review.unseen { font-weight: 600; }
+.now-focus { color: var(--interface); }
+.now-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--interface);
+  box-shadow: 0 0 8px var(--interface);
+}
+@media (max-width: 1400px) { .now-portfolio { display: none; } }
+@media (max-width: 1200px) { .now-strip { display: none; } }
+
+/* ------------------------------------------------------------ Day timeline */
+.rail-left.rail-folded {
+  top: 132px;
+  transform: none;
+  flex-wrap: nowrap;
+}
+.rail-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.34em;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.rail-caret { margin-left: 10px; letter-spacing: 0; }
+
+.timeline {
+  position: absolute;
+  left: 92px;
+  top: 170px;
+  bottom: 190px;
+  width: 250px;
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+.timeline-head { display: flex; align-items: baseline; gap: 10px; }
+.timeline-title {
+  font-size: 11px;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--interface);
+}
+.timeline-date { font-size: 12px; opacity: 0.75; }
+.timeline-legend { display: flex; gap: 12px; margin: 8px 0 10px; font-size: 11px; opacity: 0.85; }
+.timeline-key::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  background: var(--acct);
+}
+.timeline-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 120px;
+  border-left: 1px solid color-mix(in srgb, var(--interface) 22%, transparent);
+  margin-left: 40px;
+}
+.timeline-hour {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid color-mix(in srgb, var(--interface) 9%, transparent);
+}
+.timeline-hour span {
+  position: absolute;
+  left: -46px;
+  top: -8px;
+  width: 38px;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  color: var(--interface);
+  opacity: 0.6;
+}
+.acct-protective { --acct: var(--interface); }
+.acct-scg { --acct: #c77dff; }
+.acct-google { --acct: #5affc8; }
+.timeline-event {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  overflow: hidden;
+  min-height: 18px;
+  padding: 2px 6px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--acct) 16%, rgba(2, 9, 15, 0.92));
+  border: 0;
+  border-left: 2px solid var(--acct);
+  cursor: pointer;
+}
+.timeline-event:hover { background: color-mix(in srgb, var(--acct) 28%, rgba(2, 9, 15, 0.92)); }
+.timeline-event.clash { outline: 1px solid var(--attention); outline-offset: -1px; }
+.timeline-event.past { opacity: 0.45; }
+.timeline-event.current { background: color-mix(in srgb, var(--acct) 34%, rgba(2, 9, 15, 0.9)); }
+.timeline-event.focus {
+  cursor: default;
+  background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--acct) 12%, transparent) 6px 12px);
+}
+.timeline-time { font-family: 'JetBrains Mono', monospace; font-size: 10px; opacity: 0.8; }
+.timeline-name {
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.timeline-now {
+  position: absolute;
+  left: -4px;
+  right: 0;
+  height: 0;
+  border-top: 1px solid var(--attention);
+  z-index: 2;
+  pointer-events: none;
+}
+.timeline-now::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: -4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--attention);
+}
+.timeline-now span {
+  position: absolute;
+  left: -58px;
+  top: -7px;
+  width: 52px;
+  text-align: right;
+  white-space: nowrap;
+  font-size: 9.5px;
+  background: var(--bg);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--attention);
+}
+.timeline-empty { margin: 12px 0 0; font-size: 13px; opacity: 0.7; }
+
+:root[data-read='clear'] :is(.now-chip, .timeline-name, .timeline-date) { font-family: var(--read-face); }
+:root[data-read='clear'] :is(.now-when, .now-flag) { font-family: 'Chakra Petch', system-ui, sans-serif; }
+:root[data-size='large'] .now-chip { font-size: 15px; }
+:root[data-size='large'] .timeline-name { font-size: 13.5px; }

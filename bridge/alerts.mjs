@@ -115,6 +115,8 @@ function parseJson(text) {
  *   localNow    () => string — "Tuesday, 23 September 2026, 4:41 pm (Zone)"
  *   vips        () => string[] — people whose mail gets through focus
  *   onFocusBlock (title, startMs, endMs) => void — a focus block on the calendar
+ *   onCalendar  (events) => void — the whole day, every calendar, for the timeline
+ *   onPortfolio ({ blocked, behind }) => void — the portfolio's standing
  *   model, effort
  */
 export function startAlerts({
@@ -125,6 +127,8 @@ export function startAlerts({
   localNow,
   vips = () => [],
   onFocusBlock = () => {},
+  onCalendar = () => {},
+  onPortfolio = () => {},
   model,
   effort,
 }) {
@@ -210,19 +214,22 @@ export function startAlerts({
 
   async function checkCalendar() {
     const { text, spent } = await ask(
-      `It is ${localNow()}. List events on every calendar that start between now and ` +
-        `${HORIZON_MIN} minutes from now. Skip all-day events and events the user ` +
+      `It is ${localNow()}. List events on every calendar that start at any time today, ` +
+        `or between now and ${HORIZON_MIN} minutes from now — earlier ones today included, ` +
+        `for the day's timeline. Skip all-day events and events the user ` +
         `declined, and list a meeting that appears on two calendars once. Mark "focus": true ` +
         `on blocks he set aside for himself — Focus time, Heads down, Deep work, Do not book, ` +
         `no other attendees and a title that says so. Answer exactly: ` +
         `{"events":[{"id":"...","title":"...","start":"<ISO 8601 with offset>","end":"<ISO 8601 with offset>",` +
-        `"where":"<room, link or empty>","who":["<up to 8 attendee names or addresses>"],"focus":false}]}`,
+        `"where":"<room, link or empty>","who":["<up to 8 attendee names or addresses>"],"focus":false,` +
+        `"account":"Protective|SCG|Google"}]}`,
     )
     const events = parseJson(text)?.events
     if (!Array.isArray(events)) {
       console.warn('[jarvis] alerts: the calendar check did not come back as expected')
       return
     }
+    onCalendar(events)
     let added = 0
     for (const e of events) {
       const start = Date.parse(e?.start)
@@ -387,6 +394,12 @@ export function startAlerts({
       return
     }
     if (r.sites) learnSites(r.sites)
+    onPortfolio({
+      blocked: Array.isArray(r.blocked) ? r.blocked.length : 0,
+      behind: (Array.isArray(r.sprints) ? r.sprints : [])
+        .filter((sp) => (sprintSlip(sp) ?? 0) >= SLIP_PCT)
+        .map((sp) => String(sp.name)),
+    })
     const seen = readJsonFile(PORTFOLIO_SEEN, { blocked: {}, slipping: {} })
     const today = new Date().toLocaleDateString('en-CA')
     const fresh = (Array.isArray(r.blocked) ? r.blocked : []).filter((b) => b?.key && !seen.blocked[b.key])
