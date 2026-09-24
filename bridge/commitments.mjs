@@ -36,8 +36,37 @@ export function readLedger() {
   }
 }
 
+/**
+ * How long a promise someone else made stays open with nothing heard. Scans
+ * add what they find and close only what they see kept, so a "they'll send
+ * it" that quietly happened, or never will, used to sit on the ledger for
+ * ever and ride along into every prep and wrap. Theirs with no date are let
+ * go after this many days; theirs with a date, this many days past it. His
+ * own promises are never retired for him.
+ */
+const EXPIRE_DAYS = Number(process.env.JARVIS_COMMIT_EXPIRE_DAYS ?? 21)
+const LATE_DAYS = 14
+
+/** Marks stale promises from others as expired. Returns how many. */
+export function expireStale(ledger, now = new Date()) {
+  if (!(EXPIRE_DAYS > 0)) return 0
+  const cutoff = localDay(new Date(now.getTime() - EXPIRE_DAYS * 86_400_000))
+  let n = 0
+  for (const i of ledger.items) {
+    if (i.status !== 'open' || i.direction !== 'theirs') continue
+    const late = i.due ? daysUntil(i.due, now) < -LATE_DAYS : (i.since ?? '') < cutoff
+    if (!late) continue
+    i.status = 'expired'
+    i.closed = localDay(now)
+    n++
+  }
+  return n
+}
+
 function writeLedger(ledger) {
   mkdirSync(JARVIS_HOME, { recursive: true })
+  const expired = expireStale(ledger)
+  if (expired) console.log(`[jarvis] commitments: ${expired} stale promise${expired === 1 ? '' : 's'} from others let go`)
   // Kept items are kept for a month, then let go.
   const cutoff = localDay(new Date(Date.now() - 30 * 86_400_000))
   ledger.items = ledger.items.filter((i) => i.status === 'open' || (i.closed ?? i.since) >= cutoff)
@@ -116,13 +145,27 @@ export function daysUntil(due, now = new Date()) {
   return Math.round((b - a) / 86_400_000)
 }
 
+/**
+ * Whether two ways of naming someone are the same person, by whole words:
+ * every word of the shorter is a word of the longer. "Chris" matches "Chris
+ * Smith" and "chris.smith@x.com", and no longer matches "Christine" — which
+ * substring matching did, putting the wrong promises into meeting prep.
+ */
+export function samePerson(a, b) {
+  const wa = norm(a).split(' ').filter(Boolean)
+  const wb = norm(b).split(' ').filter(Boolean)
+  if (!wa.length || !wb.length) return false
+  const [small, big] = wa.length <= wb.length ? [wa, new Set(wb)] : [wb, new Set(wa)]
+  return small.every((w) => big.has(w))
+}
+
 /** Open items, soonest due first, each with daysLeft. Optionally one person. */
 export function openCommitments({ who, direction } = {}) {
   const w = norm(who)
   return readLedger()
     .items.filter((i) => i.status === 'open')
     .filter((i) => !direction || i.direction === direction)
-    .filter((i) => !w || norm(i.who).includes(w) || w.includes(norm(i.who)))
+    .filter((i) => !w || samePerson(i.who, w))
     .map((i) => ({ ...i, daysLeft: daysUntil(i.due) }))
     .sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'))
 }
@@ -132,10 +175,7 @@ export function commitmentsWith(people) {
   const names = people.map(norm).filter(Boolean)
   // "Chris Smith <chris.smith@x.com>" should match "Chris": compare first names too.
   const keys = new Set(names.flatMap((n) => [n, n.split(' ')[0]]).filter((n) => n.length > 2))
-  return openCommitments().filter((i) => {
-    const w = norm(i.who)
-    return [...keys].some((k) => w.includes(k) || k.includes(w))
-  })
+  return openCommitments().filter((i) => [...keys].some((k) => samePerson(i.who, k)))
 }
 
 // ---------------------------------------------------------------------------
