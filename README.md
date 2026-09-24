@@ -456,12 +456,17 @@ sent-mail flow).
     "Yes" saves the draft.
   - You can tell him directly: "I told Chris I'd send the roadmap by Friday",
     "what do I owe Chris?", "who owes me what?", "that's done".
+  - **Unanswered asks.** A question or request you sent that has had no reply
+    is kept too, with the day you asked. After three working days he says
+    "Chris hasn't replied to your Tuesday ask — the Q4 numbers. Shall I draft
+    a nudge?", then again every three working days until they answer or it is
+    let go. `JARVIS_CHASE_DAYS` changes the wait (0 turns chasing off).
   - `JARVIS_COMMITMENTS=off` turns the ledger's scans and nudges off.
 - **Protective sent mail (optional).** Promises you made by email at SCG are
   read through the Microsoft 365 connector. For Protective, add a
   `"sent_email"` flow to `~/.jarvis/power-automate.json`: a copy of the Inbox
   flow pointed at Sent Items. Without it, Protective promises are still picked
-  up from meeting notes.
+  up from meeting notes, but unanswered asks can only be found at SCG and Gmail.
 
 ## Now strip and day timeline
 
