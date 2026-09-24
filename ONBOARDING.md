@@ -60,7 +60,7 @@ Everything it remembers lives in `~/.jarvis`.
 | `localfiles.mjs` | Reads `file://` reports and dashboards in the home folder |
 | `stratum.mjs` | The review list: every alert is kept until it's dealt with, plus snoozes and reminders. The page draws it in `ui/Stratum.tsx` |
 | `today.mjs` | Today's meetings from every calendar, merged and clash-marked, plus the portfolio's standing, for the now strip and day timeline |
-| `tickets.mjs`, `maillinks.mjs` | Turns Jira keys and Azure DevOps ids into links, only to your own sites, and matches a brief line to its Protective email for an Outlook link. `src/lib/tickets.ts` is the page's own check, and those are the only links the interface shows |
+| `tickets.mjs`, `maillinks.mjs` | Turns Jira keys and Azure DevOps ids into links, only to your own sites, and matches a brief line to its Protective email (or To Do task) for an Outlook (or To Do) link. `src/lib/tickets.ts` is the page's own check, and those are the only links the interface shows |
 | `panels.mjs`, `ui.mjs`, `page.mjs`, `vision.mjs` | Blades and markup, interface controls, reader mode, the camera |
 | `settings.mjs`, `env.mjs`, `net.mjs` | The ElevenLabs key and voice, `.env.local`, URL probing |
 

@@ -180,7 +180,7 @@ or how the day looks:
   ("Prior-year unreported contracts · Protective mail · Jane Doe · Tue"), so
   he can always see whose email or which list a line came from. When an item
   has a link, wrap its .hud-label text in <a href="…"> with exactly that link,
-  so a click opens the email in Outlook. Never write a link an item does not
+  so a click opens the email in Outlook (or the task in To Do). Never write a link an item does not
   carry.
 - "Where did that come from?", "what's the VAS invoice?", "read me that one":
   use the item's account and subject to find the email itself (Protective

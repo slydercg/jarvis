@@ -24,6 +24,20 @@ export function readerId(id) {
   return /^AA[A-Za-z0-9+/=_-]{60,500}$/.test(s) ? s : null
 }
 
+/** A To Do web link for one task id, or null for anything id-shaped wrong. */
+export function todoLink(id) {
+  const s = String(id ?? '')
+  if (!/^[A-Za-z0-9+/=_-]{8,512}$/.test(s)) return null
+  return `https://to-do.office.com/tasks/id/${encodeURIComponent(s)}/details`
+}
+
+/** The To Do task a brief line came from: same title, ignoring RE:/FW:. */
+export function matchTask(item, tasks) {
+  const want = plainSubject(item?.subject)
+  if (!want) return null
+  return (tasks ?? []).find((t) => plainSubject(t?.title) === want) ?? null
+}
+
 /** "RE: Fwd: Q4 renewal" -> "q4 renewal". */
 export const plainSubject = (s) =>
   String(s ?? '')

@@ -18,11 +18,13 @@ export function isTicketLink(url: unknown): url is string {
 }
 
 /**
- * An email opened in Outlook on the web, as bridge/maillinks.mjs builds it for
- * the brief: this host, this path, an encoded message id and nothing else.
+ * An email opened in Outlook on the web, or a task in To Do on the web, as
+ * bridge/maillinks.mjs builds them for the brief: these hosts, these paths, an
+ * encoded id and nothing else.
  */
 const MAIL_LINK = /^https:\/\/outlook\.office\.com\/mail\/deeplink\/read\/[A-Za-z0-9%._-]{8,1600}$/
+const TODO_LINK = /^https:\/\/to-do\.office\.com\/tasks\/id\/[A-Za-z0-9%._-]{8,1600}\/details$/
 
 export function isMailLink(url: unknown): url is string {
-  return typeof url === 'string' && MAIL_LINK.test(url)
+  return typeof url === 'string' && (MAIL_LINK.test(url) || TODO_LINK.test(url))
 }
