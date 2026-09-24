@@ -23,7 +23,7 @@ export function isTicketLink(url: unknown): url is string {
  * encoded id and nothing else.
  */
 const MAIL_LINK = /^https:\/\/outlook\.office\.com\/mail\/deeplink\/read\/[A-Za-z0-9%._-]{8,1600}$/
-const TODO_LINK = /^https:\/\/to-do\.office\.com\/tasks\/id\/[A-Za-z0-9%._-]{8,1600}\/details$/
+const TODO_LINK = /^https:\/\/to-do\.office\.com\/tasks\/[A-Za-z0-9%._=-]{8,1600}\/details$/
 
 export function isMailLink(url: unknown): url is string {
   return typeof url === 'string' && (MAIL_LINK.test(url) || TODO_LINK.test(url))
