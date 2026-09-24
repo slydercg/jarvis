@@ -22,12 +22,15 @@ import { fileURLToPath } from 'node:url'
 process.env.JARVIS_HOME = mkdtempSync(join(tmpdir(), 'jarvis-eval-'))
 process.env.JARVIS_PA_ENDPOINTS = join(process.env.JARVIS_HOME, 'none.json')
 process.env.ENABLE_CLAUDEAI_MCP_SERVERS = '0'
+// A small people book, as the calendar and he would have filled it.
+writeFileSync(join(process.env.JARVIS_HOME, 'people.json'), readFileSync(new URL('./people.json', import.meta.url)))
 delete process.env.JARVIS_CONNECTORS
 
 const { query } = await import('@anthropic-ai/claude-agent-sdk')
 const { SYSTEM_PROMPT } = await import('../bridge/prompt.mjs')
-const { conversationDisallowed, decideTool, intentGate } = await import('../bridge/policy.mjs')
+const { conversationDisallowed, decideTool, intentGate, noteGate } = await import('../bridge/policy.mjs')
 const { memoryServer } = await import('../bridge/memory.mjs')
+const { peopleContext, peopleServer } = await import('../bridge/people.mjs')
 const { displayServer } = await import('../bridge/panels.mjs')
 const { fakeProtective } = await import('./fake-protective.mjs')
 const { score, summarise } = await import('./score.mjs')
@@ -55,7 +58,7 @@ async function runCase(c) {
   const calls = []
   const session = query({
     // The same shape the bridge sends: the local time, then what was said.
-    prompt: `[${localNow()}]\n${c.say}`,
+    prompt: `[${localNow()}]\n${peopleContext(c.say)}${c.say}`,
     options: {
       cwd: homedir(),
       systemPrompt: SYSTEM_PROMPT,
@@ -66,13 +69,14 @@ async function runCase(c) {
         protective,
         jarvis: displayServer(() => {}, () => {}),
         jarvis_memory: memoryServer(),
+        jarvis_people: peopleServer(),
       },
       model: MODEL,
       effort: EFFORT,
       maxTurns: 12,
       permissionMode: 'default',
-      canUseTool: async (name) => {
-        const verdict = intentGate(name, decideTool(name, POLICY), c.say, POLICY)
+      canUseTool: async (name, input) => {
+        const verdict = noteGate(name, intentGate(name, decideTool(name, POLICY), c.say, POLICY), c.say, input, POLICY)
         verdicts.set(name, [...(verdicts.get(name) ?? []), verdict])
         if (verdict === 'allow') return { behavior: 'allow' }
         return {

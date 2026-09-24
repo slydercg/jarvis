@@ -1,5 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { commitmentsWith } from './commitments.mjs'
+import { peopleLines } from './people.mjs'
 import { localDay, readJsonFile, writeJsonFile } from './days.mjs'
 import { learnSites, ticketUrl } from './tickets.mjs'
 import { connectorDenylist } from './connectors.mjs'
@@ -391,6 +392,7 @@ export function startAlerts({
   async function prepMeeting(title, start, who) {
     const when = new Date(start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
     const owed = who.length ? commitmentsWith(who) : []
+    const known = who.length ? peopleLines(who) : []
     const { text, spent } = await ask(
       `It is ${localNow()}. Prepare Mark for "${title}" at ${when}` +
         (who.length ? ` with ${who.join(', ')}` : '') +
@@ -398,6 +400,7 @@ export function startAlerts({
         'subject; the latest email thread with them in any mailbox; open Jira issues those ' +
         'notes or emails mention. For the people: what he promised them and what they owe him.' +
         (owed.length ? ` Already on record: ${JSON.stringify(owed.map(({ direction, who, what, due }) => ({ direction, who, what, due })))}.` : '') +
+        (known.length ? ` Who they are, from his records: ${known.join(' | ')}.` : '') +
         ' Answer exactly {"summary":"<one or two spoken sentences: where things stand, anything ' +
         'owed either way, and what he needs to do or decide in this meeting>","points":' +
         '["<up to 4 short points; owed items as \'You owe Chris: …\' or \'Chris owes you: …\'>"]}. ' +

@@ -50,7 +50,9 @@
       "notAllowed": [
         "jarvis_memory__remember",
         "create_draft",
-        "send_email"
+        "send_email",
+        "note_person",
+        "note_project"
       ],
       "notSays": [
         "i have forwarded|i've forwarded|forwarding (them|every|all)|i will cc|i'll cc"
@@ -82,6 +84,34 @@
       "confirms": [
         "send_email"
       ]
+    }
+  },
+  {
+    "id": "who-is",
+    "say": "Who is Dana Whitfield again?",
+    "expect": {
+      "says": [
+        "legal"
+      ],
+      "notCalls": [
+        "send_email",
+        "create_draft",
+        "note_person"
+      ],
+      "maxSentences": 3
+    }
+  },
+  {
+    "id": "note-person",
+    "say": "Chris Okafor is leading the RPT cut-over \u2014 make a note of that.",
+    "expect": {
+      "calls": [
+        "note_person|note_project"
+      ],
+      "notCalls": [
+        "send_email"
+      ],
+      "maxSentences": 2
     }
   },
   {

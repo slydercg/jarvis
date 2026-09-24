@@ -90,6 +90,7 @@ import {
   conversationDisallowed,
   decideTool as decide,
   intentGate,
+  noteGate,
   MONEY_VERB,
   mcpServerOf,
   mcpToolOf,
@@ -97,6 +98,7 @@ import {
 } from './policy.mjs'
 import { createStreaks, stuckAlert } from './health.mjs'
 import { NAME, SYSTEM_PROMPT } from './prompt.mjs'
+import { learnFromMeetings, peopleContext, peopleServer } from './people.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { chmodSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
@@ -288,7 +290,7 @@ const displayName = (name) =>
  */
 const INTERNAL_SERVERS = new Set([
   'jarvis', 'jarvis_ui', 'jarvis_chrome', 'jarvis_eyes', 'jarvis_memory', 'jarvis_brief', 'jarvis_files',
-  'jarvis_loop', 'jarvis_focus', 'jarvis_portfolio', 'jarvis_review', 'jarvis_stratum',
+  'jarvis_loop', 'jarvis_focus', 'jarvis_portfolio', 'jarvis_review', 'jarvis_stratum', 'jarvis_people',
 ])
 
 /**
@@ -1406,7 +1408,11 @@ function ensureWatcher() {
     },
     // The whole day, every calendar, for the timeline; and the portfolio's
     // standing, for the now strip.
-    onCalendar: setWatcherEvents,
+    onCalendar: (events) => {
+      setWatcherEvents(events)
+      // SCG and Google attendees; Protective's come from the day log.
+      learnFromMeetings(events.filter((e) => e.account !== 'Protective'))
+    },
     onPortfolio: setPortfolio,
     model: FAST_MODEL,
     effort: FAST_EFFORT,
@@ -1494,7 +1500,8 @@ wss.on('connection', (socket) => {
           deliver = resolve
         }))
       if (closed || text == null) return
-      const context = alertContext(alertsSeen)
+      // The people and projects he mentions, from his own records.
+      const context = alertContext(alertsSeen) + peopleContext(text)
       alertsSeen = Date.now()
       yield {
         type: 'user',
@@ -1539,7 +1546,8 @@ wss.on('connection', (socket) => {
    * drafts are checked against — see intentGate in policy.mjs.
    */
   let turnText = ''
-  const decideForTurn = (name) => intentGate(name, decideTool(name), turnText, POLICY)
+  const decideForTurn = (name, input = {}) =>
+    noteGate(name, intentGate(name, decideTool(name), turnText, POLICY), turnText, input, POLICY)
 
   /** Whether any words have gone out yet in the turn in flight. */
   let spoke = false
@@ -1728,6 +1736,8 @@ wss.on('connection', (socket) => {
         jarvis_brief: briefServer(briefDeps()),
         // Reports and dashboards saved on this Mac, file:// links included.
         jarvis_files: localFilesServer(),
+        // Who's who and what's what: people and projects he works with.
+        jarvis_people: peopleServer(),
         // Closing the loop: the evening wrap, dossiers, the promise ledger.
         jarvis_loop: loopServer(briefDeps()),
         // Heads-down: hold alerts except VIPs, then one digest.
@@ -1802,7 +1812,7 @@ wss.on('connection', (socket) => {
       // something with a consequence, like a `touch`. So a deny here is
       // reliable; an absence of a call here is not proof nothing ran.
       canUseTool: async (toolName, input) => {
-        let verdict = decideForTurn(toolName)
+        let verdict = decideForTurn(toolName, input)
         if (verdict === 'confirm') {
           const action = describeAction(toolName, input)
           console.log(`[jarvis] tool ${toolName} -> asking: ${action.summary}`)

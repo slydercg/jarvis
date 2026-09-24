@@ -277,6 +277,9 @@ export function memoryPrompt() {
 const SECRET =
   /(password|passcode|passphrase|\bpin\b|api[ -]?key|secret|token|\bssn\b|social security|security code|cvv|routing number|account number|sk_[a-z0-9]|\b(?:\d[ -]?){12,19}\b)/i
 
+/** Whether a note looks like a secret, for other stores that keep notes (people.mjs). */
+export const looksSecret = (text) => SECRET.test(String(text ?? ''))
+
 const today = () => new Date().toISOString().slice(0, 10)
 
 /**

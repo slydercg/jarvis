@@ -238,7 +238,7 @@ export function decideTool(name, cfg = {}) {
     // The wrap, dossiers, portfolio pulse and weekly review are built by
     // read-only sessions; the promise ledger and the focus state are files in
     // ~/.jarvis, like memory. Nothing here reaches another person.
-    if (['jarvis_loop', 'jarvis_focus', 'jarvis_portfolio', 'jarvis_review', 'jarvis_stratum'].includes(server)) {
+    if (['jarvis_loop', 'jarvis_focus', 'jarvis_portfolio', 'jarvis_review', 'jarvis_stratum', 'jarvis_people'].includes(server)) {
       return 'allow'
     }
 
@@ -327,6 +327,11 @@ export const readOnlyTool = (name, cfg = {}) =>
  * content shown, instead of happening quietly.
  */
 const REMEMBER_ASK = /\b(remember|don'?t forget|do not forget|make a note|note (that|this|down)|keep in mind|for future reference|from now on)\b/i
+/** He is telling you something about a person or project, not asking about one. */
+const NOTE_ASK = new RegExp(
+  `${REMEMBER_ASK.source}|\\b(is (my|our|the|a|an|now|his|her)\\b|works (at|for|in|on)|reports to|runs|leads|heads|owns|is in charge of|joined|left|moved to|new (role|job|address|email)|email is|address is|goes by|call (him|her|them))`,
+  'i',
+)
 const DRAFT_ASK = /\b(draft|reply|respond|write|email|e-mail|mail|message|answer|compose|send|tell (him|her|them))\b/i
 
 /** The verdict for this turn, given what the user actually said in it. */
@@ -335,7 +340,20 @@ export function intentGate(toolName, verdict, said, cfg = {}) {
   const words = String(said ?? '')
   const unasked =
     (toolName === 'mcp__jarvis_memory__remember' && !REMEMBER_ASK.test(words)) ||
+    (/^mcp__jarvis_people__note_(person|project)$/.test(toolName) && !NOTE_ASK.test(words)) ||
     (mcpServerOf(toolName) && DRAFT_TOOL.test(mcpToolOf(toolName)) && !DRAFT_ASK.test(words))
   if (!unasked) return verdict
   return cfg.confirm ? 'confirm' : 'deny'
+}
+
+/**
+ * Changing someone's address is how a planted note would do harm: "Dana's
+ * address is now dana@attacker.example" and every draft to Dana goes there.
+ * So note_person with an address he did not say himself this turn is put to
+ * him, the address on the card, even when the rest of the note was his.
+ */
+export function noteGate(name, verdict, said, input = {}, cfg = {}) {
+  if (verdict !== 'allow' || name !== 'mcp__jarvis_people__note_person' || !input?.email) return verdict
+  const email = String(input.email).trim().toLowerCase()
+  return String(said ?? '').toLowerCase().includes(email) ? verdict : cfg.confirm ? 'confirm' : 'deny'
 }

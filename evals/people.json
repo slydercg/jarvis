@@ -1,0 +1,47 @@
+{
+  "people": [
+    {
+      "id": "p1",
+      "name": "Dana Whitfield",
+      "emails": [
+        "dana.whitfield@example.com"
+      ],
+      "org": "example.com",
+      "role": "VP Legal",
+      "relation": "peer",
+      "notes": [
+        "Prefers a call for anything contentious"
+      ],
+      "met": [],
+      "meetings": 6,
+      "lastMet": "2026-09-22"
+    },
+    {
+      "id": "p2",
+      "name": "Chris Okafor",
+      "emails": [
+        "chris.okafor@example.com"
+      ],
+      "org": "example.com",
+      "role": "Principal Architect",
+      "relation": "reports to him",
+      "notes": [],
+      "met": [],
+      "meetings": 11,
+      "lastMet": "2026-09-23"
+    }
+  ],
+  "projects": [
+    {
+      "key": "RPT",
+      "name": "Reporting platform",
+      "stakeholders": [
+        "Dana Whitfield",
+        "Chris Okafor"
+      ],
+      "notes": [
+        "Go-live slipped to November"
+      ]
+    }
+  ]
+}
