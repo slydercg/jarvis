@@ -78,3 +78,62 @@ test('serving the brief links, ticks off, and reports how it went', async () => 
   assert.ok(out.health.notes.some((n) => /sent mail couldn't be read: flow timed out/.test(n)))
   assert.ok(out.health.notes.some((n) => /no task ids/.test(n)))
 })
+
+test('a brief button acts on its line only while that brief is current', async () => {
+  const { writeFileSync } = await import('node:fs')
+  const { briefAction, briefRef } = await import('../bridge/briefing.mjs')
+  const { listStratum } = await import('../bridge/stratum.mjs')
+  const builtAt = Date.now() - 3600e3
+  const items = [
+    { account: 'Protective', source: 'email', action: 'Approve the Q4 renewal', subject: 'RE: Q4 renewal', from: 'Chris Patrick', why: 'Pricing lapses Friday' },
+    { account: 'SCG', source: 'task', action: 'Send the SOW', subject: 'Send the SOW', from: 'Tasks' },
+  ]
+  const day = new Date().toLocaleDateString('en-CA')
+  writeFileSync(join(process.env.JARVIS_HOME, 'brief.json'), JSON.stringify({ last: { day, builtAt, brief: { focus: 'x', items } } }))
+  const mail = briefRef(builtAt, 0, items[0])
+  const task = briefRef(builtAt, 1, items[1])
+  assert.match(mail, /^[a-z0-9]{4}-1m$/)
+  assert.match(task, /^[a-z0-9]{4}-2t$/)
+
+  // Reply: a question to ask, nothing changed.
+  const reply = briefAction(mail, 'reply')
+  assert.equal(reply.ok, true)
+  assert.equal(reply.ask, 'Draft a reply to Chris Patrick about "RE: Q4 renewal" from my Protective account.')
+  assert.equal(briefAction(task, 'reply').ok, false)
+
+  // Tomorrow: off the brief, and a reminder that wakes at 9 tomorrow.
+  const snoozed = briefAction(task, 'snooze')
+  assert.equal(snoozed.ok, true)
+  const reminder = listStratum().find((i) => i.title === 'Send the SOW')
+  assert.equal(reminder.state, 'snoozed')
+  assert.equal(new Date(reminder.until).getHours(), 9)
+
+  // Done: kept on the saved brief, so the next serve leaves it out of the three.
+  assert.equal(briefAction(mail, 'done').ok, true)
+  const { todaysBrief } = await import('../bridge/briefing.mjs')
+  assert.deepEqual(todaysBrief().brief.items.map((i) => i.done), ['marked done', 'moved to tomorrow'])
+
+  // A ref from another build, a line that is not there, or a made-up op: nothing happens.
+  assert.match(briefAction(briefRef(builtAt + 99_999_999, 0, items[0]), 'done').message, /rebuilt/)
+  assert.equal(briefAction(mail.replace('-1m', '-7m'), 'done').ok, false)
+  assert.equal(briefAction(mail, 'delete').ok, false)
+  assert.equal(briefAction('"><script>', 'done').ok, false)
+})
+
+test('every page is told when a line changes, by button or by voice', async () => {
+  const { briefAction, briefRef, onBriefAction, todaysBrief, updateBriefLine } = await import('../bridge/briefing.mjs')
+  // Today's brief from the test above: an email line, then a task line.
+  const { builtAt, brief } = todaysBrief()
+  const told = []
+  const stop = onBriefAction((r) => told.push(r))
+  briefAction(briefRef(builtAt, 0, brief.items[0]), 'reply')
+  const ref = briefRef(builtAt, 1, brief.items[1])
+  assert.equal(told.length, 0)
+  // By voice: the conversation's tool.
+  const out = await updateBriefLine({ ref, action: 'done' })
+  assert.equal(out.content[0].text, 'Done')
+  assert.deepEqual(told.map((r) => [r.ref, r.op, r.ok]), [[ref, 'done', true]])
+  const bad = await updateBriefLine({ ref: 'zzzz-1t', action: 'tomorrow' })
+  assert.equal(bad.isError, true)
+  stop()
+})
