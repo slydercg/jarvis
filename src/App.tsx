@@ -7,6 +7,7 @@ import { Boot } from './ui/Boot'
 import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
 import { Settings, SettingsButton } from './ui/Settings'
+import { Stratum } from './ui/Stratum'
 import { useStore, UNDO_MS, type Alert } from './store'
 import { prefs } from './lib/prefs'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
@@ -30,6 +31,7 @@ import {
   watchHistory,
   watchAlerts,
   watchFocus,
+  watchStratum,
   resetConversation,
   watchCapture,
   watchUi,
@@ -110,6 +112,10 @@ const MUTE =
   /^((mute|pause|silence|stop|hold) (the |my )?(alerts|notifications)|do not disturb|don'?t disturb( me)?)[.!]?$/i
 const UNMUTE =
   /^((unmute|resume|restart|turn on) (the |my )?(alerts|notifications)|alerts on)[.!]?$/i
+
+/** "Show my list" / "hide the review list" — opens or closes the review column. */
+const SHOW_LIST = /^(show|open|pull up) (me )?(my|the) (review )?(list|review)[.!]?$/i
+const HIDE_LIST = /^(hide|close) (my|the) (review )?(list|review)[.!]?$/i
 
 /** What he says for an alert. Fronted "Sir": it is an interruption, not an answer. */
 function alertLine(a: Alert): string {
@@ -460,8 +466,20 @@ export default function App() {
     return true
   }
 
+  /** "Show my list" / "hide my list": the review column, without a turn. */
+  const toggleStratum = (raw: string): boolean => {
+    const said = raw.replace(LEADING_NAME, '').trim()
+    const show = SHOW_LIST.test(said)
+    if (!show && !HIDE_LIST.test(said)) return false
+    store.getState().setStratumOpen(show)
+    say(show ? 'Your list, sir.' : 'Very good, sir.')
+    listen(AWAIT_SPEECH_MS)
+    return true
+  }
+
   /** "Mute alerts" / "resume alerts". Cards still appear while muted. */
   const toggleAlerts = (raw: string): boolean => {
+    if (toggleStratum(raw)) return true
     const said = raw.replace(LEADING_NAME, '').trim()
     const mute = MUTE.test(said)
     if (!mute && !UNMUTE.test(said)) return false
@@ -741,6 +759,7 @@ export default function App() {
      * passed by the time he is free is not announced late.
      */
     watchFocus((focus) => store.getState().setFocus(focus))
+    watchStratum((items) => store.getState().setStratum(items))
 
     watchAlerts((raw) => {
       const alert: Alert = {
@@ -749,6 +768,7 @@ export default function App() {
         title: raw.title,
         detail: raw.detail,
         at: Date.parse(raw.at) || Date.now(),
+        received: Date.now(),
         ...(raw.prep ? { prep: raw.prep } : {}),
         ...(raw.label ? { label: raw.label } : {}),
         ...(raw.say ? { say: raw.say } : {}),
@@ -923,6 +943,13 @@ export default function App() {
       // should fire behind it.
       if (store.getState().settingsOpen) return
 
+      // L opens and closes the review list.
+      if (e.key === 'l' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        store.getState().setStratumOpen(!store.getState().stratumOpen)
+        return
+      }
+
       // Comma opens settings, as ⌘, does in most Mac apps.
       if (e.key === ',' && !e.repeat && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
@@ -1061,6 +1088,7 @@ export default function App() {
       <Boot />
       <Diagnostics />
       <SettingsButton />
+      <Stratum />
       <Settings />
       <Ignition onStart={() => void powerOn()} />
     </>

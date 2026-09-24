@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify'
 import { BRIDGE_HTTP_URL } from '../config'
+import { isTicketLink } from '../lib/tickets'
 
 /**
  * The safety boundary for model-authored markup.
@@ -222,11 +223,14 @@ export function sanitisePanelHtml(html: string): string {
         // Showing a video result as a line of text was the polite version of
         // refusing to answer.
         'video', 'source', 'iframe',
+        // Links survive only as ticket links; see keepTicketLinks.
+        'a',
       ],
-      // No href — a HUD panel isn't clickable, and it keeps navigation off the
-      // table entirely.
+      // href is let through here only so keepTicketLinks can judge it: a HUD
+      // panel is not a place to navigate from, with one exception — a ticket
+      // key that opens its ticket.
       ALLOWED_ATTR: [
-        'class', 'src', 'alt', 'style',
+        'class', 'src', 'alt', 'style', 'href',
         'controls', 'poster', 'loop', 'muted', 'playsinline', 'preload',
         'width', 'height', 'allow', 'allowfullscreen', 'referrerpolicy',
         'type', 'title',
@@ -275,7 +279,28 @@ export function sanitisePanelHtml(html: string): string {
   // about to be removed is never dressed up first, and both run after
   // narrowClasses so a dropped element takes its classes with it.
   rewriteMedia(doc.body)
+  keepTicketLinks(doc.body)
   rewriteEmbeds(doc.body)
   hardenMedia(doc.body)
   return doc.body.innerHTML
+}
+
+/**
+ * Every <a> becomes plain text unless it points at a ticket (lib/tickets.ts).
+ * The ones that stay open in a new tab and carry no referrer or opener.
+ */
+function keepTicketLinks(root: Element) {
+  root.querySelectorAll('a').forEach((a) => {
+    const href = a.getAttribute('href')
+    if (!isTicketLink(href)) {
+      a.replaceWith(...Array.from(a.childNodes))
+      return
+    }
+    for (const attr of Array.from(a.attributes)) {
+      if (attr.name !== 'href' && attr.name !== 'class') a.removeAttribute(attr.name)
+    }
+    a.setAttribute('target', '_blank')
+    a.setAttribute('rel', 'noopener noreferrer')
+    a.classList.add('ticket-link')
+  })
 }

@@ -44,6 +44,8 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 | `bridge/vision.mjs` | `jarvis_eyes`: asks the page for a camera frame (request/reply) |
 | `bridge/alerts.mjs` / `briefing.mjs` | Separate long-lived and read-only agent sessions for proactive alerts and the daily brief |
 | `bridge/protective.mjs` | Protective M365 mail/calendar/To Do through Power Automate flow URLs, which are credentials kept in `~/.jarvis`, never in the repo |
+| `bridge/stratum.mjs` / `src/ui/Stratum.tsx` | The review list: every alert is kept (in `broadcastAlert`, before the focus gate) in `~/.jarvis/stratum.json` until done; snoozes and reminders wake on the minute clock; `jarvis_stratum` tools for the conversation |
+| `bridge/tickets.mjs` / `src/lib/tickets.ts` | Ticket links: built only from known Jira/ADO sites, and the page's own check. The only links the HUD renders (`sanitise.ts` unwraps every other `<a>`) |
 | `bridge/localfiles.mjs` | `jarvis_files`: read-only text extraction from documents under home |
 | `bridge/net.mjs` / `page.mjs` | SSRF-gated outbound fetch; media/page proxy for showing articles |
 | `bridge/settings.mjs` | Settings panel backend: writes the ElevenLabs key to `.env.local`, everything else to `~/.jarvis/settings.json` |

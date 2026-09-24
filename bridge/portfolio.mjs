@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { askReadOnly } from './agent.mjs'
 import { localDay, readJsonFile, writeJsonFile } from './days.mjs'
 import { readLocalPage } from './localfiles.mjs'
+import { learnSites, ticketUrl } from './tickets.mjs'
 
 /**
  * The portfolio pulse: "what's blocked?", "which team is behind?", "what
@@ -73,7 +74,8 @@ Keep keys (NI-123, ADO #4567) so he can ask about them.
 
 Answer exactly:
 {"summary":"<one or two spoken sentences: the most important thing, then the next>",
- "blocked":[{"key":"...","title":"...","owner":"...","since":"<spoken or empty>","source":"jira|ado"}],
+ "sites":{"jira":"<https://…atlassian.net, from the Jira tools, or empty>","ado":"<Azure DevOps org address or empty>"},
+ "blocked":[{"key":"...","title":"...","owner":"...","since":"<spoken or empty>","source":"jira|ado","project":"<ADO project or empty>"}],
  "behind":[{"name":"<sprint or team>","done":0,"total":0,"elapsedPct":0,"note":"<under 12 words>"}],
  "pipelines":[{"name":"...","status":"failing|flaky","note":"..."}],
  "changed":["<what moved since yesterday, one clause each>"],
@@ -113,6 +115,13 @@ export function getPulse(deps, { question, refresh = false } = {}) {
       maxTurns: 25,
     })
     if (!pulse?.summary) throw new Error('the portfolio pulse did not come back as expected')
+    // Links are built here from known sites, never taken from the model.
+    if (pulse.sites) learnSites(pulse.sites)
+    delete pulse.sites
+    pulse.blocked = (Array.isArray(pulse.blocked) ? pulse.blocked : []).map((b) => {
+      const url = ticketUrl(b)
+      return url ? { ...b, url } : b
+    })
     const entry = { builtAt: Date.now(), pulse }
     if (!question) cache = entry
     // Every pulse carries the whole picture (blocked, behind, pipelines), a

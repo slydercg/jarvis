@@ -1,17 +1,10 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore, type Alert } from '../store'
+import { LABELS } from './alertLabels'
+import type { AlertItem } from '../lib/bridge'
+import { isTicketLink } from '../lib/tickets'
 
-const LABELS: Record<Alert['kind'], string> = {
-  meeting: 'Meeting',
-  mail: 'Mail',
-  brief: 'Brief',
-  wrap: 'Wrap-up',
-  review: 'Weekly review',
-  promise: 'Promise',
-  portfolio: 'Portfolio',
-  digest: 'While you were focused',
-}
 
 /**
  * Proactive alerts, top right under the status line.
@@ -26,6 +19,7 @@ export function AlertStack() {
   const muted = useStore((s) => s.alertsMuted)
   const dismiss = useStore((s) => s.dismissAlert)
   const focus = useStore((s) => s.focus)
+  const listOpen = useStore((s) => s.stratumOpen)
   const [, tick] = useState(0)
 
   // Keep "in 8 min" honest, and clear meetings once they are well under way.
@@ -35,12 +29,17 @@ export function AlertStack() {
       tick((n) => n + 1)
       for (const a of useStore.getState().alerts) {
         if (a.kind === 'meeting' && a.at < Date.now() - 10 * 60_000) dismiss(a.id)
+        // Everything else is kept in the review list, so the card only has
+        // to be seen, not kept: it steps aside after a minute and a half.
+        if (a.kind !== 'meeting' && a.received < Date.now() - 90_000) dismiss(a.id)
       }
     }, 20_000)
     return () => clearInterval(id)
   }, [alerts.length, dismiss])
 
   const focused = focus.active && focus.until
+  // With the review list open the cards would only repeat what is in it.
+  if (listOpen && !muted && !focused) return null
   if (!alerts.length && !muted && !focused) return null
 
   return (
@@ -53,7 +52,7 @@ export function AlertStack() {
         </div>
       )}
       <AnimatePresence initial={false}>
-        {alerts.map((a) => (
+        {(listOpen ? [] : alerts).map((a) => (
           <motion.div
             key={a.id}
             className={`alert alert-${a.kind}${a.label === 'Overdue' ? ' alert-overdue' : ''}`}
@@ -87,11 +86,7 @@ export function AlertStack() {
               </ul>
             )}
             {a.items && a.items.length > 0 && (
-              <ul className="alert-prep" aria-label="Held back">
-                {a.items.map((it, i) => (
-                  <li key={`${i}:${it.title}`}>{it.title}</li>
-                ))}
-              </ul>
+              <AlertItems items={a.items} label={a.kind === 'digest' ? 'Held back' : 'Items'} />
             )}
           </motion.div>
         ))}
@@ -109,4 +104,47 @@ function when(a: Pick<Alert, 'kind' | 'at'>): string {
   }
   const ago = -mins
   return ago < 1 ? 'just now' : `${ago} min ago`
+}
+
+/**
+ * An alert's line items, one row each: the key (a link when it is a ticket),
+ * the title, then who has it. Shared by the alert cards and the review column.
+ * `limit` shows the first few with a "show all" to open the rest.
+ */
+export function AlertItems({ items, label, limit }: { items: AlertItem[]; label: string; limit?: number }) {
+  const [all, setAll] = useState(false)
+  const shown = limit && !all ? items.slice(0, limit) : items
+  return (
+    <>
+      <ul className="alert-items" aria-label={label}>
+        {shown.map((it, i) => (
+          <li key={`${i}:${it.key ?? ''}:${it.title}`} className={`alert-item${it.key ? ' has-key' : ''}`}>
+            {it.key &&
+              (isTicketLink(it.url) ? (
+                <a
+                  className="alert-key ticket-link"
+                  href={it.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`Open ${it.key}`}
+                >
+                  {it.key}
+                </a>
+              ) : (
+                <span className="alert-key">{it.key}</span>
+              ))}
+            <div className="alert-item-body">
+              <div className="alert-item-title">{it.title}</div>
+              {it.detail && <div className="alert-item-meta">{it.detail}</div>}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {limit && items.length > limit && (
+        <button type="button" className="alert-more" onClick={() => setAll(!all)}>
+          {all ? 'Show fewer' : `Show all ${items.length}`}
+        </button>
+      )}
+    </>
+  )
 }

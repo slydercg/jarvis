@@ -45,6 +45,14 @@ export function watchAlerts(fn: (a: bridge.AlertFrame) => void): void {
   if (usingBridge) bridge.watchAlerts(fn)
 }
 
+/** The review column from the bridge, and changes to it. Bridge mode only. */
+export function watchStratum(fn: (items: bridge.StratumItem[]) => void): void {
+  if (usingBridge) bridge.watchStratum(fn)
+}
+export function sendStratum(op: 'done' | 'open' | 'snooze' | 'seen', id?: string, when?: string): void {
+  if (usingBridge) bridge.sendStratum(op, id, when)
+}
+
 /** Heads-down state from the bridge; nothing without one. */
 export function watchFocus(fn: (f: bridge.FocusFrame) => void): void {
   if (usingBridge) bridge.watchFocus(fn)
