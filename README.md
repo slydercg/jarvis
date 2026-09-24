@@ -416,6 +416,17 @@ three he shows, and the panel ends with "2 done since this morning". Replies
 need a `sent_email` flow. SCG and Gmail lines stay as they are, because the
 bridge can't read those mailboxes itself.
 
+Each line on the brief has buttons under it:
+- **Reply** (email lines only) asks him to draft a reply, exactly as if you'd
+  said it. The draft goes through the usual confirmation.
+- **Done** marks the line done on today's brief.
+- **Tomorrow** takes it off today's brief and puts it on your review list as
+  a reminder at 9am tomorrow.
+
+The page adds the buttons itself. He only names which line a row is, and
+the bridge checks that the line belongs to the brief you're looking at, so a
+click on an old panel does nothing.
+
 Press **D** for Diagnostics to see how the last brief went. It shows how
 many lines got a link, how many are done, which ones have no link, and what
 stopped them (a flow that failed, a To Do flow that sends no task ids, or no

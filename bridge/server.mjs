@@ -33,7 +33,7 @@ import {
 } from './memory.mjs'
 import { displayServer } from './panels.mjs'
 import { protectiveConfigured, protectiveServer } from './protective.mjs'
-import { briefHealth, briefServer, maybeOfferBrief } from './briefing.mjs'
+import { briefAction, briefHealth, briefServer, maybeOfferBrief } from './briefing.mjs'
 import { backgroundPaused, onCapReached, recordSpend, spendSummary } from './spend.mjs'
 import { localFilesServer } from './localfiles.mjs'
 import { loopServer, logMeetings, maybeOfferWrap } from './loop.mjs'
@@ -1462,6 +1462,16 @@ wss.on('connection', (socket) => {
         clearTimeout(slot.timer)
         slot.resolve(msg)
       }
+    }
+
+    // A button on a brief line: done, tomorrow, or reply. Reply comes back as
+    // a question for the page to ask, so a draft passes every gate a spoken
+    // request does.
+    if (msg.type === 'brief') {
+      const result = briefAction(msg.ref, msg.op)
+      if (result.ok && msg.op !== 'reply') console.log(`[jarvis] brief: line ${msg.ref} ${msg.op}`)
+      send({ type: 'brief', ref: String(msg.ref ?? '').slice(0, 16), op: msg.op, ...result })
+      return
     }
 
     // The Diagnostics panel: what today has cost, and how the last brief
