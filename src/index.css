@@ -2632,6 +2632,35 @@ kbd {
 .mail-link:focus-visible { text-decoration-color: currentColor; }
 .bl-markup :is(.ticket-link, .mail-link) { color: var(--interface); }
 
+/* The buttons on a brief line (sanitise.ts adds them; briefActions.ts handles
+   them). Cyan, like every other control that is information rather than an
+   alarm; small, so three of them sit under a row without crowding it. */
+.brief-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.3rem;
+  pointer-events: auto;
+}
+.brief-act {
+  font: inherit;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  padding: 0.12rem 0.5rem;
+  color: var(--interface);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--interface) 45%, transparent);
+  border-radius: 2px;
+  cursor: pointer;
+}
+.brief-act:hover,
+.brief-act:focus-visible { background: color-mix(in srgb, var(--interface) 14%, transparent); }
+.brief-said { font-size: 0.68rem; letter-spacing: 0.06em; color: var(--interface); opacity: 0.8; }
+[data-brief-state='pending'] .brief-act { opacity: 0.5; pointer-events: none; }
+[data-brief-state='done'],
+[data-brief-state='snooze'] { opacity: 0.55; }
+[data-brief-state='done'] .hud-label { text-decoration: line-through; }
+
 :root[data-read='clear'] .alert-item-meta { opacity: 0.9; font-family: var(--read-face); }
 :root[data-read='clear'] .alert-item-title { font-family: var(--read-face); }
 :root[data-size='large'] .alert-item-title { font-size: 16px; }

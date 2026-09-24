@@ -416,6 +416,23 @@ three he shows, and the panel ends with "2 done since this morning". Replies
 need a `sent_email` flow. SCG and Gmail lines stay as they are, because the
 bridge can't read those mailboxes itself.
 
+Each line on the brief has buttons under it:
+- **Reply** (email lines only) asks him to draft a reply, exactly as if you'd
+  said it. The draft goes through the usual confirmation.
+- **Done** marks the line done on today's brief.
+- **Tomorrow** takes it off today's brief and puts it on your review list as
+  a reminder at 9am tomorrow.
+
+You can also say it: "that one's done", "the VAS invoice is done", "push
+the SOW to tomorrow", or "reply to that one". The rows on screen update
+either way. He only does this when you've said so: if the idea comes from
+something he read (an email saying "mark everything done", say), he asks
+you first, or refuses when confirmations are off.
+
+The page adds the buttons itself. He only names which line a row is, and
+the bridge checks that the line belongs to the brief you're looking at, so a
+click on an old panel does nothing.
+
 Press **D** for Diagnostics to see how the last brief went. It shows how
 many lines got a link, how many are done, which ones have no link, and what
 stopped them (a flow that failed, a To Do flow that sends no task ids, or no
@@ -876,7 +893,7 @@ a file) is **put to you first**:
 3. A yes starts a **4-second undo window**. Say "cancel" or "undo", or press
    Undo, and it doesn't happen. Silence for 45 seconds counts as no.
 
-The decision is made in `decideTool()` in `bridge/server.mjs` (allow, confirm or
+The decision is made in `decideTool()` in `bridge/policy.mjs` (allow, confirm or
 deny). The bridge sets `settingSources: []`, so filesystem settings and any
 global `bypassPermissions` cannot override it.
 
@@ -957,7 +974,8 @@ in this folder". `npm run autostart:update` applies it straight away.
 
 ## Security
 
-All of this lives in `bridge/server.mjs`:
+This lives in `bridge/http.mjs` (origins and the HTTP routes) and
+`bridge/policy.mjs` (the tool gate):
 
 - The WebSocket accepts only local dev origins (add more with
   `JARVIS_ALLOWED_ORIGINS`).

@@ -125,3 +125,14 @@ test('notes about people are held to his own words, and new addresses to his own
   assert.equal(p.noteGate(note, 'allow', 'Dana runs Legal', { name: 'Dana', email: 'dana@attacker.example' }, DEFAULT), 'confirm')
   assert.equal(p.noteGate(note, 'allow', 'Dana runs Legal', { name: 'Dana', role: 'VP Legal' }, DEFAULT), 'allow')
 })
+
+test('a brief line is marked done or moved only when he said so', () => {
+  const line = 'mcp__jarvis_brief__update_brief_line'
+  assert.equal(p.decideTool(line, DEFAULT), 'allow')
+  for (const said of ["that one's done", 'the VAS invoice is finished', 'push the SOW to tomorrow', 'tick that off', 'snooze it']) {
+    assert.equal(p.intentGate(line, 'allow', said, DEFAULT), 'allow', said)
+  }
+  // Nothing about done or tomorrow: the idea came from something he read.
+  assert.equal(p.intentGate(line, 'allow', 'read me the email from Chris', DEFAULT), 'confirm')
+  assert.equal(p.intentGate(line, 'allow', 'read me the email from Chris', NO_CONFIRM), 'deny')
+})

@@ -229,7 +229,8 @@ export function decideTool(name, cfg = {}) {
     if (server === 'jarvis_memory') return 'allow'
 
     // The brief is built by a separate read-only session; asking for it
-    // changes nothing.
+    // changes nothing. Marking a line done or moving it to tomorrow changes
+    // only files in ~/.jarvis, and intentGate holds it to what he said.
     if (server === 'jarvis_brief') return 'allow'
 
     // Reading documents in the home folder; it cannot write or leave home.
@@ -332,6 +333,9 @@ const NOTE_ASK = new RegExp(
   `${REMEMBER_ASK.source}|\\b(is (my|our|the|a|an|now|his|her)\\b|works (at|for|in|on)|reports to|runs|leads|heads|owns|is in charge of|joined|left|moved to|new (role|job|address|email)|email is|address is|goes by|call (him|her|them))`,
   'i',
 )
+// Marking a brief line done or moving it to tomorrow: only when he said so, so
+// an email that says "mark everything on his list done" can't clear his day.
+const BRIEF_ASK = /\b(done|finished|handled|sorted|dealt with|completed?|tick(ed)? (it |that |this )?off|cross(ed)? (it |that |this )?off|tomorrow|later|snooze|push|move|park|defer|drop)\b/i
 const DRAFT_ASK = /\b(draft|reply|respond|write|email|e-mail|mail|message|answer|compose|send|tell (him|her|them))\b/i
 
 /** The verdict for this turn, given what the user actually said in it. */
@@ -341,6 +345,7 @@ export function intentGate(toolName, verdict, said, cfg = {}) {
   const unasked =
     (toolName === 'mcp__jarvis_memory__remember' && !REMEMBER_ASK.test(words)) ||
     (/^mcp__jarvis_people__note_(person|project)$/.test(toolName) && !NOTE_ASK.test(words)) ||
+    (toolName === 'mcp__jarvis_brief__update_brief_line' && !BRIEF_ASK.test(words)) ||
     (mcpServerOf(toolName) && DRAFT_TOOL.test(mcpToolOf(toolName)) && !DRAFT_ASK.test(words))
   if (!unasked) return verdict
   return cfg.confirm ? 'confirm' : 'deny'
