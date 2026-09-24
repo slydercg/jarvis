@@ -24,6 +24,7 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 - `.mts` tests import `src/*.ts` directly with type stripping, so any module tested this way must use only erasable TS syntax and must not import Vite-only things (`import.meta.env`, assets). `src/lib/echo.ts` is kept import-free for this reason.
 - Tests replace `fetch` and point `JARVIS_HOME` at a temp dir. Never let a test reach the network or `~/.jarvis`. Audio fixtures are in `tests/fixtures/*.wav`.
 - No coverage tooling is configured.
+- `npm run eval` (on demand, needs a Claude login, about $1 on Opus): runs `evals/cases.json` through the real `SYSTEM_PROMPT` (`bridge/prompt.mjs`) and `policy.mjs` against a fake Protective account with a planted-instruction email, connectors off, confirmations answered no. Add a case whenever a behaviour matters; the scoring rules (`evals/score.mjs`) are tested in CI.
 
 ## Build & Run
 
@@ -38,6 +39,7 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 | Path | Purpose |
 |------|---------|
 | `bridge/server.mjs` | Entry point (~2.4k lines): HTTP + WS server, origin check, model routing, per-connection `query()` |
+| `bridge/prompt.mjs` | The conversation's `SYSTEM_PROMPT` and `NAME`, importable without starting the bridge |
 | `bridge/policy.mjs` | The permission gate: `decideTool`, `readOnlyTool` for background jobs, and the built-ins removed via `disallowedTools`. Pure, switches passed in; tested in `tests/policy.test.mjs` |
 | `bridge/env.mjs` | Loads `.env.local`/`.env` into `process.env`. Must stay the first import |
 | `bridge/memory.mjs` | Session resume + `remember` notes in `~/.jarvis/memory.md` |
