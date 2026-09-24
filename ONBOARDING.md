@@ -42,7 +42,8 @@ Everything it remembers lives in `~/.jarvis`.
 
 | File | What it does |
 |---|---|
-| `server.mjs` | Entry point: HTTP and WebSocket, the system prompt, the tool gate, the MCP servers per connection, the one-minute clock for proactive work |
+| `server.mjs` | Entry point: the WebSocket, the tool gate, the MCP servers per connection, the one-minute clock for proactive work |
+| `http.mjs` | The HTTP side: who may connect, the ElevenLabs speech proxy, settings, local files and media for panels, `/health` |
 | `agent.mjs` | `askReadOnly()` — one question to a separate read-only session, answered in JSON. Every background job uses it, and reports each step it takes |
 | `steps.mjs` | Tool names in plain words ("Checking Jira") for the tool badge and a job's progress |
 | `transcript.mjs` | The conversation history: every question, answer and alert, a file a day in `~/.jarvis/transcripts`, searchable. The page reads it in `ui/History.tsx` |
@@ -123,7 +124,7 @@ npm run browser:doctor           # the Claude extension's helper, per browser
 
 ## Where to start reading
 
-1. `SYSTEM_PROMPT` in `bridge/server.mjs` and `decideTool` in `bridge/policy.mjs` — what Jarvis will
+1. `SYSTEM_PROMPT` in `bridge/prompt.mjs` and `decideTool` in `bridge/policy.mjs` — what Jarvis will
    and will not do.
 2. `bridge/alerts.mjs` — how the proactive side stays cheap.
 3. `src/App.tsx`, from the `watchAlerts` handler down — the page's main loop.

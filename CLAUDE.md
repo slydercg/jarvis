@@ -38,7 +38,8 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 
 | Path | Purpose |
 |------|---------|
-| `bridge/server.mjs` | Entry point (~2.4k lines): HTTP + WS server, origin check, model routing, per-connection `query()` |
+| `bridge/server.mjs` | Entry point (~1.5k lines): the WS server, model routing, per-connection `query()`, the minute clock |
+| `bridge/http.mjs` | The HTTP side: the origin allowlist (also used by the WS handshake), ElevenLabs `/tts` `/stt` `/voices`, the settings backend, `/file` `/img` `/media` `/page` for panels, `/health`. Nothing here talks to the model |
 | `bridge/prompt.mjs` | The conversation's `SYSTEM_PROMPT` and `NAME`, importable without starting the bridge |
 | `bridge/policy.mjs` | The permission gate: `decideTool`, `readOnlyTool` for background jobs, and the built-ins removed via `disallowedTools`. Pure, switches passed in; tested in `tests/policy.test.mjs` |
 | `bridge/env.mjs` | Loads `.env.local`/`.env` into `process.env`. Must stay the first import |

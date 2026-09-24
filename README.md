@@ -858,7 +858,7 @@ a file) is **put to you first**:
 3. A yes starts a **4-second undo window**. Say "cancel" or "undo", or press
    Undo, and it doesn't happen. Silence for 45 seconds counts as no.
 
-The decision is made in `decideTool()` in `bridge/server.mjs` (allow, confirm or
+The decision is made in `decideTool()` in `bridge/policy.mjs` (allow, confirm or
 deny). The bridge sets `settingSources: []`, so filesystem settings and any
 global `bypassPermissions` cannot override it.
 
@@ -939,7 +939,8 @@ in this folder". `npm run autostart:update` applies it straight away.
 
 ## Security
 
-All of this lives in `bridge/server.mjs`:
+This lives in `bridge/http.mjs` (origins and the HTTP routes) and
+`bridge/policy.mjs` (the tool gate):
 
 - The WebSocket accepts only local dev origins (add more with
   `JARVIS_ALLOWED_ORIGINS`).
