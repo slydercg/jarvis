@@ -6,6 +6,7 @@ import { connectorDenylist } from './connectors.mjs'
 import { BACKGROUND_DISALLOWED } from './policy.mjs'
 import { createStreaks, stuckAlert } from './health.mjs'
 import { asData, read, watcherEvent } from './snapshot.mjs'
+import { backgroundPaused, recordSpend } from './spend.mjs'
 
 /**
  * Proactive alerts: a heads-up before a meeting, and a word when mail arrives
@@ -241,6 +242,7 @@ export function startAlerts({
         const cost = msg.total_cost_usd ?? lastCost
         const spent = cost - lastCost
         lastCost = cost
+        recordSpend('watcher', spent)
         waiting.shift()?.({ text: msg.subtype === 'success' ? (msg.result ?? '') : '', spent })
       }
     } catch (err) {
@@ -562,7 +564,8 @@ export function startAlerts({
   }
   let busy = false
   const tick = async () => {
-    if (busy || stopped || !listening() || !withinHours()) return
+    // Past the daily spend cap, the checks wait for tomorrow (bridge/spend.mjs).
+    if (busy || stopped || !listening() || !withinHours() || backgroundPaused()) return
     busy = true
     try {
       const now = Date.now()

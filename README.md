@@ -181,6 +181,17 @@ answering the next turn changes. Measured on this bridge, a quick follow-up
 costs about $0.02 against $0.30–0.40 for a main-model turn. The HUD shows the
 session's running cost and which model answered last.
 
+**What it costs, and a daily cap.** Every model turn's cost is added up by
+day in `~/.jarvis/spend.json`. Diagnostics (press **D**) shows today, the
+last 7 days and the last 30. Today is also split three ways: what you asked,
+background jobs (brief, wrap, dossiers, pulse, review, promise scan) and the
+alert watcher. The figures are the SDK's estimates at API prices, even on a
+subscription. Use them to see which part costs what, not as a bill. Set
+`JARVIS_DAILY_CAP_USD` to cap a day. Once today's total reaches it, the work
+nobody asked for pauses until tomorrow: the watcher's checks, the morning
+brief offer, the wrap and review offers, and the promise scan. He tells you
+once when that happens, and he still answers when you ask.
+
 **The main model.** `claude-opus-5` at effort `high` by default. Override with the
 `JARVIS_MODEL` and `JARVIS_EFFORT` environment variables. On startup the bridge
 prints its choice, e.g. `[jarvis] model claude-opus-5 · effort high`.
@@ -396,6 +407,19 @@ flagged email, or a task with the same subject as one in the inbox), it opens
 that email, as above. Otherwise it opens the task in To Do on the web, which
 needs the Protective To Do flow to return each task's `id`; a flow that
 leaves ids out simply leaves those lines unlinked.
+
+Protective lines you finish after the brief is built drop out of it. When
+you ask again, he checks To Do and your sent mail. A task you've ticked off
+counts as done, and so does an email you've replied to (a sent "RE:" with
+the same subject, sent after it arrived). Done items are never among the
+three he shows, and the panel ends with "2 done since this morning". Replies
+need a `sent_email` flow. SCG and Gmail lines stay as they are, because the
+bridge can't read those mailboxes itself.
+
+Press **D** for Diagnostics to see how the last brief went. It shows how
+many lines got a link, how many are done, which ones have no link, and what
+stopped them (a flow that failed, a To Do flow that sends no task ids, or no
+sent-mail flow).
 
 ## Meetings: prep and follow-through
 

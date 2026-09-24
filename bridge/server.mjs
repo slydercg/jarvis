@@ -34,7 +34,8 @@ import {
 } from './memory.mjs'
 import { displayServer } from './panels.mjs'
 import { protectiveConfigured, protectiveServer } from './protective.mjs'
-import { briefServer, maybeOfferBrief } from './briefing.mjs'
+import { briefHealth, briefServer, maybeOfferBrief } from './briefing.mjs'
+import { backgroundPaused, onCapReached, recordSpend, spendSummary } from './spend.mjs'
 import { localFilesServer } from './localfiles.mjs'
 import { loopServer, logMeetings, maybeOfferWrap } from './loop.mjs'
 import {
@@ -1372,6 +1373,18 @@ const briefDeps = () => ({
   },
 })
 
+// Said once, the day the spend cap is first reached.
+onCapReached((spent, cap) =>
+  broadcastAlert({
+    kind: 'reminder',
+    label: 'Spend cap',
+    title: 'Daily spend cap reached',
+    detail: `$${spent.toFixed(2)} of $${cap.toFixed(2)} today. Background checks and offers are paused until tomorrow; I still answer when you ask.`,
+    say: "Sir, today's spend has reached your cap, so I've paused the background checks until tomorrow. I'll still answer when you ask.",
+    at: new Date().toISOString(),
+  }),
+)
+
 function ensureWatcher() {
   watcher ??= startAlerts({
     mcpServers: backgroundServers(),
@@ -1414,8 +1427,13 @@ setInterval(() => {
   if (!pages.size) return
   void refreshToday()
   const deps = briefDeps()
-  maybeOfferWrap(deps, broadcastAlert)
-  maybeOfferReview(deps, broadcastAlert)
+  // Past the daily spend cap, offers and scans nobody asked for wait for
+  // tomorrow (bridge/spend.mjs). Snoozes and nudges below cost nothing.
+  const paused = backgroundPaused()
+  if (!paused) {
+    maybeOfferWrap(deps, broadcastAlert)
+    maybeOfferReview(deps, broadcastAlert)
+  }
   // Snoozed items and reminders whose time has come: back on the list, and said.
   for (const i of wokenSince(lastWake)) {
     broadcastAlert({
@@ -1433,7 +1451,7 @@ setInterval(() => {
   if (inWindow('16-24', 'every') && firstToday('meeting-log')) void logMeetings()
   if (!commitmentsEnabled() || !inWindow(ALERT_HOURS, ALERT_DAYS)) return
   for (const nudge of dueNudges()) broadcastAlert(nudge)
-  if (scanDue()) {
+  if (!paused && scanDue()) {
     scanCommitments(deps)
       .then(() => jobHealth.ok('commitments'))
       .catch((err) => {
@@ -1491,8 +1509,9 @@ wss.on('connection', (socket) => {
   }
   pages.add(send)
   ensureWatcher()
-  // The first page of the morning builds the day's brief and offers it.
-  maybeOfferBrief(briefDeps(), {
+  // The first page of the morning builds the day's brief and offers it,
+  // unless the daily spend cap has already been reached.
+  if (!backgroundPaused()) maybeOfferBrief(briefDeps(), {
     weekends: process.env.JARVIS_ALERT_WEEKENDS === 'on',
     broadcast: broadcastAlert,
   })
@@ -1963,6 +1982,7 @@ wss.on('connection', (socket) => {
             const total = Number(msg.total_cost_usd ?? 0)
             const turnCost = total >= sessionCost ? total - sessionCost : total
             sessionCost = total
+            recordSpend('conversation', turnCost)
             // Cache figures too: each model keeps its own prompt cache, so the
             // first turn on a model in a while re-sends the whole conversation
             // at the write price. These say how often that happens in real use.
@@ -2181,6 +2201,13 @@ wss.on('connection', (socket) => {
         clearTimeout(slot.timer)
         slot.resolve(msg)
       }
+    }
+
+    // The Diagnostics panel: what today has cost, and how the last brief
+    // served went (links found, lines ticked off, anything that stopped them).
+    if (msg.type === 'status') {
+      send({ type: 'status', spend: spendSummary(), brief: briefHealth() })
+      return
     }
 
     // The history drawer asks for a day of the conversation. With `q`, a

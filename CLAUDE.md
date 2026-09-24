@@ -46,7 +46,8 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 | `bridge/panels.mjs` / `ui.mjs` | In-process MCP servers `jarvis` (`display` panels) and `jarvis_ui` (the model restyles the interface) |
 | `bridge/chrome.mjs` | `jarvis_chrome`: drives the user's real Chrome through the extension's native host |
 | `bridge/vision.mjs` | `jarvis_eyes`: asks the page for a camera frame (request/reply) |
-| `bridge/alerts.mjs` / `briefing.mjs` | Separate long-lived and read-only agent sessions for proactive alerts and the daily brief |
+| `bridge/alerts.mjs` / `briefing.mjs` | Separate long-lived and read-only agent sessions for proactive alerts and the daily brief. `serveBrief` adds source lines and links to each brief line, and marks it done (task ticked off, email replied) from Protective's flows each time it is served |
+| `bridge/spend.mjs` | What each model turn cost, by day and kind (`recordSpend` in `server.mjs`, `agent.mjs`, `alerts.mjs`), in `~/.jarvis/spend.json`; `JARVIS_DAILY_CAP_USD` pauses unasked-for background work (`backgroundPaused`). Shown in Diagnostics over the `status` frame, with the last brief's health (`briefHealth`) |
 | `bridge/agent.mjs` / `steps.mjs` | `askReadOnly()`, the read-only session every background job uses; `steps.mjs` names tool calls in plain words for the tool badge and the `progress` frames a job sends as it goes |
 | `bridge/transcript.mjs` / `src/ui/History.tsx` | The conversation history: every question, answer and alert (`appendTurn` in `server.mjs`), a JSONL file a day in `~/.jarvis/transcripts`, pruned after `JARVIS_HISTORY_DAYS`; the drawer reads a day or searches all of them over the `transcript` frame |
 | `bridge/protective.mjs` | Protective M365 mail/calendar/To Do through Power Automate flow URLs, which are credentials kept in `~/.jarvis`, never in the repo |

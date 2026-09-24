@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
+import { requestStatus, watchStatus, type StatusFrame } from '../lib/bridge'
 
 /**
  * The "why can't he hear me / why can't I hear him" panel.
@@ -16,6 +17,12 @@ import { useStore } from '../store'
  * diagnostic records are plain mutable objects written from outside React —
  * that is deliberate, since the whole point is to observe the loop without
  * changing its timing.
+ *
+ * Below the voice loop, two things the bridge knows and the page cannot see:
+ * what today has cost, and how the last brief went (how many lines got a link
+ * or were ticked off, and what stopped the rest). Features that fall back
+ * quietly (a flow that sends no task ids, a mailbox that failed) otherwise
+ * look exactly like features that work.
  */
 
 type VoiceDiag = {
@@ -47,11 +54,11 @@ type TtsDiag = {
 
 const ago = (t: number) => (t ? `${((Date.now() - t) / 1000).toFixed(1)}s ago` : '—')
 
-function Row({ k, v, bad }: { k: string; v: string; bad?: boolean }) {
+function Row({ k, v, bad, attn }: { k: string; v: string; bad?: boolean; attn?: boolean }) {
   return (
     <div className="diag-row">
       <span className="diag-k">{k}</span>
-      <span className={bad ? 'diag-v diag-bad' : 'diag-v'}>{v}</span>
+      <span className={bad ? 'diag-v diag-bad' : attn ? 'diag-v diag-attn' : 'diag-v'}>{v}</span>
     </div>
   )
 }
@@ -60,6 +67,7 @@ export function Diagnostics() {
   const [open, setOpen] = useState(false)
   const [, tick] = useState(0)
   const phase = useStore((s) => s.phase)
+  const [status, setStatus] = useState<StatusFrame | null>(null)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -78,6 +86,19 @@ export function Diagnostics() {
     if (!open) return
     const id = setInterval(() => tick((n) => n + 1), 250)
     return () => clearInterval(id)
+  }, [open])
+
+  // The bridge's half, asked for while the panel is open. Every few seconds is
+  // plenty: spend moves once a turn, brief health once a brief.
+  useEffect(() => {
+    if (!open) return
+    watchStatus(setStatus)
+    requestStatus()
+    const id = setInterval(requestStatus, 5000)
+    return () => {
+      clearInterval(id)
+      watchStatus(null)
+    }
   }, [open])
 
   if (!open) return null
@@ -129,6 +150,67 @@ export function Diagnostics() {
       <Row k="failures" v={String(t.failures ?? 0)} bad={(t.failures ?? 0) > 0} />
       <Row k="cloud rescues" v={String(t.rescued ?? 0)} />
       <Row k="error" v={t.lastError || '—'} bad={Boolean(t.lastError)} />
+
+      <SpendRows status={status} />
+      <BriefRows status={status} />
     </div>
+  )
+}
+
+const usd = (n: number) => `$${n.toFixed(2)}`
+/** "40s ago", "12 min ago", "3h 5m ago": a brief is hours old, not seconds. */
+function since(t: number) {
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000))
+  if (s < 60) return `${s}s ago`
+  const m = Math.floor(s / 60)
+  return m < 60 ? `${m} min ago` : `${Math.floor(m / 60)}h ${m % 60}m ago`
+}
+
+function SpendRows({ status }: { status: StatusFrame | null }) {
+  const s = status?.spend
+  return (
+    <>
+      <div className="diag-sec">SPEND · estimated at API prices</div>
+      {!s ? (
+        <Row k="today" v={status ? '—' : 'asking the bridge…'} />
+      ) : (
+        <>
+          <Row
+            k="today"
+            v={`${usd(s.today.total)}${s.cap ? ` of ${usd(s.cap)} cap` : ''}${s.paused ? ' · background paused' : ''}`}
+            attn={s.paused}
+          />
+          <Row
+            k="  by kind"
+            v={`asked ${usd(s.today.byKind.conversation)} · jobs ${usd(s.today.byKind.background)} · watcher ${usd(s.today.byKind.watcher)}`}
+          />
+          <Row k="last 7 days" v={usd(s.week.total)} />
+          <Row k="last 30 days" v={usd(s.month.total)} />
+        </>
+      )}
+    </>
+  )
+}
+
+function BriefRows({ status }: { status: StatusFrame | null }) {
+  const b = status?.brief
+  return (
+    <>
+      <div className="diag-sec">BRIEF</div>
+      {!b ? (
+        <Row k="last served" v={status ? '— not asked for since he started' : 'asking the bridge…'} />
+      ) : (
+        <>
+          <Row k="last served" v={`${since(b.at)} · built ${since(b.builtAt)}`} />
+          <Row k="lines" v={`${b.lines} · ${b.linked} linked · ${b.done} done`} />
+          {b.unlinked.map((u, n) => (
+            <Row key={`u${n}`} k={n === 0 ? 'no link' : ''} v={u} />
+          ))}
+          {b.notes.map((note, n) => (
+            <Row key={`n${n}`} k={n === 0 ? 'attention' : ''} v={note} bad={/couldn't be read/.test(note)} attn={!/couldn't be read/.test(note)} />
+          ))}
+        </>
+      )}
+    </>
   )
 }

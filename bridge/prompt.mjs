@@ -182,6 +182,12 @@ or how the day looks:
   has a link, wrap its .hud-label text in <a href="…"> with exactly that link,
   so a click opens the email in Outlook (or the task in To Do). Never write a link an item does not
   carry.
+- An item with "done" was finished after the brief was built ("replied",
+  "ticked off in To Do"). Never pick it as one of the three; if all of the
+  top three are done, say so in a word and take the next ones. If the focus
+  line names something now done, say it is done and move to the next thing.
+  When any are done, end the panel with a .hud-note: "2 done since this
+  morning".
 - "Where did that come from?", "what's the VAS invoice?", "read me that one":
   use the item's account and subject to find the email itself (Protective
   inbox or flagged mail for Protective, Outlook search for SCG) and say who
