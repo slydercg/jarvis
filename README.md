@@ -296,6 +296,13 @@ the bridge (`/img` and `/media`, both SSRF-guarded), so hotlink-blocked news
 thumbnails still appear and the page never beacons your IP to a host the model
 chose.
 
+Colour means one thing each, everywhere on screen: **amber** is something that
+needs you (an unseen item, a clash, a payment to confirm), **cyan** is
+information (what's next, a ticket link, a highlight), and **red** is something
+that broke. Nothing is amber or red for decoration, so either one always means
+the same. The only exception is the camera's red live dot, which works like a
+recording light.
+
 ---
 
 ## Controls
@@ -308,6 +315,10 @@ chose.
 | **V** | Cycle the browser voice |
 | **Escape** | Stand down (during start-up: skip the boot sequence) |
 | Command bar | Type instead of talking; Enter sends it |
+| **L** | Open or close the review list, with the keyboard in it |
+| **H** | Conversation history |
+| **?** | Every shortcut, on one sheet |
+| **,** | Settings |
 | **D** | Live diagnostics panel |
 | **T** | One-line audio self-test |
 
@@ -426,7 +437,7 @@ many items are waiting on your review list, and the portfolio's standing
 calendar.
 
 - Each calendar has its own colour: Protective cyan, SCG violet, Google green.
-- Clashes are outlined in amber, and an amber line marks now.
+- Clashes are outlined in amber, and a white line marks now.
 - Past meetings dim, and the one under way brightens.
 - Click a meeting to hear who you're meeting and what's open with them.
 
@@ -454,9 +465,17 @@ brief, the wrap-up, the weekly review, and anything held back during focus.
 - Ticket keys open the ticket, and "Show all" expands a long list.
 - **Your own reminders:** "remind me to call Chris at three" waits out of sight
   until three o'clock, then Jarvis says it and it's back at the top.
+- **One click for the next step:** each row has a button for the obvious
+  thing to do with it: **Draft reply** on mail, **Draft nudge** on someone
+  else's late promise, **Kept it** on one of yours (which closes it in the
+  promise ledger too), **Prep me** on a meeting, **Why behind?** on a slipping
+  sprint. Alert cards carry the same button when they first appear, all but
+  **Kept it**, which is only on the list.
 - **By voice:** "what's on my list?", "clear the portfolio ones", "remind me
-  about that tomorrow", "show my list" or "hide my list". **L** opens and
-  closes it.
+  about that tomorrow", "show my list" or "hide my list".
+- **By keyboard:** **L** opens it with the keyboard on the top row. **↑ ↓** or
+  **J K** move, **Enter** does the row's next step, **D** marks it done, **S**
+  puts it off for an hour, and **L** or **Esc** closes the list.
 - **Things that resolve themselves close on their own:**
   - a promise, once it's kept;
   - a meeting, half an hour after it starts;
@@ -468,6 +487,47 @@ brief, the wrap-up, the weekly review, and anything held back during focus.
 
 The list is kept in `~/.jarvis/stratum.json`, so it survives reloads and
 restarts. Done items are kept for a week.
+
+## While he works
+
+The badge under the reactor says what he's doing in plain words ("Reading the
+Protective inbox", "Checking Jira", "Searching SCG mail") instead of a tool's
+name. The jobs that take a minute (the morning brief, the wrap-up, a dossier,
+the portfolio pulse and the weekly review) also show the step they're on as
+they go, so a long job reads as moving rather than stuck.
+
+## Buttons on what he shows
+
+When something he puts on screen has an obvious next step, it comes with up to
+four buttons, such as **Draft reply**, **Add to To Do** or **Prep me**. A click
+asks him exactly what the button says (hover to see the full request), the
+same as typing it. So a draft is saved without asking, and anything that sends
+or changes something is still put to you on the confirmation card first.
+
+## History
+
+Press **H**, click **history** above the command bar, or say "show my
+history". The drawer on the left holds today's whole conversation: what you
+asked, what he answered, and every alert that came in. Earlier days are a
+click away. Type in the search box to search every kept day at once ("what did
+he say about Datadog?"), with the matches highlighted. **Esc** clears the
+search, and then closes the drawer.
+
+It's kept in `~/.jarvis/transcripts`, one file a day, on this Mac only, for 30
+days (`JARVIS_HISTORY_DAYS`). `JARVIS_HISTORY=off` keeps nothing.
+
+## Quiet hours
+
+Outside working hours nothing is spoken and no card pops up. Alerts still land
+on the review list, where they wait for the morning. The now strip shows
+"Quiet until 7:00 AM" while it holds. Three things still come through:
+
+- a reminder you set yourself, since you chose that time;
+- a meeting about to start;
+- mail the watcher marks VIP or about an incident.
+
+It's on by default from 8 PM to 7 AM and all weekend. Change the hours, or turn
+it off, in **Settings → Listening**. It's remembered in this browser.
 
 ## Focus
 
@@ -554,7 +614,7 @@ while it's open.
   your ElevenLabs account and preview it before you choose.
 - **Listening:** how long he keeps listening after an answer before needing
   "hey Jarvis" again, from 0 (always say it) to 15 seconds, plus the wake
-  word's status.
+  word's status and the quiet hours (see above).
 - **Display:** how the conversation reads.
   - **Clear** (the default) puts it on a solid panel in the Mac's own reading
     font, dims the reactor and scanlines behind it, and makes the lighter lines

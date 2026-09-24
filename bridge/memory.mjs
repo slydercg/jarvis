@@ -137,9 +137,15 @@ export function recentTurns(messages, limit = 6) {
         .map((b) => b.text)
         .join(' ')
     }
-    // Every question carries the local time in brackets for the model; the
-    // person who asked it never saw that, so neither should the transcript.
-    text = text.replace(/^\[[^\]]*\]\s*/, '').trim()
+    // Every question carries the local time in brackets for the model, and
+    // sometimes the alerts just spoken (alertContext in server.mjs, one line
+    // ending "]"). The person who asked never saw either, so neither should
+    // the transcript: after a reload a "You" line read "[Alerts you just
+    // spoke: …] Brief me."
+    text = text
+      .replace(/^\[[^\]]*\]\s*/, '')
+      .replace(/^\[Alerts you just spoke:[^\n]*\]\n?/, '')
+      .trim()
     // Switching model between turns records a slash command and its output
     // in the transcript. Bookkeeping, not conversation.
     if (!text || /^<(command-|local-command-)/.test(text)) continue

@@ -138,8 +138,8 @@ const themeSchema = {
     .catch(undefined)
     .describe(
       'Recolour individual states rather than overriding all of them. Use ' +
-        'this when one moment deserves its own identity — a red "thinking" ' +
-        'while you work through something grim — and the rest of the ' +
+        'this when one moment deserves its own identity — a deep-red "thinking" ' +
+        'while you dig into an outage — and the rest of the ' +
         'interface should carry on as normal.',
     ),
 }
@@ -147,13 +147,15 @@ const themeSchema = {
 const THEME_DESCRIPTION = `Retint the whole interface.
 
 The HUD is drawn in one colour identity that normally follows your state: cyan
-while listening, amber while thinking, violet while a tool runs, green while you
+while listening, blue while thinking, violet while a tool runs, green while you
 speak. An accent overrides that everywhere, at once.
 
-Use it when the colour MEANS something. Red because a check came back bad.
-Amber because you are waiting on something out of your control. A colour pulled
-out of an image you just generated, so the room matches the picture. Deep blue
-because it is three in the morning and they are still working.
+Use it when the colour MEANS something. Red because a check came back bad — red
+means failure and nothing else. Never amber: amber is kept for the things that
+need him (an unseen item, a clash, a money confirmation), and a whole amber room
+would drown them. A colour pulled out of an image you just generated, so the
+room matches the picture. Deep blue because it is three in the morning and they
+are still working.
 
 Do not redecorate for the sake of it, and do not leave a strange colour up after
 the moment that earned it has passed — call \`ui_reset\` when it is over.

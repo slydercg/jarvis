@@ -179,11 +179,14 @@ function DecodeText({ text }: { text: string }) {
 export function Hud() {
   const lower = useLowerEdge()
   const systemsOpen = useStore((s) => s.systemsOpen)
+  const setHistoryOpen = useStore((s) => s.setHistoryOpen)
+  const setKeysOpen = useStore((s) => s.setKeysOpen)
   const setSystemsOpen = useStore((s) => s.setSystemsOpen)
   const phase = useStore((s) => s.phase)
   const caption = useStore((s) => s.caption)
   const turns = useStore((s) => s.turns)
   const activeTool = useStore((s) => s.activeTool)
+  const jobStep = useStore((s) => s.jobStep)
   const connected = useStore((s) => s.connected)
   const health = useStore((s) => s.health)
   const sessionCost = useStore((s) => s.sessionCost)
@@ -353,9 +356,16 @@ export function Hud() {
           >
             <span className="tool-kicker">
               <span className="spinner" />
-              accessing
+              working
             </span>
             <span className="tool-name">{activeTool.replace(/[_-]/g, ' ')}</span>
+            {/* A job that takes a minute (the brief, the weekly review) says
+                which step it is on, so it reads as moving, not stuck. */}
+            {jobStep && jobStep.job === activeTool && (
+              <span className="tool-step" aria-live="polite">
+                {jobStep.step}
+              </span>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -450,6 +460,14 @@ export function Hud() {
               <kbd>V</kbd> voice: {voice.replace(/\(.*?\)/g, '').trim()}
             </>
           )}
+          {' · '}
+          <button type="button" className="hint-link" onClick={() => setHistoryOpen(true)}>
+            <kbd>H</kbd> history
+          </button>
+          {' · '}
+          <button type="button" className="hint-link" onClick={() => setKeysOpen(true)}>
+            <kbd>?</kbd> keys
+          </button>
         </span>
       </footer>
 

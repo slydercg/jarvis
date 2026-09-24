@@ -47,6 +47,44 @@ type Frame = {
   focus?: FocusFrame
   items?: StratumItem[]
   today?: TodayFrame
+  label?: string
+  job?: string
+  step?: string | null
+  days?: string[]
+  day?: string
+  q?: string
+}
+
+/** A background job's current step ("Checking Jira"), or null once it is done. */
+let onProgress: ((job: string, step: string | null) => void) | null = null
+export function watchProgress(fn: (job: string, step: string | null) => void) {
+  onProgress = fn
+}
+
+/** One line of the kept conversation (bridge/transcript.mjs). */
+export type TranscriptTurn = {
+  at: number
+  role: 'user' | 'jarvis' | 'alert'
+  text: string
+  kind?: string
+  /** Search results only: which day it was said. */
+  day?: string
+}
+/** A day of the conversation, or (with `q`) matches from every kept day. */
+export type TranscriptFrame = { day: string; days: string[]; turns: TranscriptTurn[]; q?: string }
+
+let onTranscript: ((t: TranscriptFrame) => void) | null = null
+export function watchTranscript(fn: (t: TranscriptFrame) => void) {
+  onTranscript = fn
+}
+/**
+ * Ask for a day of the conversation, or search every kept day with `q`; the
+ * answer arrives through watchTranscript.
+ */
+export function requestTranscript(day?: string, q?: string): boolean {
+  if (socket?.readyState !== WebSocket.OPEN) return false
+  socket.send(JSON.stringify({ type: 'transcript', day, q }))
+  return true
 }
 
 /** One meeting on today's timeline (bridge/today.mjs). Times are Date.now() values. */
@@ -94,7 +132,7 @@ export function watchStratum(fn: (items: StratumItem[]) => void) {
 }
 
 /** Done, open again, snoozed ("in an hour", "tomorrow"), or all looked at. */
-export function sendStratum(op: 'done' | 'open' | 'snooze' | 'seen', id?: string, when?: string) {
+export function sendStratum(op: 'done' | 'open' | 'snooze' | 'seen' | 'kept', id?: string, when?: string) {
   if (socket?.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ type: 'stratum', op, id, when }))
   }
@@ -123,6 +161,8 @@ export type AlertFrame = {
   say?: string
   /** One line per thing: a focus digest's held alerts, a portfolio alert's tickets. */
   items?: AlertItem[]
+  /** Mail from a VIP, or about an incident: it gets through focus and quiet hours. */
+  vip?: boolean
 }
 
 /** One line on an alert card. `url` is a ticket link, checked again before use. */
@@ -365,6 +405,15 @@ function dispatch(ws: WebSocket) {
       onStratum?.(msg.items)
     } else if (msg.type === 'today' && msg.today) {
       onToday?.(msg.today)
+    } else if (msg.type === 'progress' && typeof msg.job === 'string') {
+      onProgress?.(msg.job, msg.step ?? null)
+    } else if (msg.type === 'transcript' && Array.isArray(msg.turns)) {
+      onTranscript?.({
+        day: msg.day ?? '',
+        days: msg.days ?? [],
+        turns: msg.turns as TranscriptTurn[],
+        ...(typeof msg.q === 'string' ? { q: msg.q } : {}),
+      })
     } else if (msg.type === 'history' && Array.isArray(msg.turns)) {
       onHistory?.(msg.turns)
     } else if (msg.type === 'confirm' && msg.id) {
@@ -628,7 +677,9 @@ export async function ask(
           case 'tool':
             if (!msg.name) break
             tools.push(msg.name)
-            handlers.onTool(prettyToolName(msg.name))
+            // The bridge says what the tool is doing in words ("Checking
+            // Jira"); the tool's own name is the fallback for an older bridge.
+            handlers.onTool(msg.label || prettyToolName(msg.name))
             break
 
           case 'done':

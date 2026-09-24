@@ -43,7 +43,9 @@ Everything it remembers lives in `~/.jarvis`.
 | File | What it does |
 |---|---|
 | `server.mjs` | Entry point: HTTP and WebSocket, the system prompt, the tool gate, the MCP servers per connection, the one-minute clock for proactive work |
-| `agent.mjs` | `askReadOnly()` — one question to a separate read-only session, answered in JSON. Every background job uses it |
+| `agent.mjs` | `askReadOnly()` — one question to a separate read-only session, answered in JSON. Every background job uses it, and reports each step it takes |
+| `steps.mjs` | Tool names in plain words ("Checking Jira") for the tool badge and a job's progress |
+| `transcript.mjs` | The conversation history: every question, answer and alert, a file a day in `~/.jarvis/transcripts`, searchable. The page reads it in `ui/History.tsx` |
 | `protective.mjs` | Protective mail, calendar and To Do through Power Automate flows |
 | `briefing.mjs` | "Brief me": the ranked daily brief, cached and offered each morning |
 | `alerts.mjs` | The watcher: one long-lived, cheap session checking calendar, mail and portfolio; meeting prep; focus blocks |
@@ -67,10 +69,12 @@ Everything it remembers lives in `~/.jarvis`.
 - `App.tsx` — the listening and answering loop, alerts, yes and no.
 - `store.ts` — all interface state (Zustand).
 - `lib/` — audio, voice, speech and the wake word; `prefs.ts` for per-browser
-  settings such as the display mode.
+  settings such as the display mode; `quiet.ts` for quiet hours; `actions.ts`
+  for each item's one-click next step; `history.ts` for search highlighting.
 - `ui/` — `Hud`, `Blades`, `AlertStack`, `Stratum` (the review list),
-  `NowStrip`, `DayTimeline`, `ConfirmCard`, `Settings`, `CommandBar`. All
-  styling is in `index.css`.
+  `History`, `KeysHelp` (the ? sheet), `NowStrip`, `DayTimeline`,
+  `ConfirmCard`, `Settings`, `CommandBar`. All styling is in `index.css`,
+  whose header says what each colour means.
 - `scene/` — the reactor and particles.
 
 ## Rules the code keeps

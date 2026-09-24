@@ -7,9 +7,12 @@ import { Boot } from './ui/Boot'
 import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
 import { Settings, SettingsButton } from './ui/Settings'
-import { Stratum } from './ui/Stratum'
+import { FOCUS_LIST_EVENT, Stratum } from './ui/Stratum'
+import { History } from './ui/History'
+import { KeysHelp } from './ui/KeysHelp'
 import { useStore, UNDO_MS, type Alert } from './store'
 import { prefs } from './lib/prefs'
+import { breaksQuiet, isQuiet } from './lib/quiet'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
 import { createSpeaker, cycleVoice, currentVoiceName, speakingSince } from './lib/tts'
 import * as sfx from './lib/sfx'
@@ -33,6 +36,8 @@ import {
   watchFocus,
   watchStratum,
   watchToday,
+  watchProgress,
+  watchTranscript,
   resetConversation,
   watchCapture,
   watchUi,
@@ -114,6 +119,9 @@ const UNMUTE =
 /** "Show my list" / "hide the review list" — opens or closes the review column. */
 const SHOW_LIST = /^(show|open|pull up) (me )?(my|the) (review )?(list|review)[.!]?$/i
 const HIDE_LIST = /^(hide|close) (my|the) (review )?(list|review)[.!]?$/i
+/** "Show my history" / "show the conversation" — the history drawer. */
+const SHOW_HISTORY = /^(show|open|pull up) (me )?(my |the )?(history|conversation( history)?|transcript)[.!]?$/i
+const HIDE_HISTORY = /^(hide|close) (my |the )?(history|conversation( history)?|transcript)[.!]?$/i
 
 /** What he says for an alert. Fronted "Sir": it is an interruption, not an answer. */
 function alertLine(a: Alert): string {
@@ -466,6 +474,14 @@ export default function App() {
   /** "Show my list" / "hide my list": the review column, without a turn. */
   const toggleStratum = (raw: string): boolean => {
     const said = raw.replace(LEADING_NAME, '').trim()
+    // The history drawer answers to the same kind of words.
+    const showHistory = SHOW_HISTORY.test(said)
+    if (showHistory || HIDE_HISTORY.test(said)) {
+      store.getState().setHistoryOpen(showHistory)
+      say(showHistory ? 'Your history, sir.' : 'Very good, sir.')
+      listen(AWAIT_SPEECH_MS)
+      return true
+    }
     const show = SHOW_LIST.test(said)
     if (!show && !HIDE_LIST.test(said)) return false
     store.getState().setStratumOpen(show)
@@ -758,8 +774,17 @@ export default function App() {
     watchFocus((focus) => store.getState().setFocus(focus))
     watchStratum((items) => store.getState().setStratum(items))
     watchToday((today) => store.getState().setToday(today))
+    watchTranscript((t) => store.getState().setTranscript(t))
+    watchProgress((job, step) =>
+      store.getState().setJobStep(step ? { job, step, at: Date.now() } : null),
+    )
 
     watchAlerts((raw) => {
+      // Quiet hours: no card and not a word. The bridge has already put it on
+      // the review list, which is where it will be in the morning. A reminder
+      // he set, a meeting about to start, and VIP or incident mail still come
+      // through (lib/quiet.ts).
+      if (isQuiet(prefs().quiet) && !breaksQuiet(raw)) return
       const alert: Alert = {
         id: `${raw.kind}:${raw.title}:${raw.at}`,
         kind: raw.kind,
@@ -941,10 +966,25 @@ export default function App() {
       // should fire behind it.
       if (store.getState().settingsOpen) return
 
-      // L opens and closes the review list.
+      // L opens and closes the review list — and opening it by key puts the
+      // keyboard in it, so the arrows, D, S and Enter work straight away.
       if (e.key === 'l' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
-        store.getState().setStratumOpen(!store.getState().stratumOpen)
+        const open = !store.getState().stratumOpen
+        store.getState().setStratumOpen(open)
+        if (open) window.dispatchEvent(new Event(FOCUS_LIST_EVENT))
+        return
+      }
+
+      // H opens the conversation history; ? the sheet of these keys.
+      if (e.key === 'h' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        store.getState().setHistoryOpen(!store.getState().historyOpen)
+        return
+      }
+      if (e.key === '?' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        store.getState().setKeysOpen(!store.getState().keysOpen)
         return
       }
 
@@ -1030,6 +1070,9 @@ export default function App() {
       // no key for at all.
       if (e.key === 'Escape') {
         e.preventDefault()
+        // Esc closes what is open over the screen first, before anything else.
+        if (store.getState().keysOpen) return store.getState().setKeysOpen(false)
+        if (store.getState().historyOpen) return store.getState().setHistoryOpen(false)
         if (store.getState().phase === 'boot') skipBoot.current?.()
         else if (store.getState().phase !== 'offline') goDormant()
         return
@@ -1087,6 +1130,8 @@ export default function App() {
       <Diagnostics />
       <SettingsButton />
       <Stratum />
+      <History />
+      <KeysHelp />
       <Settings />
       <Ignition onStart={() => void powerOn()} />
     </>

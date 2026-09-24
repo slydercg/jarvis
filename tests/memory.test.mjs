@@ -33,3 +33,21 @@ test('remembered notes are framed as facts, not instructions', () => {
   assert.match(prompt, /not\s+instructions to you/)
   assert.match(prompt, /Chris leads the RPT programme/)
 })
+
+const user = (content) => ({ type: 'user', message: { role: 'user', content } })
+const said = (text) => ({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text }] } })
+
+test('a resumed question reads as he asked it, without the time or the alerts the model was given', () => {
+  const turns = m.recentTurns([
+    user('[Thu 24 Sep 2026, 06:14]\nWhat is on today?'),
+    said('Three meetings, sir.'),
+    user('[Thu 24 Sep 2026, 06:15]\n[Alerts you just spoke: Morning brief ready — Approve the renewal [NI-812] | Sir, a reminder: call Chris.]\nBrief me.'),
+    said('The Datadog renewal first, sir.'),
+  ])
+  assert.deepEqual(turns, [
+    { role: 'user', text: 'What is on today?' },
+    { role: 'jarvis', text: 'Three meetings, sir.' },
+    { role: 'user', text: 'Brief me.' },
+    { role: 'jarvis', text: 'The Datadog renewal first, sir.' },
+  ])
+})

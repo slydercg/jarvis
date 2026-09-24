@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AlertItem, AlertKind, FocusFrame, StratumItem, TodayFrame } from './lib/bridge'
+import type { AlertItem, AlertKind, FocusFrame, StratumItem, TodayFrame, TranscriptFrame } from './lib/bridge'
 
 /** Where things stand before a meeting, gathered ahead of the heads-up. */
 export type MeetingPrep = { summary: string; points: string[] }
@@ -111,6 +111,8 @@ export type Blade = {
   mode?: 'reader' | 'live'
   size: 'compact' | 'tall' | 'wide' | 'full'
   hold: 'turn' | 'sticky'
+  /** One-click next steps under it; each asks Jarvis `ask` as if typed. */
+  actions?: Array<{ label: string; ask: string }>
 }
 
 export type Turn = {
@@ -303,6 +305,13 @@ type State = {
   today: TodayFrame | null
   /** The full list of connected systems, unfolded over the timeline. */
   systemsOpen: boolean
+  /** A background job's current step, shown under the tool badge. */
+  jobStep: { job: string; step: string; at: number } | null
+  /** The history drawer, and the keyboard shortcut sheet. */
+  historyOpen: boolean
+  keysOpen: boolean
+  /** What the history drawer is showing: a day, or search results. */
+  transcript: TranscriptFrame | null
   /** The settings panel is open. */
   settingsOpen: boolean
   /** Name of the speech-synthesis voice in use, shown in the HUD. */
@@ -354,6 +363,10 @@ type State = {
   setStratumOpen: (open: boolean) => void
   setToday: (today: TodayFrame) => void
   setSystemsOpen: (open: boolean) => void
+  setJobStep: (step: { job: string; step: string; at: number } | null) => void
+  setHistoryOpen: (open: boolean) => void
+  setKeysOpen: (open: boolean) => void
+  setTranscript: (t: TranscriptFrame | null) => void
   setSettingsOpen: (open: boolean) => void
   pushTurn: (t: Turn) => void
   /** Replace the transcript: a restored conversation, or a fresh start. */
@@ -387,6 +400,10 @@ export const useStore = create<State>((set) => ({
   stratum: [],
   today: null,
   systemsOpen: false,
+  jobStep: null,
+  historyOpen: false,
+  keysOpen: false,
+  transcript: null,
   stratumOpen: readStratumOpen(),
   settingsOpen: false,
   voice: '',
@@ -473,6 +490,10 @@ export const useStore = create<State>((set) => ({
   setStratum: (stratum) => set({ stratum }),
   setToday: (today) => set({ today }),
   setSystemsOpen: (systemsOpen) => set({ systemsOpen }),
+  setJobStep: (jobStep) => set({ jobStep }),
+  setHistoryOpen: (historyOpen) => set({ historyOpen }),
+  setKeysOpen: (keysOpen) => set({ keysOpen }),
+  setTranscript: (transcript) => set({ transcript }),
   setStratumOpen: (stratumOpen) => {
     try {
       localStorage.setItem(STRATUM_KEY, stratumOpen ? '1' : '0')
@@ -553,14 +574,21 @@ export const useStore = create<State>((set) => ({
     }),
 }))
 
-/** Colour identity per phase — shared by the 3D scene and the 2D HUD. */
+/**
+ * Colour identity per phase — shared by the 3D scene and the 2D HUD.
+ *
+ * Listening, thinking and tooling walk the hue wheel from cyan through blue to
+ * violet as the work goes deeper. Thinking used to be amber, but amber is the
+ * one colour that means "needs you" (index.css), and it was on screen for every
+ * question he asked: an amber "clash" or review count next to it said nothing.
+ */
 export const phaseColor: Record<Phase, string> = {
   offline: '#0d4a4a',
   boot: '#17b3b3',
   dormant: '#12908f',
   waking: '#5cf2ef',
   listening: '#19d8d2',
-  thinking: '#f0a93c',
+  thinking: '#5b8cff',
   tooling: '#a97bff',
   speaking: '#3ef2a8',
 }

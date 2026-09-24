@@ -138,7 +138,50 @@ A short readout:
 <p class="hud-note">Three of the four services are nominal. <span class="hud-hot">Vercel is degraded</span> in eu-west.</p>
 `.trim()
 
+/**
+ * Buttons under a panel or blade: the obvious next step, one click away
+ * instead of a sentence to phrase — "Draft reply", "Add to To Do", "Prep me".
+ * A click asks Jarvis `ask` exactly as if it had been typed, so it goes
+ * through every gate a typed request does: drafts are saved, anything that
+ * sends or changes is still confirmed on screen first.
+ */
+export const actionsSchema = z
+  .array(
+    z.object({
+      label: z.string().min(1).max(28).describe('Two or three words on the button: "Draft reply".'),
+      ask: z
+        .string()
+        .min(2)
+        .max(240)
+        .describe('What clicking it asks, in his words: "Draft a reply to Chris about the APD scope."'),
+    }),
+  )
+  .max(4)
+  .optional()
+  .catch(undefined)
+  .describe(
+    'Up to four one-click next steps under the panel, when there is an obvious one ' +
+      '(reply to this, add these to To Do, prep me for that). Leave out when there is none.',
+  )
+
+/** Clean actions for the page: trimmed, de-duplicated, at most four. */
+export function cleanActions(actions) {
+  if (!Array.isArray(actions)) return undefined
+  const seen = new Set()
+  const out = []
+  for (const a of actions) {
+    const label = String(a?.label ?? '').replace(/\s+/g, ' ').trim().slice(0, 28)
+    const ask = String(a?.ask ?? '').replace(/\s+/g, ' ').trim().slice(0, 240)
+    if (!label || ask.length < 2 || seen.has(label.toLowerCase())) continue
+    seen.add(label.toLowerCase())
+    out.push({ label, ask })
+    if (out.length === 4) break
+  }
+  return out.length ? out : undefined
+}
+
 const schema = {
+  actions: actionsSchema,
   title: z
     .string()
     .describe('Short heading for the panel, two to four words. e.g. "SEARCH RESULTS", "INBOX".'),
@@ -171,9 +214,12 @@ const schema = {
     .enum(['default', 'amber', 'violet', 'green', 'red'])
     .default('default')
     .describe(
-      'Colour identity. default = the interface cyan. amber = caution or ' +
-        'pending. violet = generated or synthetic content. green = confirmed ' +
-        'or healthy. red = failure or alert. Use it meaningfully, not decoratively.',
+      'Colour identity. default = the interface cyan, for information — ' +
+        'most panels. amber = needs him: a decision, a reply or an approval ' +
+        'only he can give; never for emphasis. violet = generated or synthetic ' +
+        'content. green = confirmed or healthy. red = something failed, and ' +
+        'nothing else. Amber and red mean the same everywhere on the screen, ' +
+        'so use them only when they are true.',
     ),
   hold: z
     .enum(['turn', 'sticky'])
@@ -256,6 +302,7 @@ Never open a blade the user did not ask for and does not need. One blade that
 answers the question beats three that surround it.`
 
 const bladeSchema = {
+  actions: actionsSchema,
   title: z
     .string()
     .describe('Two to four words naming what this is, e.g. "REUTERS" or "MARK VII".'),
@@ -373,6 +420,7 @@ export function displayServer(emit, emitBlade) {
           html: args.html,
           size: args.slot === 'wide' ? 'wide' : 'compact',
           hold: args.hold ?? 'turn',
+          actions: cleanActions(args.actions),
         })
         return { content: [{ type: 'text', text: 'On screen.' }] }
       }),
@@ -408,6 +456,7 @@ export function displayServer(emit, emitBlade) {
           // between an article you can follow and one in a letterbox.
           size: args.size ?? (kind === 'article' ? 'tall' : 'wide'),
           hold: args.hold ?? 'turn',
+          actions: cleanActions(args.actions),
         }
         emitBlade(blade)
         return { content: [{ type: 'text', text: `Open on the blades as "${blade.title}".` }] }

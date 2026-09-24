@@ -136,6 +136,9 @@ export function keepAlert(alert) {
   return item
 }
 
+/** One item by id, or null. */
+export const findItem = (id) => load().find((i) => i.id === id) ?? null
+
 /** Change one item: done, open again, seen, or snoozed until a time. */
 export function updateItem(id, change) {
   const items = load()
