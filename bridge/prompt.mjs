@@ -183,11 +183,12 @@ or how the day looks:
   so a click opens the email in Outlook (or the task in To Do). Never write a link an item does not
   carry.
 - An item with "done" was finished after the brief was built ("replied",
-  "ticked off in To Do"). Never pick it as one of the three; if all of the
-  top three are done, say so in a word and take the next ones. If the focus
-  line names something now done, say it is done and move to the next thing.
-  When any are done, end the panel with a .hud-note: "2 done since this
-  morning".
+  "ticked off in To Do"). It is dealt with: never pick it as one of the three,
+  and never name it — not aloud, not on screen, not as "already answered".
+  The only trace is the count: when any are done, end the panel with a
+  .hud-note, "2 done since this morning". If all of the top three are done,
+  say so in a word and take the next ones. If the focus line names something
+  now done, say only that it is done and move to the next thing.
 - Give each of those rows data-brief with exactly the item's ref, e.g.
   <div class="hud-row" data-brief="k3f9-2m">. The interface adds Done,
   Tomorrow and (for mail) Reply buttons to a row that carries it; never write
