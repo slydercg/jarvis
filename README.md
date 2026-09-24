@@ -381,6 +381,18 @@ Reading needs no confirmation. Saving a draft doesn't either; drafts are never
 sent. Sending mail and adding tasks are confirmed on screen first, and a
 batch of tasks is confirmed once.
 
+**Checking the flows.** `npm run doctor:flows` calls each reading flow once
+and says what came back, and what that means for Jarvis. For example:
+- whether message ids have the shape Outlook opens;
+- whether the To Do flow sends task ids;
+- whether there is a sent-mail flow, so replied emails get ticked off the brief.
+
+It costs nothing, since no model is involved. It never calls the flows that
+draft, send or add, and it never prints a flow URL. Add `-- --open-mail` or
+`-- --open-todo` to open the newest email or the first open task the same way
+a brief line would. That's how to check, on your Mac, that the links land on
+the email or task itself.
+
 ## Your morning brief
 
 "Brief me" answers from a brief built ahead of time with the same rules as
@@ -473,12 +485,17 @@ sent-mail flow).
     "Yes" saves the draft.
   - You can tell him directly: "I told Chris I'd send the roadmap by Friday",
     "what do I owe Chris?", "who owes me what?", "that's done".
+  - **Unanswered asks.** A question or request you sent that has had no reply
+    is kept too, with the day you asked. After three working days he says
+    "Chris hasn't replied to your Tuesday ask — the Q4 numbers. Shall I draft
+    a nudge?", then again every three working days until they answer or it is
+    let go. `JARVIS_CHASE_DAYS` changes the wait (0 turns chasing off).
   - `JARVIS_COMMITMENTS=off` turns the ledger's scans and nudges off.
 - **Protective sent mail (optional).** Promises you made by email at SCG are
   read through the Microsoft 365 connector. For Protective, add a
   `"sent_email"` flow to `~/.jarvis/power-automate.json`: a copy of the Inbox
   flow pointed at Sent Items. Without it, Protective promises are still picked
-  up from meeting notes.
+  up from meeting notes, but unanswered asks can only be found at SCG and Gmail.
 
 ## Drafts in your voice
 
@@ -920,6 +937,9 @@ npm run bridge:writes
 ---
 
 ## Troubleshooting
+
+**A brief line has no link, or never gets ticked off.** Run
+`npm run doctor:flows`. It names the flow and the missing field.
 
 **I can't hear him, or he can't hear me.** Press **D** for the diagnostics panel
 — it states plainly whether he is hearing you and whether he is producing sound.

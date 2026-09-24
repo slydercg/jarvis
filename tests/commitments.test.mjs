@@ -49,3 +49,40 @@ test('expired promises drop out of what is open', () => {
   ledger([item('x9', 'Sarah', { status: 'expired', closed: '2026-09-24' }), item('y8', 'Sarah')])
   assert.deepEqual(c.openCommitments().map((i) => i.id), ['y8'])
 })
+
+test('working days skip the weekend', () => {
+  assert.equal(c.workingDaysSince('2026-09-22', new Date('2026-09-25T10:00:00')), 3) // Tue → Fri
+  assert.equal(c.workingDaysSince('2026-09-25', new Date('2026-09-28T10:00:00')), 1) // Fri → Mon
+  assert.equal(c.workingDaysSince('2026-09-24', new Date('2026-09-24T18:00:00')), 0)
+})
+
+test('an unanswered ask is chased after three working days, then every three', () => {
+  const ask = item('q1', 'Chris Okafor', { what: 'Reply on the Q4 numbers', asked: '2026-09-22' }) // a Tuesday
+  assert.equal(c.chaseNudge(ask, new Date('2026-09-24T10:00:00')), null, 'two working days: too soon')
+  const first = c.chaseNudge(ask, new Date('2026-09-25T10:00:00'))
+  assert.equal(first.label, 'No reply')
+  assert.equal(first.say, "Sir, Chris Okafor hasn't replied to your Tuesday ask — reply on the Q4 numbers. Shall I draft a nudge?")
+  assert.equal(ask.nudged, '2026-09-25')
+  assert.equal(c.chaseNudge(ask, new Date('2026-09-29T10:00:00')), null, 'said two working days ago')
+  assert.ok(c.chaseNudge(ask, new Date('2026-09-30T10:00:00')), 'three working days later: again')
+})
+
+test('older asks are dated; dated, closed and his own items are not chased this way', () => {
+  const old = item('q2', 'Sarah', { what: 'Headcount plan', asked: '2026-09-10' })
+  assert.match(c.chaseNudge(old, new Date('2026-09-24T10:00:00')).say, /your ask on 10 September/)
+  assert.equal(c.chaseNudge(item('q3', 'Sarah', { asked: '2026-09-01', due: '2026-09-30' }), new Date('2026-09-24')), null)
+  assert.equal(c.chaseNudge(item('q4', 'Sarah', { asked: '2026-09-01', status: 'done' }), new Date('2026-09-24')), null)
+  assert.equal(c.chaseNudge(item('q5', 'Sarah', { asked: '2026-09-01', direction: 'mine' }), new Date('2026-09-24')), null)
+})
+
+test('the scan records the day an ask was sent, only for what others owe', () => {
+  ledger([])
+  const added = c.addCommitments([
+    { direction: 'theirs', who: 'Chris', what: 'reply on the Q4 numbers', asked: '2026-09-22' },
+    { direction: 'mine', who: 'Dana', what: 'send the signed contract', asked: '2026-09-22' },
+    { direction: 'theirs', who: 'Sarah', what: 'send the headcount plan', asked: 'last Tuesday' },
+  ])
+  assert.equal(added[0].asked, '2026-09-22')
+  assert.equal(added[1].asked, undefined)
+  assert.equal(added[2].asked, undefined)
+})
