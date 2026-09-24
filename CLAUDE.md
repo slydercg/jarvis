@@ -24,14 +24,14 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 - `.mts` tests import `src/*.ts` directly with type stripping, so any module tested this way must use only erasable TS syntax and must not import Vite-only things (`import.meta.env`, assets). `src/lib/echo.ts` is kept import-free for this reason.
 - Tests replace `fetch` and point `JARVIS_HOME` at a temp dir. Never let a test reach the network or `~/.jarvis`. Audio fixtures are in `tests/fixtures/*.wav`.
 - No coverage tooling is configured.
-- `npm run eval` (on demand, needs a Claude login, about $1 on Opus): runs `evals/cases.json` through the real `SYSTEM_PROMPT` (`bridge/prompt.mjs`) and `policy.mjs` against a fake Protective account with a planted-instruction email, connectors off, confirmations answered no. Add a case whenever a behaviour matters; the scoring rules (`evals/score.mjs`) are tested in CI.
+- `npm run eval` (on demand, needs a Claude login, about $1 on Opus): runs `evals/cases.json` through the real `SYSTEM_PROMPT` (`bridge/prompt.mjs`) and `policy.mjs` against a fake Protective account with planted-instruction emails and a ready-built brief (`evals/fake-brief.mjs`), connectors off, confirmations answered no. `inputs` / `notInputs` expectations check what a call was given (what went on screen, which line was named). Add a case whenever a behaviour matters; the scoring rules (`evals/score.mjs`) are tested in CI.
 
 ## Build & Run
 
 - `npm start`: `scripts/start.mjs` runs the bridge and Vite together (adds `--writes` / `--open`, and copies the MediaPipe WASM into `public/mediapipe/`, which is gitignored).
 - `npm run dev` (page only), `npm run bridge` (brain only), `npm run bridge:writes`.
 - `npm run build` = `tsc -b && vite build`. `npm run lint` = oxlint (`react/rules-of-hooks` is an error).
-- CI (`.github/workflows/ci.yml`, Node 22) runs `npm ci`, lint, build and test on every PR and every push to main. Run all three before pushing.
+- CI (`.github/workflows/ci.yml`, Node 22) runs `npm ci`, lint, build and test on every PR and every push to main. Run all three before pushing. `npm ci` there sets `ONNXRUNTIME_NODE_INSTALL_CUDA=skip`, so `onnxruntime-node` doesn't download a CUDA build from GitHub; don't remove it.
 - `.claude/launch.json` runs `npm start` on port 5180 with `autoPort: false` on purpose (see Gotchas).
 
 ## Project Structure
@@ -52,6 +52,7 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 | `bridge/agent.mjs` / `steps.mjs` | `askReadOnly()`, the read-only session every background job uses; `steps.mjs` names tool calls in plain words for the tool badge and the `progress` frames a job sends as it goes |
 | `bridge/transcript.mjs` / `src/ui/History.tsx` | The conversation history: every question, answer and alert (`appendTurn` in `server.mjs`), a JSONL file a day in `~/.jarvis/transcripts`, pruned after `JARVIS_HISTORY_DAYS`; the drawer reads a day or searches all of them over the `transcript` frame |
 | `bridge/protective.mjs` | Protective M365 mail/calendar/To Do through Power Automate flow URLs, which are credentials kept in `~/.jarvis`, never in the repo |
+| `bridge/flowcheck.mjs` / `scripts/flows-doctor.mjs` | `npm run doctor:flows`: calls each reading flow once and judges what came back against what the brief relies on (Outlook-shaped ids, task ids, a sent flow). Never calls a flow that changes things; never prints a flow URL |
 | `bridge/stratum.mjs` / `src/ui/Stratum.tsx` | The review list: every alert is kept (in `broadcastAlert`, before the focus gate) in `~/.jarvis/stratum.json` until done; snoozes and reminders wake on the minute clock; `jarvis_stratum` tools for the conversation |
 | `bridge/today.mjs` / `src/lib/today.ts` | Today for the now strip (`ui/NowStrip.tsx`) and day timeline (`ui/DayTimeline.tsx`): Protective straight from its flow, other calendars from the watcher's calendar check, merged and clash-marked; `src/lib/today.ts` is the pure pick/lane layout |
 | `bridge/tickets.mjs` / `maillinks.mjs` / `src/lib/tickets.ts` | Ticket links, built only from known Jira/ADO sites, and Outlook/To Do links for Protective brief lines, built only from a message or task id matched in the mailbox or task list; `tickets.ts` is the page's own check (`isTicketLink`, `isMailLink`). The only links the HUD renders (`sanitise.ts` unwraps every other `<a>`) |
