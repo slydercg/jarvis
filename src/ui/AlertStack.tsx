@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore, type Alert } from '../store'
 import { LABELS } from './alertLabels'
@@ -6,6 +6,14 @@ import type { AlertItem } from '../lib/bridge'
 import { isTicketLink } from '../lib/tickets'
 import { primaryAction } from '../lib/actions'
 import { COMMAND_EVENT } from './CommandBar'
+import { cardsThatFit, overlaps } from '../lib/alertFit'
+
+/** Sent by Hud.tsx whenever the conversation's top edge moves. */
+export const LOWER_EDGE_EVENT = 'jarvis:lower-edge'
+const GAP = 10
+const MORE_HEIGHT = 26
+/** A card not yet measured; about one with a title and a line of detail. */
+const GUESS_HEIGHT = 110
 
 
 /**
@@ -15,6 +23,10 @@ import { COMMAND_EVENT } from './CommandBar'
  * an empty room; the card is what is still there when you look up. Newest
  * first, three at most, each dismissable. A meeting card counts down to its
  * start so it stays true for as long as it is on screen.
+ *
+ * Only as many cards as fit above the conversation are shown; the rest fold
+ * into "+N more on your review list" (lib/alertFit.ts), so a long answer on a
+ * laptop screen is never covered.
  */
 export function AlertStack() {
   const alerts = useStore((s) => s.alerts)
@@ -22,7 +34,42 @@ export function AlertStack() {
   const dismiss = useStore((s) => s.dismissAlert)
   const focus = useStore((s) => s.focus)
   const listOpen = useStore((s) => s.stratumOpen)
+  const setListOpen = useStore((s) => s.setStratumOpen)
   const [, tick] = useState(0)
+  const stack = useRef<HTMLElement>(null)
+  const heights = useRef(new Map<string, number>())
+  const [fit, setFit] = useState(Infinity)
+
+  // Measure the cards on screen, then work out how many fit above the
+  // conversation. Cards left out keep the height they had when last seen.
+  const refit = () => {
+    const el = stack.current
+    if (!el) return
+    for (const card of el.querySelectorAll<HTMLElement>('.alert[data-id]')) {
+      heights.current.set(card.dataset.id!, card.offsetHeight)
+    }
+    const conv = conversationBox()
+    const box = el.getBoundingClientRect()
+    let n = Infinity
+    if (conv && overlaps([box.left, box.right], [conv.left, conv.right])) {
+      let top = box.top
+      for (const line of el.querySelectorAll<HTMLElement>('.alerts-muted')) top += line.offsetHeight + GAP
+      const hs = useStore.getState().alerts.map((a) => heights.current.get(a.id) ?? GUESS_HEIGHT)
+      n = cardsThatFit(hs, top, conv.top - 12, GAP, MORE_HEIGHT)
+    }
+    setFit((f) => (f === n ? f : n))
+  }
+
+  useLayoutEffect(refit)
+  useEffect(() => {
+    window.addEventListener(LOWER_EDGE_EVENT, refit)
+    window.addEventListener('resize', refit)
+    return () => {
+      window.removeEventListener(LOWER_EDGE_EVENT, refit)
+      window.removeEventListener('resize', refit)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Keep "in 8 min" honest, and clear meetings once they are well under way.
   useEffect(() => {
@@ -44,8 +91,11 @@ export function AlertStack() {
   if (listOpen && !muted && !focused) return null
   if (!alerts.length && !muted && !focused) return null
 
+  const shown = listOpen ? [] : alerts.slice(0, fit)
+  const held = listOpen ? 0 : alerts.length - shown.length
+
   return (
-    <section className="alerts" aria-label="Alerts" aria-live="polite">
+    <section className="alerts" aria-label="Alerts" aria-live="polite" ref={stack}>
       {muted && <div className="alerts-muted">Alerts muted · say “resume alerts”</div>}
       {focused && (
         <div className="alerts-muted alerts-focus">
@@ -54,9 +104,10 @@ export function AlertStack() {
         </div>
       )}
       <AnimatePresence initial={false}>
-        {(listOpen ? [] : alerts).map((a) => (
+        {shown.map((a) => (
           <motion.div
             key={a.id}
+            data-id={a.id}
             className={`alert alert-${a.kind}${a.label === 'Overdue' ? ' alert-overdue' : ''}`}
             role="status"
             initial={{ opacity: 0, x: 16 }}
@@ -95,6 +146,11 @@ export function AlertStack() {
           </motion.div>
         ))}
       </AnimatePresence>
+      {held > 0 && (
+        <button type="button" className="alerts-more" onClick={() => setListOpen(true)}>
+          +{held} more on your review list
+        </button>
+      )}
     </section>
   )
 }
@@ -176,4 +232,12 @@ function CardAction({ alert, onDone }: { alert: Alert; onDone: () => void }) {
       </button>
     </div>
   )
+}
+
+/** Where the conversation's text actually is: its first child with height. */
+function conversationBox(): DOMRect | null {
+  const lower = document.querySelector('.lower')
+  if (!lower) return null
+  const first = [...lower.children].find((c) => c.getBoundingClientRect().height > 0)
+  return first ? first.getBoundingClientRect() : null
 }

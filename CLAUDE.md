@@ -56,7 +56,7 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 | `bridge/settings.mjs` | Settings panel backend: writes the ElevenLabs key to `.env.local`, everything else to `~/.jarvis/settings.json` |
 | `src/App.tsx`, `src/store.ts` | Main loop wiring and zustand state |
 | `src/config.ts` | Every `import.meta.env` read. `VITE_BACKEND` = `bridge` (default) or `direct` (browser calls the API, `src/lib/anthropic.ts`) |
-| `src/lib/` | Voice loop (`voice.ts`, `vad.ts`, `echo.ts`, `wakeword.ts` + `oww*`), TTS (`tts.ts`, `kokoro.ts`), bridge client (`bridge.ts`, `brain.ts`), hands/camera; pure and tested: `actions.ts` (each item's one-click next step), `quiet.ts` (quiet hours, checked in `App.tsx` before an alert is shown or said), `history.ts` |
+| `src/lib/` | Voice loop (`voice.ts`, `vad.ts`, `echo.ts`, `wakeword.ts` + `oww*`), TTS (`tts.ts`, `kokoro.ts`), bridge client (`bridge.ts`, `brain.ts`), hands/camera; pure and tested: `actions.ts` (each item's one-click next step), `quiet.ts` (quiet hours, checked in `App.tsx` before an alert is shown or said), `history.ts`, `alertFit.ts` (how many alert cards fit above the conversation) |
 | `src/scene/` | Reactor (R3F + GLSL shaders) |
 | `src/ui/` | HUD overlays: panels, blades, confirm card, settings, diagnostics, the ? keys sheet (`KeysHelp.tsx`; keep it in step with the key handlers in `App.tsx`, `Blades.tsx`, `Stratum.tsx`, `Diagnostics.tsx`) |
 | `scripts/` | `start`, `setup`, `browser-doctor`, `autostart` (LaunchAgents), `update` (self-updater) |
