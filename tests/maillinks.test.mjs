@@ -32,7 +32,7 @@ test('an item finds its email by subject, ignoring RE: and FW:', () => {
   assert.equal(matchMail({}, mail), null)
 })
 
-test('the brief gets links only on Protective email lines that match', async () => {
+test('the brief gets links only on Protective lines that match an email', async () => {
   const brief = {
     items: [
       { account: 'Protective', source: 'email', subject: 'VAS invoice', from: 'ap@protective.com' },
@@ -42,7 +42,7 @@ test('the brief gets links only on Protective email lines that match', async () 
     ],
   }
   const out = await withLinks(brief, async () => [{ id: ID, from: 'ap@protective.com', subject: 'VAS invoice', received: '2026-09-23' }])
-  assert.deepEqual(out.items.map((i) => Boolean(i.link)), [true, false, false, false])
+  assert.deepEqual(out.items.map((i) => Boolean(i.link)), [true, true, false, false])
   // A mailbox that cannot be read leaves the brief as it was.
   assert.equal(await withLinks(brief, async () => { throw new Error('down') }), brief)
 })
@@ -69,4 +69,25 @@ test('an SCG email line links by the id the brief recorded, if it looks like one
 test('a Protective line falls back to its recorded id when no subject matches', async () => {
   const out = await withLinks({ items: [{ account: 'Protective', source: 'email', subject: 'Gone', messageId: SCG_ID }] }, async () => [])
   assert.equal(out.items[0].link, mailLink(SCG_ID))
+})
+
+test('a To Do line opens its email when it has one, else the task', async () => {
+  const { todoLink } = await import('../bridge/maillinks.mjs')
+  const TASK_ID = 'AQMkADAwATM0MDAAMS1hNTAwLTc5NDEtMDACLTAwCgBGAAAD'
+  const brief = {
+    items: [
+      { account: 'Protective', source: 'task', subject: 'VAS invoice' },
+      { account: 'Protective', source: 'task', subject: 'Renew the certificates' },
+      { account: 'Protective', source: 'task', subject: 'Nothing matches' },
+      { account: 'SCG', source: 'task', subject: 'Renew the certificates' },
+    ],
+  }
+  const out = await withLinks(
+    brief,
+    async () => [{ id: ID, from: 'ap@protective.com', subject: 'VAS invoice' }],
+    async () => [{ id: TASK_ID, title: 'Renew the certificates', list: 'Tasks' }, { title: 'Nothing matches', list: 'Tasks' }],
+  )
+  assert.deepEqual(out.items.map((i) => i.link ?? null), [mailLink(ID), todoLink(TASK_ID), null, null])
+  assert.equal(todoLink(TASK_ID), `https://to-do.office.com/tasks/id/${TASK_ID}/details`)
+  assert.equal(todoLink('javascript:x'), null)
 })

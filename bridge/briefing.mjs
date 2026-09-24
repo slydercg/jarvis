@@ -6,7 +6,7 @@ import { JARVIS_HOME } from './memory.mjs'
 import { askReadOnly } from './agent.mjs'
 import { recordDay } from './days.mjs'
 import { protective, protectiveConfigured } from './protective.mjs'
-import { mailLink, matchMail, readerId } from './maillinks.mjs'
+import { mailLink, matchMail, matchTask, readerId, todoLink } from './maillinks.mjs'
 
 /**
  * The brief: what needs doing today, ranked, from every mailbox and calendar.
@@ -113,27 +113,44 @@ export function withSources(brief, now = new Date()) {
  * model), falling back to the id the brief recorded. SCG: the bridge cannot
  * read that mailbox itself (it is a claude.ai connector), so the id the brief
  * builder copied from the Outlook tool is used, if it has the shape of one.
+ *
+ * A Protective To Do line opens the email behind it when there is one (a
+ * "Flagged Emails" task is an email, and that link is the surest), else the
+ * task itself in To Do on the web, when the flow returned the task's id.
+ *
  * A line that cannot be matched simply has no link. Failures leave the brief
  * as it was.
  */
-export async function withLinks(brief, lookup = protectiveMail) {
+export async function withLinks(brief, lookup = protectiveMail, taskLookup = protectiveTasks) {
   const items = Array.isArray(brief?.items) ? brief.items : []
   const email = (i) => String(i.source ?? '').includes('email')
-  let messages = []
-  if (items.some((i) => i.account === 'Protective' && email(i))) {
+  const task = (i) => i.source === 'task'
+  const protectiveLines = items.filter((i) => i.account === 'Protective')
+  const read = async (fn) => {
     try {
-      messages = await lookup()
+      return await fn()
     } catch (err) {
       console.warn(`[jarvis] brief links: ${err.message}`)
+      return []
     }
   }
+  const messages = protectiveLines.some((i) => email(i) || task(i)) ? await read(lookup) : []
+  const tasks = protectiveLines.some(task) ? await read(taskLookup) : []
   const linked = items.map((i) => {
-    if (!email(i) || (i.account !== 'Protective' && i.account !== 'SCG')) return i
-    const matched = i.account === 'Protective' ? matchMail(i, messages)?.id : null
-    const link = mailLink(matched ?? readerId(i.messageId))
+    let link = null
+    if (email(i) && (i.account === 'Protective' || i.account === 'SCG')) {
+      const matched = i.account === 'Protective' ? matchMail(i, messages)?.id : null
+      link = mailLink(matched ?? readerId(i.messageId))
+    } else if (task(i) && i.account === 'Protective') {
+      link = mailLink(matchMail(i, messages)?.id) ?? todoLink(matchTask(i, tasks)?.id)
+    }
     return link ? { ...i, link } : i
   })
   return linked.some((i, n) => i !== items[n]) ? { ...brief, items: linked } : brief
+}
+
+async function protectiveTasks() {
+  return protectiveConfigured() ? protective.todo() : []
 }
 
 async function protectiveMail() {

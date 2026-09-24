@@ -219,6 +219,8 @@ export function flattenTodo(groups) {
     for (const t of g?.tasks ?? []) {
       if (t?.status === 'completed') continue
       rows.push({
+        // Kept when the flow returns it: the brief links a task line to it.
+        ...(t.id ? { id: String(t.id) } : {}),
         list: g.list ?? '',
         title: t.title ?? '',
         importance: t.importance ?? 'normal',
