@@ -82,6 +82,7 @@ import {
   decideTool as decide,
   egressGate,
   intentGate,
+  taskGate,
   withoutRemoteMedia,
   MONEY_VERB,
   mcpServerOf,
@@ -819,7 +820,7 @@ wss.on('connection', (socket) => {
    */
   let tainted = false
   const decideForTurn = (name, input) =>
-    egressGate(name, intentGate(name, decideTool(name), turnText, POLICY), { tainted, input }, POLICY)
+    egressGate(name, taskGate(name, intentGate(name, decideTool(name), turnText, POLICY), turnText), { tainted, input }, POLICY)
 
   /** Whether any words have gone out yet in the turn in flight. */
   let spoke = false

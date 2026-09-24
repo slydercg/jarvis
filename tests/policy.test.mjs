@@ -111,6 +111,25 @@ test('the intent gate only ever tightens a verdict', () => {
   assert.equal(p.intentGate('mcp__claude_ai_Gmail__search_threads', 'allow', 'yes', DEFAULT), 'allow')
 })
 
+test('a task he dictates goes straight on his list; anything else still asks', () => {
+  const tasks = 'mcp__protective__protective_create_tasks'
+  const verdict = p.decideTool(tasks, DEFAULT)
+  assert.equal(verdict, 'confirm', 'a write, normally put to him')
+  for (const said of ['Add a task to send the Q4 roadmap on Friday', 'remind me to call the bank tomorrow',
+    'put the vendor review on my list', 'add chasing Chris to my waiting list',
+    'Chris owes me the estimate by Monday, put it on my waiting list']) {
+    assert.equal(p.taskGate(tasks, verdict, said), 'allow', said)
+  }
+  // "Yes" to a batch from a meeting, or no ask at all: the card stays.
+  for (const said of ['yes', 'what did we agree in that meeting?', 'check my inbox']) {
+    assert.equal(p.taskGate(tasks, verdict, said), 'confirm', said)
+  }
+  // Never loosens a deny, and never touches other tools.
+  assert.equal(p.taskGate(tasks, 'deny', 'add a task to x'), 'deny')
+  assert.equal(p.taskGate('mcp__claude_ai_Atlassian_Rovo__createJiraIssue', 'confirm', 'add a task to raise a ticket'), 'confirm')
+  assert.equal(p.taskGate('mcp__protective__protective_send_email', 'confirm', 'remind me to email Chris'), 'confirm')
+})
+
 test('after his data is read, reaching an arbitrary address is put to him first', () => {
   const clean = { tainted: false }
   const read = { tainted: true }

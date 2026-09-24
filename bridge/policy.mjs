@@ -346,6 +346,27 @@ export function intentGate(toolName, verdict, said, cfg = {}) {
 }
 
 /**
+ * Tasks he dictates go straight onto his list.
+ *
+ * Adding To Do items is a write, so it is normally put to him on the card —
+ * right for a batch drawn from a meeting or a wrap, where he has not seen the
+ * list. But "add a task to send the roadmap Friday" already is the
+ * confirmation, and a card after it is only friction. So when his own words
+ * this turn ask for a task, creating it needs no second yes. The worst a
+ * planted instruction can do here is nothing: it cannot make him say it, and
+ * a task lands on his own list, not in anyone else's inbox. Jira issues, which
+ * other people see, are still confirmed.
+ */
+const TASK_ASK =
+  /\b(add (a |an |the |this |that )?(task|to-?do|reminder|item)s?|remind me|remember to|to-?do list|waiting(-| on )?list|put .{1,60} on my (waiting )?(list|to-?do|tasks)|add .{1,80} to (my )?(to-?do|tasks|list|waiting))\b/i
+const TASK_TOOL = /^mcp__protective__protective_create_tasks$/
+
+/** A confirm for a task he just dictated becomes an allow. Nothing else changes. */
+export function taskGate(name, verdict, said) {
+  return verdict === 'confirm' && TASK_TOOL.test(name) && TASK_ASK.test(String(said ?? '')) ? 'allow' : verdict
+}
+
+/**
  * Leaving the machine, once something untrusted has been read.
  *
  * Mail, calendars, notes, tickets and web pages can carry instructions, and a
