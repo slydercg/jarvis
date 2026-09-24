@@ -123,6 +123,32 @@ async function startJarvis() {
   return false
 }
 
+/**
+ * The files the two processes load first. The health check only asks the
+ * bridge, so a face missing vite/bin/vite.js still "started" — and a half-
+ * extracted package can satisfy npm while its files are gone, so the next
+ * install sees nothing to do. Checked by path after every install.
+ */
+const CRITICAL = [
+  'node_modules/vite/bin/vite.js',
+  'node_modules/ws/package.json',
+  'node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs',
+]
+
+/** Every top-level dependency installed and the critical files present. */
+function modulesOk(root = ROOT, ls = () => run('npm', ['ls', '--depth=0', '--silent']).ok) {
+  const missing = CRITICAL.filter((f) => !existsSync(join(root, f)))
+  if (missing.length) {
+    log(`dependencies incomplete: ${missing.join(', ')} missing`)
+    return false
+  }
+  if (!ls()) {
+    log('dependencies incomplete: npm ls reports missing or invalid packages')
+    return false
+  }
+  return true
+}
+
 /** Longest an install may take before the update is abandoned and rolled back. */
 const INSTALL_TIMEOUT_MS = 15 * 60_000
 
@@ -245,30 +271,34 @@ async function main() {
     if (running) await startJarvis()
     return
   }
-  // A failed install does not stop here: the start below fails its health
-  // check, and the rollback puts the previous version and its modules back.
-  if (deps) installDeps()
-  log('starting')
+  // A failed or partial install goes straight to the rollback: the health
+  // check below only asks the bridge, so it cannot see a face with no vite.
+  const ready = (deps ? installDeps() : true) && modulesOk()
 
-  if (!running) {
+  if (ready && !running) {
     log(`updated to ${remote.slice(0, 7)} (he was not running; it applies when he next starts)`)
     writeState({ waiting: null, current: remote, last: { from: local, to: remote, subject, at: new Date().toISOString() } })
     return
   }
 
-  if (await startJarvis()) {
-    log(`updated to ${remote.slice(0, 7)}`)
-    writeState({ waiting: null, current: remote, last: { from: local, to: remote, subject, at: new Date().toISOString() } })
-    notify(`Updated: ${subject}`)
-    return
+  if (ready) {
+    log('starting')
+    if (await startJarvis()) {
+      log(`updated to ${remote.slice(0, 7)}`)
+      writeState({ waiting: null, current: remote, last: { from: local, to: remote, subject, at: new Date().toISOString() } })
+      notify(`Updated: ${subject}`)
+      return
+    }
   }
 
   // --- roll back -------------------------------------------------------------
-  log(`${remote.slice(0, 7)} did not start; going back to ${local.slice(0, 7)}`)
-  await stopJarvis()
+  log(`${remote.slice(0, 7)} ${ready ? 'did not start' : 'did not install cleanly'}; going back to ${local.slice(0, 7)}`)
+  if (running) await stopJarvis()
   git('reset', '--hard', '--quiet', local)
-  if (deps) installDeps()
-  const back = await startJarvis()
+  if (deps || !ready) installDeps()
+  if (!modulesOk()) log('the previous version\'s dependencies are incomplete too')
+  log(`rolled back to ${local.slice(0, 7)}`)
+  const back = running ? await startJarvis() : true
   writeState({ skip: remote, waiting: { sha: remote, reason: `${remote.slice(0, 7)} failed to start; kept ${local.slice(0, 7)}` } })
   notify(
     back

@@ -36,7 +36,8 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 
 | Path | Purpose |
 |------|---------|
-| `bridge/server.mjs` | Entry point (~2.4k lines): HTTP + WS server, origin check, `decideTool` permission gate, model routing, per-connection `query()` |
+| `bridge/server.mjs` | Entry point (~2.4k lines): HTTP + WS server, origin check, model routing, per-connection `query()` |
+| `bridge/policy.mjs` | The permission gate: `decideTool`, `readOnlyTool` for background jobs, and the built-ins removed via `disallowedTools`. Pure, switches passed in; tested in `tests/policy.test.mjs` |
 | `bridge/env.mjs` | Loads `.env.local`/`.env` into `process.env`. Must stay the first import |
 | `bridge/memory.mjs` | Session resume + `remember` notes in `~/.jarvis/memory.md` |
 | `bridge/panels.mjs` / `ui.mjs` | In-process MCP servers `jarvis` (`display` panels) and `jarvis_ui` (the model restyles the interface) |
@@ -67,7 +68,8 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 
 - **Settings isolation**: every `query()` (server, alerts, briefing) passes `settingSources: []`, so user/project `settings.json`, CLAUDE.md, plugins, hooks and allow-rules never reach Jarvis at runtime, and `decideTool`/`canUseTool` is the only authority. Because of this, MCP servers are read from Claude's config by hand and passed as `mcpServers`, and `model` must be set explicitly.
 - **`strictMcpConfig` is `false` on purpose**, not `true`: `true` would turn off claude.ai connectors (Gmail, Calendar, Drive). The code comment says not to "tidy" it. Use `ENABLE_CLAUDEAI_MCP_SERVERS=0` to run without them.
-- **Write gating** (`decideTool` in `server.mjs`): read-only tools are always allowed. `Bash`/`Write`/`Edit` etc. need `JARVIS_ALLOW_WRITES=1`. Effectful MCP tools (matched by the verb regex) are allowed with writes on, otherwise get a spoken confirmation (`JARVIS_CONFIRM`, on by default), otherwise are denied. Money verbs also need `JARVIS_ALLOW_MONEY=1` and are always confirmed. `chromeServer` only *builds* click/type tools when writes are on. New in-process servers must be named explicitly in `decideTool`, or the verb regex will misjudge them.
+- **Write gating** (`decideTool` in `policy.mjs`): read-only tools are always allowed. `Bash`/`Write`/`Edit` etc. need `JARVIS_ALLOW_WRITES=1`. Effectful MCP tools (matched by the verb regex) are allowed with writes on, otherwise get a spoken confirmation (`JARVIS_CONFIRM`, on by default), otherwise are denied. Money verbs also need `JARVIS_ALLOW_MONEY=1` and are always confirmed. `chromeServer` only *builds* click/type tools when writes are on. New in-process servers must be named explicitly in `decideTool`, or the verb regex will misjudge them.
+- **The CLI settles some tools before `decideTool` is asked**: `Read`/`Glob`/`Grep` under the home folder and read-only `Bash` (`cat …`) never reach `canUseTool`. They are removed with `disallowedTools` instead (`conversationDisallowed`, `BACKGROUND_DISALLOWED` in `policy.mjs`); a deny in `decideTool` alone does not stop them. Background jobs also get no `WebFetch`/`WebSearch`/subagents.
 - **The bridge runs with `cwd: homedir()`**, not the repo, and uses its own `SYSTEM_PROMPT`, not the claude_code preset.
 - **Origin allowlist**: the bridge accepts WS only from `localhost:5173-5199` / `4173-4199` (or `JARVIS_ALLOWED_ORIGINS`). If the page is served on another port it loads fine but never gets an answer.
 - **Mic**: embedded preview panes (including Claude Code's) block the microphone, and the page still looks alive. Test voice in a real Chrome/Edge window. A reload needs a click before the mic works again.

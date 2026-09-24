@@ -115,7 +115,7 @@ npm run browser:doctor           # the Claude extension's helper, per browser
 
 ## Where to start reading
 
-1. `SYSTEM_PROMPT` and `decideTool` in `bridge/server.mjs` — what Jarvis will
+1. `SYSTEM_PROMPT` in `bridge/server.mjs` and `decideTool` in `bridge/policy.mjs` — what Jarvis will
    and will not do.
 2. `bridge/alerts.mjs` — how the proactive side stays cheap.
 3. `src/App.tsx`, from the `watchAlerts` handler down — the page's main loop.

@@ -3,6 +3,7 @@ import { commitmentsWith } from './commitments.mjs'
 import { readJsonFile, writeJsonFile } from './days.mjs'
 import { learnSites, ticketUrl } from './tickets.mjs'
 import { connectorDenylist } from './connectors.mjs'
+import { BACKGROUND_DISALLOWED } from './policy.mjs'
 
 /**
  * Proactive alerts: a heads-up before a meeting, and a word when mail arrives
@@ -149,7 +150,8 @@ export function startAlerts({
       systemPrompt: WATCHER_PROMPT,
       settingSources: [],
       strictMcpConfig: false,
-      disallowedTools: connectorDenylist(),
+      // No files, shell, web or subagents for a watcher reading unvetted mail.
+      disallowedTools: [...connectorDenylist(), ...BACKGROUND_DISALLOWED],
       model,
       effort,
       maxTurns: 12,

@@ -63,13 +63,24 @@ function toBool(value) {
   return !FALSEY.has(s)
 }
 
-/** Returns null for "follow the phase", undefined for "not mentioned". */
-function toColour(value) {
+/**
+ * A colour and nothing else: hex, a colour function, or a plain name. These
+ * values land in CSS custom properties, and --bg feeds the `background`
+ * shorthand, which takes url(…) — so an unchecked string is a way to make the
+ * browser itself fetch any address, around the proxy every other remote image
+ * goes through. Whatever does not look like a colour is dropped.
+ */
+const SAFE_COLOUR =
+  /^(?:#[0-9a-f]{3,8}|[a-z]{3,30}|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(\s*[-+0-9.,%\s/a-z]*\))$/i
+const NOT_A_COLOUR = /url|expression|image|var\(|attr\(|[;{}<>"'\\]/i
+
+/** Returns null for "follow the phase", undefined for "not mentioned" (or not a colour). */
+export function toColour(value) {
   if (value === undefined) return undefined
   if (value === null) return null
   const s = String(value).trim()
   if (!s || AUTOMATIC.has(s.toLowerCase())) return null
-  return s
+  return SAFE_COLOUR.test(s) && !NOT_A_COLOUR.test(s) ? s : undefined
 }
 
 /** Only real values reach the patch, so a deep merge never clears by accident. */

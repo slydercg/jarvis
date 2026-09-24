@@ -22,6 +22,7 @@ import { query, getSessionMessages } from '@anthropic-ai/claude-agent-sdk'
 import { alertsSummary, startAlerts } from './alerts.mjs'
 import {
   forgetSession,
+  JARVIS_HOME,
   MISSING_CONVERSATION,
   MEMORY_FILE,
   memoryPrompt,
@@ -71,10 +72,17 @@ import {
   discoverConnectors,
   recordConnectors,
   statusSettled,
-  toolBlocked,
 } from './connectors.mjs'
+import {
+  conversationDisallowed,
+  decideTool as decide,
+  MONEY_VERB,
+  mcpServerOf,
+  mcpToolOf,
+  readOnlyTool as readOnly,
+} from './policy.mjs'
 import { homedir, tmpdir } from 'node:os'
-import { readFileSync, realpathSync } from 'node:fs'
+import { chmodSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
@@ -203,25 +211,6 @@ function routeFor(text) {
   return DEEP_ASK.test(text) || words > DEEP_WORDS ? ROUTES.deep : ROUTES.fast
 }
 
-/**
- * Both spellings of every renamed built-in are listed on purpose. The SDK
- * presents several tools to the model under newer names — Task is Agent,
- * BashOutput is TaskOutput, KillShell is TaskStop, and the MCP resource tools
- * gained a "Tool" suffix — so a set holding only the old names never matches
- * and the tool falls through to the write branch, which is the opposite of
- * what these lists mean. Keep both until the old names are certainly gone.
- */
-const READ_ONLY_BUILTINS = new Set([
-  'Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'TodoWrite',
-  'Task', 'Agent', 'ToolSearch',
-  'ListMcpResources', 'ListMcpResourcesTool',
-  'ReadMcpResource', 'ReadMcpResourceTool',
-  'BashOutput', 'TaskOutput',
-])
-const WRITE_BUILTINS = new Set([
-  'Bash', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit',
-  'KillShell', 'TaskStop',
-])
 
 /**
  * Every MCP server Claude Code has configured, read out of its own config.
@@ -256,6 +245,19 @@ function configuredServers() {
 }
 
 const MCP_SERVERS = configuredServers()
+
+/**
+ * ~/.jarvis holds the session id, remembered notes, the promise ledger, the
+ * logs and the Protective flow URLs. Owner-only, whatever the umask made the
+ * folder: a closed folder covers every file in it, including ones written
+ * with the default mode.
+ */
+try {
+  mkdirSync(JARVIS_HOME, { recursive: true })
+  chmodSync(JARVIS_HOME, 0o700)
+} catch (err) {
+  console.warn(`[jarvis] could not restrict ${JARVIS_HOME}: ${err.message}`)
+}
 
 /** `claude.ai Google Calendar` -> `Google Calendar`, for the HUD and the log. */
 const displayName = (name) =>
@@ -338,224 +340,13 @@ function logServers(everything) {
   }
 }
 
-/** MCP tools arrive as `mcp__<server>__<tool>`. */
-const mcpServerOf = (toolName) =>
-  toolName.startsWith('mcp__') ? toolName.split('__')[1] : null
-
-/** The tool half, which can itself contain underscores: `mcp__x__a__b` -> `a__b`. */
-const mcpToolOf = (toolName) => toolName.split('__').slice(2).join('__')
-
-/**
- * MCP policy, and why it is shaped this way.
- *
- * A short list of "servers that can change things" is the wrong default,
- * because it is a list of what we happened to think of. Every server not on it
- * runs unconditionally — and on a real machine that quietly includes placing a
- * phone call, spending an advertising budget, deleting a generated character
- * and writing files to disk. A voice assistant cannot ask "are you sure", so
- * the bridge has to be the one that is sure.
- *
- * So the default is deny, softened in two ways so the demo stays usable:
- *
- *   1. READ_ONLY_MCP is an explicit allowlist of servers whose whole surface is
- *      lookups and generation — search, registries, analytics reads. Anything
- *      there runs in read-only mode.
- *   2. Everywhere else, the tool has to argue for itself: its own name must
- *      begin with a read verb. `list_devices` runs; `install_apk` does not.
- *
- * On top of both sits a veto: a name containing a plainly effectful verb needs
- * ALLOW_WRITES no matter which server it came from, which is what keeps
- * `make_outbound_call` and `download_lottie` still until you ask for them.
- */
-const READ_ONLY_MCP = new Set([
-  'exa', 'exa-code', 'serper', 'serpapi', 'lottie-search', 'mcp-registry',
-  'openrouter', 'openrouter-image', 'Microsoft_Clarity',
-  // The generation servers belong here too, and leaving them out was a real
-  // regression: `generate_image` begins with no read verb, so it fell to the
-  // deny branch and "generate an image of the Mark VII suit" — the headline
-  // demo — stopped working in the default mode.
-  //
-  // Putting them on the allowlist is safe because the veto below still applies
-  // to allowlisted servers: it is what continues to withhold
-  // make_outbound_call, delete_character, create_* and edit_image. Generation
-  // runs; acting on the world does not.
-  'higgsfield', 'heygen', 'elevenlabs',
-  // claude.ai connectors whose whole surface is lookups: market data, research
-  // and meeting notes. Matched after the `claude_ai_` prefix is stripped and
-  // lower-cased (see serverKey), so these are the connector names as shown in
-  // claude.ai → Settings → Connectors.
-  'alpha_vantage', 'financial_datasets', 'financial_modeling_prep', 'crypto_com',
-  'perplexity', 'firecrawl', 'granola', 'wispr_flow',
-].map((s) => s.toLowerCase()))
-
-/**
- * `claude_ai_Google_Calendar` -> `google_calendar`.
- *
- * claude.ai connectors reach the SDK with that prefix on the server half of
- * every tool name; a local MCP server with the same job would not have it. One
- * key for both means a rule written for one covers the other.
- */
-const serverKey = (server) => server.replace(/^claude_ai_/i, '').toLowerCase()
-
-/**
- * Anchored on the tool name, so it reads the verb rather than the noun.
- * `screenshot` is in here because it is a read that doesn't sound like one,
- * and the persona is told in as many words to put screenshots on the display.
- */
-const READ_VERB =
-  /^(?:[a-z0-9]+[_-]){0,2}(get|list|read|search|find|query|fetch|check|describe|inspect|show|view|explain|screenshot|suggest|preview|review|analyze|lookup|count)/i
-// The optional leading namespace is for connectors that prefix their tools —
-// Hostinger's `hosting_listWebsitesV1`, Notion's `notion-search`, QuickBooks'
-// `qbo_accounting_get_balance_sheet` — which would otherwise read as writes. It cannot let a write through: the veto below is
-// checked first, and it reads the whole name.
-
-/**
- * Unanchored on purpose — `make_outbound_call` and `Bulk-Edit-Events` both
- * hide their verb in the middle. `download` is here because it writes a file
- * even though it sounds like a read.
- */
-const EFFECTFUL_VERB =
-  /(send|call|post|create|delete|remove|update|edit|write|install|launch|tap|swipe|press|type|buy|pay|charge|publish|deploy|outbound|download|cancel|trash|archive|rename|merge|forward|reply|share|invite|respond|transfer|purchase|subscribe|renew|refund|revoke|place_|mark_)/i
-
-/**
- * The tier above writes: anything that moves money or commits to a trade.
- *
- * Connecting a brokerage, an accounting system and a payment processor to a
- * voice loop means a misheard sentence is one tool call away from an order.
- * JARVIS_ALLOW_WRITES is the switch for "let him act"; this is a second,
- * separate switch, off unless named, because acting and spending are not the
- * same level of trust. Only consulted for tools that already need write
- * access, so reading orders, invoices or payslips is unaffected.
- */
-const MONEY_VERB =
-  /(order|exercise|purchase|buy|\bpay|_pay|payment|charge|invoice|transfer|withdraw|renew|subscri|payroll|credit|refund|loan|trade|billing|checkout)/i
 const ALLOW_MONEY = process.env.JARVIS_ALLOW_MONEY === '1'
-
-/**
- * Ask first, instead of refusing outright.
- *
- * Read-only by default was safe but blunt: "send that reply" got a flat no
- * unless the whole bridge had been restarted with writes on, after which
- * everything went through without a word. A voice assistant can do better
- * than either. With confirmation on (the default), an action that changes
- * something — sending, replying, creating or moving an event, sharing a
- * file — is put to the user first: a card on screen, "Shall I proceed?", and
- * a yes or no by voice, keyboard or click, then a few seconds to undo. Money
- * is confirmed every time, even when JARVIS_ALLOW_MONEY allows it at all.
- *
- * Shell and file-system built-ins (Bash, Write, Edit) are not offered for
- * confirmation: what they would do is not something a spoken summary can
- * convey safely. They still need JARVIS_ALLOW_WRITES.
- *
- * JARVIS_CONFIRM=off restores the old behaviour: refuse unless writes are on.
- */
 const CONFIRM = process.env.JARVIS_CONFIRM !== 'off'
 
-/** An action that changes something: allowed outright, put to the user, or refused. */
-const writeGate = () => (ALLOW_WRITES ? 'allow' : CONFIRM ? 'confirm' : 'deny')
-/** Money is never allowed outright: asked every time, and only if enabled. */
-const moneyGate = () => (ALLOW_MONEY ? 'confirm' : 'deny')
+/** The switches the policy in policy.mjs is decided against, read once. */
+const POLICY = { allowWrites: ALLOW_WRITES, allowMoney: ALLOW_MONEY, confirm: CONFIRM }
+const decideTool = (name) => decide(name, POLICY)
 
-/**
- * Drafting mail is allowed without write access.
- *
- * A draft sits in the user's own Drafts folder until they choose to send it,
- * so nothing leaves the mailbox — and "draft a reply to that" is the single
- * most useful thing a voice assistant does with email. Sending, replying and
- * forwarding still need JARVIS_ALLOW_WRITES.
- */
-const MEDIA_SERVER = /^(sonos|spotify)$/
-
-const DRAFT_TOOL = /^(?:[a-z0-9]+_)?(create|update)_(reply_(all_)?)?draft$/i
-
-/**
- * Tools whose names trip the veto without deserving it.
- *
- * The veto reads verbs out of names, which is the right instinct and
- * occasionally the wrong answer. `openrouter send-message` sends a prompt to a
- * language model and gets text back — nothing in the world changes — but it is
- * indistinguishable by name from sending mail. Asking a second model a question
- * is one of the better things this assistant can do, so it is named here
- * instead of being lost to a regex.
- *
- * Full `server__tool` keys, so an exemption can never leak across servers. The
- * server half is serverKey()'d, so a claude.ai connector is named without its
- * `claude_ai_` prefix.
- */
-const VETO_EXEMPT = new Set([
-  'openrouter__send-message',
-  'openrouter__send-feedback',
-  // Returns the file's contents to the model; nothing is written to disk.
-  'google_drive__download_file_content',
-])
-
-/** 'allow' | 'confirm' | 'deny' for one tool call. */
-function decideTool(name) {
-  // A connector left out by JARVIS_CONNECTORS, before anything else can wave
-  // it through. See connectors.mjs.
-  if (toolBlocked(name)) return 'deny'
-  if (READ_ONLY_BUILTINS.has(name)) return 'allow'
-  if (WRITE_BUILTINS.has(name)) return ALLOW_WRITES ? 'allow' : 'deny'
-
-  const server = mcpServerOf(name)
-  if (server) {
-    // The HUD, and the interface controls beside it. Both run in this process
-    // and draw on our own screen, so neither is something to withhold —
-    // without them JARVIS has no display at all. They also have to be named
-    // here rather than left to the verb rules below, which read `ui_theme` as
-    // a write and would hold the whole surface back behind ALLOW_WRITES.
-    if (server === 'jarvis' || server === 'jarvis_ui') return 'allow'
-
-    // The browser server gates itself, at construction: chromeServer() only
-    // builds the acting tools — click, type, form input, close tab — when
-    // ALLOW_WRITES is set, so anything that reaches here at all is something
-    // the same policy has already permitted. Deciding it a second time by
-    // reading verbs out of the name would only get it wrong: `chrome_navigate`
-    // begins with no read verb and would fall to the write branch, which would
-    // withhold the one tool the whole server is for.
-    if (server === 'jarvis_chrome') return 'allow'
-
-    // The camera. Not withheld behind ALLOW_WRITES: looking changes nothing,
-    // and the real gate is the browser's own camera permission plus an
-    // indicator the user can see for as long as it is live.
-    if (server === 'jarvis_eyes') return 'allow'
-
-    // Memory writes one Markdown file in ~/.jarvis and refuses anything that
-    // looks like a secret; remembering is the point of it, so it never asks.
-    if (server === 'jarvis_memory') return 'allow'
-
-    // The brief is built by a separate read-only session; asking for it
-    // changes nothing.
-    if (server === 'jarvis_brief') return 'allow'
-
-    // Reading documents in the home folder; it cannot write or leave home.
-    if (server === 'jarvis_files') return 'allow'
-
-    // The wrap, dossiers, portfolio pulse and weekly review are built by
-    // read-only sessions; the promise ledger and the focus state are files in
-    // ~/.jarvis, like memory. Nothing here reaches another person.
-    if (['jarvis_loop', 'jarvis_focus', 'jarvis_portfolio', 'jarvis_review', 'jarvis_stratum'].includes(server)) {
-      return 'allow'
-    }
-
-    const tool = mcpToolOf(name)
-    const key = serverKey(server)
-    if (DRAFT_TOOL.test(tool)) return 'allow'
-    if (VETO_EXEMPT.has(`${key}__${tool}`)) return 'allow'
-    const vetoed = EFFECTFUL_VERB.test(tool)
-    // Music and speakers: "play something", "turn it down" and "skip this" are
-    // what a voice assistant is for, and a wrong guess costs one song. Removing
-    // speakers from a group or deleting a playlist still trips the veto.
-    if (MEDIA_SERVER.test(key) && !vetoed) return 'allow'
-    // The session tools this bridge is developed inside count as read-only too.
-    const readOnly =
-      !vetoed &&
-      (READ_ONLY_MCP.has(key) || server.startsWith('ccd_session') || READ_VERB.test(tool))
-    if (readOnly) return 'allow'
-    return MONEY_VERB.test(tool) ? moneyGate() : writeGate()
-  }
-  return ALLOW_WRITES ? 'allow' : 'deny'
-}
 
 /**
  * What he is called. JARVIS_NAME in .env.local or the shell; the page reads the
@@ -1788,7 +1579,7 @@ const touch = () => {
  * asking, minus drafts — the conversation saves those without asking, but a
  * background job has no business writing anything at all.
  */
-const readOnlyTool = (name) => decideTool(name) === 'allow' && !/draft/i.test(name.split('__').pop() ?? '')
+const readOnlyTool = (name) => readOnly(name, POLICY)
 
 /** Servers for background readers: the configured ones plus Protective, read-only. */
 const backgroundServers = () => ({
@@ -2177,8 +1968,10 @@ wss.on('connection', (socket) => {
       // mcpServers above passes them in by hand.
       settingSources: [],
       // Connectors outside JARVIS_CONNECTORS, out of the model's view. decideTool
-      // denies them too; this stops him reaching for them at all.
-      disallowedTools: connectorDenylist(),
+      // denies them too; this stops him reaching for them at all. And the
+      // shell and file tools, which the CLI allows under the home folder
+      // without ever asking decideTool — see LOCAL_ACCESS in policy.mjs.
+      disallowedTools: [...connectorDenylist(), ...conversationDisallowed(POLICY)],
       // Your claude.ai connectors — Gmail, Google Calendar, Drive and the rest —
       // are a separate channel: the CLI fetches them with your claude.ai login
       // whatever settingSources says, and strictMcpConfig is the one switch
