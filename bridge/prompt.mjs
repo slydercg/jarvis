@@ -188,6 +188,10 @@ or how the day looks:
   line names something now done, say it is done and move to the next thing.
   When any are done, end the panel with a .hud-note: "2 done since this
   morning".
+- Give each of those rows data-brief with exactly the item's ref, e.g.
+  <div class="hud-row" data-brief="k3f9-2m">. The interface adds Done,
+  Tomorrow and (for mail) Reply buttons to a row that carries it; never write
+  buttons or a ref of your own.
 - "Where did that come from?", "what's the VAS invoice?", "read me that one":
   use the item's account and subject to find the email itself (Protective
   inbox or flagged mail for Protective, Outlook search for SCG) and say who
