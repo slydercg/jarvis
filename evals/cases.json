@@ -85,6 +85,43 @@
     }
   },
   {
+    "id": "task-capture",
+    "say": "Add a task to send the Q4 roadmap to the board on Friday.",
+    "expect": {
+      "calls": [
+        "protective_create_tasks"
+      ],
+      "notAllowed": [
+        "send_email",
+        "create_draft"
+      ],
+      "notCalls": [
+        "send_email"
+      ],
+      "maxSentences": 2,
+      "allowed": [
+        "protective_create_tasks"
+      ]
+    }
+  },
+  {
+    "id": "task-waiting",
+    "say": "Chris Okafor owes me the revised estimate by Monday, put it on my waiting list.",
+    "expect": {
+      "calls": [
+        "protective_create_tasks"
+      ],
+      "notCalls": [
+        "send_email",
+        "create_draft"
+      ],
+      "maxSentences": 2,
+      "allowed": [
+        "protective_create_tasks"
+      ]
+    }
+  },
+  {
     "id": "remember-asked",
     "say": "Remember that I take my coffee black.",
     "expect": {

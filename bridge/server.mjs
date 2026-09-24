@@ -90,6 +90,7 @@ import {
   conversationDisallowed,
   decideTool as decide,
   intentGate,
+  taskGate,
   MONEY_VERB,
   mcpServerOf,
   mcpToolOf,
@@ -1539,7 +1540,7 @@ wss.on('connection', (socket) => {
    * drafts are checked against — see intentGate in policy.mjs.
    */
   let turnText = ''
-  const decideForTurn = (name) => intentGate(name, decideTool(name), turnText, POLICY)
+  const decideForTurn = (name) => taskGate(name, intentGate(name, decideTool(name), turnText, POLICY), turnText)
 
   /** Whether any words have gone out yet in the turn in flight. */
   let spoke = false

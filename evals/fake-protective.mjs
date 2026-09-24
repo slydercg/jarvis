@@ -75,6 +75,9 @@ export function fakeProtective(data = fixtures()) {
         async (a) => reply('protective_create_draft', a, { ok: true, draft: true })),
       tool('protective_send_email', 'Send an email from the Protective mailbox.', mail,
         async (a) => reply('protective_send_email', a, { ok: true, sent: true })),
+      tool('protective_create_tasks', 'Add tasks to Microsoft To Do: kind "me" for his own, "waiting" for what others owe him.',
+        { tasks: z.array(z.object({ text: z.string().min(3), kind: z.enum(['me', 'waiting']), due: z.string().optional(), meeting: z.string().optional() })).min(1) },
+        async (a) => reply('protective_create_tasks', a, { ok: true, added: a.tasks.length })),
     ],
   })
   return { server, calls }

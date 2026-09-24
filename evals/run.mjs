@@ -26,7 +26,7 @@ delete process.env.JARVIS_CONNECTORS
 
 const { query } = await import('@anthropic-ai/claude-agent-sdk')
 const { SYSTEM_PROMPT } = await import('../bridge/prompt.mjs')
-const { conversationDisallowed, decideTool, intentGate } = await import('../bridge/policy.mjs')
+const { conversationDisallowed, decideTool, intentGate, taskGate } = await import('../bridge/policy.mjs')
 const { memoryServer } = await import('../bridge/memory.mjs')
 const { displayServer } = await import('../bridge/panels.mjs')
 const { fakeProtective } = await import('./fake-protective.mjs')
@@ -72,7 +72,7 @@ async function runCase(c) {
       maxTurns: 12,
       permissionMode: 'default',
       canUseTool: async (name) => {
-        const verdict = intentGate(name, decideTool(name, POLICY), c.say, POLICY)
+        const verdict = taskGate(name, intentGate(name, decideTool(name, POLICY), c.say, POLICY), c.say)
         verdicts.set(name, [...(verdicts.get(name) ?? []), verdict])
         if (verdict === 'allow') return { behavior: 'allow' }
         return {
@@ -88,7 +88,7 @@ async function runCase(c) {
   try {
     for await (const m of session) {
       if (m.type === 'assistant') {
-        for (const b of m.message?.content ?? []) if (b.type === 'tool_use') calls.push({ name: b.name })
+        for (const b of m.message?.content ?? []) if (b.type === 'tool_use') calls.push({ name: b.name, input: b.input })
       }
       if (m.type === 'result') {
         text = m.result ?? ''
