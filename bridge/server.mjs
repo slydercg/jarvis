@@ -52,6 +52,14 @@ import {
 import { uiServer } from './ui.mjs'
 import { browserDiagnosis, chromeAvailable, chromeServer } from './chrome.mjs'
 import { visionServer } from './vision.mjs'
+import {
+  connectorBlocked,
+  connectorDenylist,
+  connectorsSummary,
+  discoverConnectors,
+  recordConnectors,
+  toolBlocked,
+} from './connectors.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { readFileSync, realpathSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
@@ -268,7 +276,7 @@ const RAIL_STATUS = {
 function railList(all) {
   const seen = new Map()
   for (const s of all) {
-    if (INTERNAL_SERVERS.has(s.name) || s.status === 'disabled') continue
+    if (INTERNAL_SERVERS.has(s.name) || s.status === 'disabled' || connectorBlocked(s.name)) continue
     const name = displayName(s.name)
     if (!seen.has(name)) seen.set(name, RAIL_STATUS[s.status] ?? 'pending')
   }
@@ -285,7 +293,10 @@ function railList(all) {
  */
 let initLogged = false
 function logServers(everything) {
-  const all = everything.filter((s) => !INTERNAL_SERVERS.has(s.name))
+  recordConnectors(everything)
+  const left = everything.filter((s) => connectorBlocked(s.name)).length
+  if (left) console.log(`[jarvis] ${left} claude.ai connectors left out by JARVIS_CONNECTORS`)
+  const all = everything.filter((s) => !INTERNAL_SERVERS.has(s.name) && !connectorBlocked(s.name))
   const byStatus = (pred) => all.filter(pred).map((s) => displayName(s.name))
   const usable = byStatus((s) => s.status !== 'needs-auth' && s.status !== 'failed')
   const connectors = all.filter((s) => /^claude\.ai /.test(s.name)).length
@@ -464,6 +475,9 @@ const VETO_EXEMPT = new Set([
 
 /** 'allow' | 'confirm' | 'deny' for one tool call. */
 function decideTool(name) {
+  // A connector left out by JARVIS_CONNECTORS, before anything else can wave
+  // it through. See connectors.mjs.
+  if (toolBlocked(name)) return 'deny'
   if (READ_ONLY_BUILTINS.has(name)) return 'allow'
   if (WRITE_BUILTINS.has(name)) return ALLOW_WRITES ? 'allow' : 'deny'
 
@@ -1630,6 +1644,10 @@ if (process.env.ANTHROPIC_API_KEY) {
   )
 }
 console.log(`[jarvis] ${alertsSummary()}`)
+console.log(`[jarvis] ${connectorsSummary()}`)
+// Learn the connector names before the first conversation starts, so it can
+// leave out the ones JARVIS_CONNECTORS excludes. A no-op when it is unset.
+void discoverConnectors().catch((err) => console.warn(`[jarvis] connector discovery failed: ${err.message}`))
 if (ALLOW_MONEY) {
   console.warn('[jarvis] MONEY ENABLED — orders, payments and transfers are possible, each confirmed with you first')
 }
@@ -2092,6 +2110,9 @@ wss.on('connection', (socket) => {
       // The cost is that MCP servers stop being discovered too, which is why
       // mcpServers above passes them in by hand.
       settingSources: [],
+      // Connectors outside JARVIS_CONNECTORS, out of the model's view. decideTool
+      // denies them too; this stops him reaching for them at all.
+      disallowedTools: connectorDenylist(),
       // Your claude.ai connectors — Gmail, Google Calendar, Drive and the rest —
       // are a separate channel: the CLI fetches them with your claude.ai login
       // whatever settingSources says, and strictMcpConfig is the one switch
@@ -2185,6 +2206,7 @@ wss.on('connection', (socket) => {
         return // Session ended, or this SDK cannot answer; init will cover it.
       }
       if (closed) return
+      recordConnectors(all)
       const list = railList(all)
       const key = JSON.stringify(list)
       if (key !== last) {
