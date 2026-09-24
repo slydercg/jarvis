@@ -38,7 +38,8 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 
 | Path | Purpose |
 |------|---------|
-| `bridge/server.mjs` | Entry point (~2.4k lines): HTTP + WS server, origin check, model routing, per-connection `query()` |
+| `bridge/server.mjs` | Entry point (~1.5k lines): the WS server, model routing, per-connection `query()`, the minute clock |
+| `bridge/http.mjs` | The HTTP side: the origin allowlist (also used by the WS handshake), ElevenLabs `/tts` `/stt` `/voices`, the settings backend, `/file` `/img` `/media` `/page` for panels, `/health`. Nothing here talks to the model |
 | `bridge/prompt.mjs` | The conversation's `SYSTEM_PROMPT` and `NAME`, importable without starting the bridge |
 | `bridge/policy.mjs` | The permission gate: `decideTool`, `readOnlyTool` for background jobs, and the built-ins removed via `disallowedTools`. Pure, switches passed in; tested in `tests/policy.test.mjs` |
 | `bridge/env.mjs` | Loads `.env.local`/`.env` into `process.env`. Must stay the first import |
@@ -46,7 +47,7 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 | `bridge/panels.mjs` / `ui.mjs` | In-process MCP servers `jarvis` (`display` panels) and `jarvis_ui` (the model restyles the interface) |
 | `bridge/chrome.mjs` | `jarvis_chrome`: drives the user's real Chrome through the extension's native host |
 | `bridge/vision.mjs` | `jarvis_eyes`: asks the page for a camera frame (request/reply) |
-| `bridge/alerts.mjs` / `briefing.mjs` | Separate long-lived and read-only agent sessions for proactive alerts and the daily brief. `serveBrief` adds source lines and links to each brief line, and marks it done (task ticked off, email replied) from Protective's flows each time it is served |
+| `bridge/alerts.mjs` / `briefing.mjs` | Separate long-lived and read-only agent sessions for proactive alerts and the daily brief. `serveBrief` adds source lines, links and a `ref` to each brief line, and marks it done (task ticked off, email replied) from Protective's flows each time it is served. `briefAction` handles the Done / Tomorrow / Reply buttons (`brief` frame) and, by voice, `update_brief_line` (held to his words by `intentGate`); every page is told through `onBriefAction`; the buttons are made by `sanitise.ts` from a validated `data-brief` ref (`src/lib/brief.ts`) and clicked through `src/ui/briefActions.ts`, never written by the model |
 | `bridge/spend.mjs` | What each model turn cost, by day and kind (`recordSpend` in `server.mjs`, `agent.mjs`, `alerts.mjs`), in `~/.jarvis/spend.json`; `JARVIS_DAILY_CAP_USD` pauses unasked-for background work (`backgroundPaused`). Shown in Diagnostics over the `status` frame, with the last brief's health (`briefHealth`) |
 | `bridge/agent.mjs` / `steps.mjs` | `askReadOnly()`, the read-only session every background job uses; `steps.mjs` names tool calls in plain words for the tool badge and the `progress` frames a job sends as it goes |
 | `bridge/transcript.mjs` / `src/ui/History.tsx` | The conversation history: every question, answer and alert (`appendTurn` in `server.mjs`), a JSONL file a day in `~/.jarvis/transcripts`, pruned after `JARVIS_HISTORY_DAYS`; the drawer reads a day or searches all of them over the `transcript` frame |

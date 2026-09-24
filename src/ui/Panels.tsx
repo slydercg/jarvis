@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef } from 'react'
 import { AnimatePresence, motion, type Variants } from 'framer-motion'
 import { useStore, type Panel } from '../store'
 import { sanitisePanelHtml } from './sanitise'
+import { onBriefClick } from './briefActions'
 
 /**
  * Heads-up display panels.
@@ -168,6 +169,7 @@ const Card = memo(function Card({ panel }: { panel: Panel }) {
         <div
           ref={body}
           className={panel.anim === 'stagger' ? 'p-body p-stagger' : 'p-body'}
+          onClick={onBriefClick}
           dangerouslySetInnerHTML={{ __html: html }}
         />
       )}

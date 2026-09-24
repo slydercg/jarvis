@@ -110,3 +110,14 @@ test('the intent gate only ever tightens a verdict', () => {
   assert.equal(p.intentGate('mcp__claude_ai_Robinhood__place_equity_order', 'deny', 'remember to buy', DEFAULT), 'deny')
   assert.equal(p.intentGate('mcp__claude_ai_Gmail__search_threads', 'allow', 'yes', DEFAULT), 'allow')
 })
+
+test('a brief line is marked done or moved only when he said so', () => {
+  const line = 'mcp__jarvis_brief__update_brief_line'
+  assert.equal(p.decideTool(line, DEFAULT), 'allow')
+  for (const said of ["that one's done", 'the VAS invoice is finished', 'push the SOW to tomorrow', 'tick that off', 'snooze it']) {
+    assert.equal(p.intentGate(line, 'allow', said, DEFAULT), 'allow', said)
+  }
+  // Nothing about done or tomorrow: the idea came from something he read.
+  assert.equal(p.intentGate(line, 'allow', 'read me the email from Chris', DEFAULT), 'confirm')
+  assert.equal(p.intentGate(line, 'allow', 'read me the email from Chris', NO_CONFIRM), 'deny')
+})

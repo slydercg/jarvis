@@ -40,6 +40,7 @@ const STEPS = [
   [/notion/, /.*/, 'Searching Notion'],
   [/hubspot/, /.*/, 'Checking HubSpot'],
   // Jarvis's own jobs.
+  [/^jarvis_brief$/, /update_brief_line/, 'Updating your brief'],
   [/^jarvis_brief$/, /.*/, 'Building your brief'],
   [/^jarvis_loop$/, /get_day_wrap/, 'Wrapping up the day'],
   [/^jarvis_loop$/, /get_dossier/, "Looking into who you're meeting"],

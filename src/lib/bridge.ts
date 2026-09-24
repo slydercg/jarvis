@@ -49,6 +49,8 @@ type Frame = {
   today?: TodayFrame
   spend?: SpendSummary
   brief?: BriefHealth
+  ref?: string
+  ok?: boolean
   label?: string
   job?: string
   step?: string | null
@@ -108,6 +110,19 @@ let onStatus: ((s: StatusFrame) => void) | null = null
 export function watchStatus(fn: ((s: StatusFrame) => void) | null) {
   onStatus = fn
 }
+/** What a brief button did (bridge/briefing.mjs, briefAction). */
+export type BriefResult = { ref: string; op: string; ok: boolean; message: string; ask?: string }
+let onBrief: ((r: BriefResult) => void) | null = null
+export function watchBrief(fn: (r: BriefResult) => void) {
+  onBrief = fn
+}
+/** Done, tomorrow or reply on one brief line; the answer arrives through watchBrief. */
+export function sendBriefOp(ref: string, op: string): boolean {
+  if (socket?.readyState !== WebSocket.OPEN) return false
+  socket.send(JSON.stringify({ type: 'brief', ref, op }))
+  return true
+}
+
 /** Ask the bridge for spend and brief health; the answer arrives through watchStatus. */
 export function requestStatus(): boolean {
   if (socket?.readyState !== WebSocket.OPEN) return false
@@ -435,6 +450,8 @@ function dispatch(ws: WebSocket) {
       onToday?.(msg.today)
     } else if (msg.type === 'progress' && typeof msg.job === 'string') {
       onProgress?.(msg.job, msg.step ?? null)
+    } else if (msg.type === 'brief' && typeof msg.ref === 'string') {
+      onBrief?.({ ref: msg.ref, op: String(msg.op ?? ''), ok: msg.ok === true, message: String(msg.message ?? ''), ...(typeof msg.ask === 'string' ? { ask: msg.ask } : {}) })
     } else if (msg.type === 'status') {
       onStatus?.({ spend: msg.spend ?? null, brief: msg.brief ?? null })
     } else if (msg.type === 'transcript' && Array.isArray(msg.turns)) {
