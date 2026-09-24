@@ -33,7 +33,7 @@ import {
 } from './memory.mjs'
 import { displayServer } from './panels.mjs'
 import { protectiveConfigured, protectiveServer } from './protective.mjs'
-import { briefAction, briefHealth, briefServer, maybeOfferBrief } from './briefing.mjs'
+import { briefAction, briefHealth, briefServer, maybeOfferBrief, onBriefAction } from './briefing.mjs'
 import { backgroundPaused, onCapReached, recordSpend, spendSummary } from './spend.mjs'
 import { localFilesServer } from './localfiles.mjs'
 import { loopServer, logMeetings, maybeOfferWrap } from './loop.mjs'
@@ -632,6 +632,12 @@ const briefDeps = () => ({
     const phrase = JOB_PHRASE[job] ?? job
     for (const deliver of pages) deliver({ type: 'progress', job: phrase, step })
   },
+})
+
+// A brief line marked done or moved, by a button on one page or by voice: every
+// open page shows it, so the rows on screen match the brief.
+onBriefAction((result) => {
+  for (const deliver of pages) deliver({ type: 'brief', ...result })
 })
 
 // Said once, the day the spend cap is first reached.

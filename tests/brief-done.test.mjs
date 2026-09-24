@@ -119,3 +119,21 @@ test('a brief button acts on its line only while that brief is current', async (
   assert.equal(briefAction(mail, 'delete').ok, false)
   assert.equal(briefAction('"><script>', 'done').ok, false)
 })
+
+test('every page is told when a line changes, by button or by voice', async () => {
+  const { briefAction, briefRef, onBriefAction, todaysBrief, updateBriefLine } = await import('../bridge/briefing.mjs')
+  // Today's brief from the test above: an email line, then a task line.
+  const { builtAt, brief } = todaysBrief()
+  const told = []
+  const stop = onBriefAction((r) => told.push(r))
+  briefAction(briefRef(builtAt, 0, brief.items[0]), 'reply')
+  const ref = briefRef(builtAt, 1, brief.items[1])
+  assert.equal(told.length, 0)
+  // By voice: the conversation's tool.
+  const out = await updateBriefLine({ ref, action: 'done' })
+  assert.equal(out.content[0].text, 'Done')
+  assert.deepEqual(told.map((r) => [r.ref, r.op, r.ok]), [[ref, 'done', true]])
+  const bad = await updateBriefLine({ ref: 'zzzz-1t', action: 'tomorrow' })
+  assert.equal(bad.isError, true)
+  stop()
+})
