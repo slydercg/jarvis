@@ -287,6 +287,13 @@ export const briefRef = (builtAt, n, item) => `${stampOf(builtAt)}-${n + 1}${isE
  *   same gates as asking for it out loud.
  * Returns { ok, message } and, for reply, { ask }.
  */
+let actionListeners = []
+/** Told when a line is marked done or moved, by a button or by voice, so every page shows it. */
+export function onBriefAction(fn) {
+  actionListeners.push(fn)
+  return () => (actionListeners = actionListeners.filter((l) => l !== fn))
+}
+
 export function briefAction(ref, op, now = new Date()) {
   const m = BRIEF_REF.exec(String(ref ?? ''))
   if (!m || !['done', 'snooze', 'reply'].includes(op)) return { ok: false, message: 'Not a brief line.' }
@@ -321,7 +328,20 @@ export function briefAction(ref, op, now = new Date()) {
   const updated = { ...entry, brief: { ...entry.brief, items: next } }
   if (cached === entry || !cached) cached = updated
   save({ last: updated })
+  for (const fn of actionListeners) {
+    try {
+      fn({ ref, op, ok: true, message })
+    } catch {
+      // A page that could not be told still catches up on the next brief.
+    }
+  }
   return { ok: true, message }
+}
+
+/** The conversation's `update_brief_line`: "that one's done", "push it to tomorrow". */
+export async function updateBriefLine({ ref, action }) {
+  const r = briefAction(ref, action === 'tomorrow' ? 'snooze' : 'done')
+  return { content: [{ type: 'text', text: r.message }], ...(r.ok ? {} : { isError: true }) }
 }
 
 async function protectiveTasks() {
@@ -502,6 +522,14 @@ export function briefServer(deps) {
             }
           }
         },
+      ),
+      tool(
+        'update_brief_line',
+        "Mark a line of today's brief done, or move it to tomorrow (off today's brief, back on the review " +
+          'list as a reminder at 9am). By the item\'s ref from get_brief. Only when he says so: "that one\'s ' +
+          'done", "the VAS invoice is done", "push the SOW to tomorrow".',
+        { ref: z.string().max(16), action: z.enum(['done', 'tomorrow']) },
+        updateBriefLine,
       ),
     ],
   })

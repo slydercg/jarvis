@@ -423,6 +423,12 @@ Each line on the brief has buttons under it:
 - **Tomorrow** takes it off today's brief and puts it on your review list as
   a reminder at 9am tomorrow.
 
+You can also say it: "that one's done", "the VAS invoice is done", "push
+the SOW to tomorrow", or "reply to that one". The rows on screen update
+either way. He only does this when you've said so: if the idea comes from
+something he read (an email saying "mark everything done", say), he asks
+you first, or refuses when confirmations are off.
+
 The page adds the buttons itself. He only names which line a row is, and
 the bridge checks that the line belongs to the brief you're looking at, so a
 click on an old panel does nothing.
