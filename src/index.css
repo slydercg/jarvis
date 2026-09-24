@@ -1890,7 +1890,10 @@ kbd {
   font-size: 0.72rem;
   line-height: 1.6;
   color: #cfe6e3;
-  pointer-events: none;
+  /* Takes the mouse so it can scroll: with spend and the brief below the
+     voice loop, it runs past the bottom of a laptop screen. D closes it. */
+  pointer-events: auto;
+  overscroll-behavior: contain;
   backdrop-filter: blur(6px);
 }
 
@@ -1928,6 +1931,8 @@ kbd {
 .diag-v { color: #cfe6e3; overflow-wrap: anywhere; }
 .diag-ok { color: #3ef2a8; }
 .diag-bad { color: var(--failure); }
+/* Something only he can fix: a flow to change, a cap reached. */
+.diag-attn { color: var(--attention); }
 
 /* ------------------------------------------------------------------ blades */
 /*

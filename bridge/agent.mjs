@@ -4,6 +4,7 @@ import { connectorDenylist } from './connectors.mjs'
 import { BACKGROUND_DISALLOWED } from './policy.mjs'
 import { protectiveBlock } from './snapshot.mjs'
 import { describeStep } from './steps.mjs'
+import { recordSpend } from './spend.mjs'
 
 /**
  * One read-only question to a separate agent session, answered in JSON.
@@ -86,6 +87,7 @@ export async function askReadOnly(
     session.close?.()
     step(null)
   }
+  recordSpend('background', cost)
   console.log(`[jarvis] ${label}: done ($${cost.toFixed(3)})`)
   return parseJson(result)
 }

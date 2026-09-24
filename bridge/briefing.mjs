@@ -5,8 +5,8 @@ import { join } from 'node:path'
 import { JARVIS_HOME } from './memory.mjs'
 import { askReadOnly } from './agent.mjs'
 import { recordDay } from './days.mjs'
-import { protective, protectiveConfigured } from './protective.mjs'
-import { mailLink, matchMail, matchTask, readerId, todoLink } from './maillinks.mjs'
+import { hasFlow, protective, protectiveConfigured } from './protective.mjs'
+import { mailLink, matchMail, matchTask, plainSubject, readerId, todoLink } from './maillinks.mjs'
 
 /**
  * The brief: what needs doing today, ranked, from every mailbox and calendar.
@@ -106,8 +106,45 @@ export function withSources(brief, now = new Date()) {
   return { ...brief, items: items.map((i) => ({ ...i, sourceLine: sourceLine(i, now) })) }
 }
 
+const isEmail = (i) => String(i?.source ?? '').includes('email')
+const isTask = (i) => String(i?.source ?? '').includes('task')
+
+/** What serving the brief reads from Protective, straight from its flows. */
+const PROTECTIVE_SOURCES = {
+  mail: protectiveMail,
+  tasks: protectiveTasks,
+  sent: protectiveSent,
+}
+
 /**
- * Give each email item a link that opens it in Outlook.
+ * Read only what the brief's lines need: the mailbox for links, To Do for task
+ * links and ticking off, sent mail for replies. A source that is not needed,
+ * or not set up, is null; one that fails is null with its error noted, so the
+ * health line can say why links or ticks are missing.
+ */
+export async function readForBrief(items, sources = PROTECTIVE_SOURCES) {
+  const mine = items.filter((i) => i?.account === 'Protective')
+  const errors = {}
+  const read = async (key, needed) => {
+    if (!needed || !sources[key]) return null
+    try {
+      return (await sources[key]()) ?? null
+    } catch (err) {
+      console.warn(`[jarvis] brief: ${key}: ${err.message}`)
+      errors[key] = err.message
+      return null
+    }
+  }
+  const [messages, tasks, sent] = await Promise.all([
+    read('mail', mine.some((i) => isEmail(i) || isTask(i))),
+    read('tasks', mine.some(isTask)),
+    read('sent', mine.some(isEmail)),
+  ])
+  return { messages, tasks, sent, errors }
+}
+
+/**
+ * Give each line a link: an email opens in Outlook, a To Do task in To Do.
  *
  * Protective: found in the inbox and flagged mail by subject (flow calls, no
  * model), falling back to the id the brief recorded. SCG: the bridge cannot
@@ -118,46 +155,130 @@ export function withSources(brief, now = new Date()) {
  * "Flagged Emails" task is an email, and that link is the surest), else the
  * task itself in To Do on the web, when the flow returned the task's id.
  *
- * A line that cannot be matched simply has no link. Failures leave the brief
- * as it was.
+ * A line that cannot be matched simply has no link.
  */
-export async function withLinks(brief, lookup = protectiveMail, taskLookup = protectiveTasks) {
-  const items = Array.isArray(brief?.items) ? brief.items : []
-  const email = (i) => String(i.source ?? '').includes('email')
-  const task = (i) => i.source === 'task'
-  const protectiveLines = items.filter((i) => i.account === 'Protective')
-  const read = async (fn) => {
-    try {
-      return await fn()
-    } catch (err) {
-      console.warn(`[jarvis] brief links: ${err.message}`)
-      return []
-    }
-  }
-  const messages = protectiveLines.some((i) => email(i) || task(i)) ? await read(lookup) : []
-  const tasks = protectiveLines.some(task) ? await read(taskLookup) : []
-  const linked = items.map((i) => {
+export function linkItems(items, { messages, tasks }) {
+  return items.map((i) => {
     let link = null
-    if (email(i) && (i.account === 'Protective' || i.account === 'SCG')) {
-      const matched = i.account === 'Protective' ? matchMail(i, messages)?.id : null
+    if (isEmail(i) && (i.account === 'Protective' || i.account === 'SCG')) {
+      const matched = i.account === 'Protective' ? matchMail(i, messages ?? [])?.id : null
       link = mailLink(matched ?? readerId(i.messageId))
-    } else if (task(i) && i.account === 'Protective') {
-      link = mailLink(matchMail(i, messages)?.id) ?? todoLink(matchTask(i, tasks)?.id)
+    } else if (i.source === 'task' && i.account === 'Protective') {
+      link = mailLink(matchMail(i, messages ?? [])?.id) ?? todoLink(matchTask(i, tasks ?? [])?.id)
     }
     return link ? { ...i, link } : i
   })
+}
+
+/** The links alone, as before: kept for callers that want nothing else. */
+export async function withLinks(brief, lookup = protectiveMail, taskLookup = protectiveTasks) {
+  const items = Array.isArray(brief?.items) ? brief.items : []
+  const got = await readForBrief(items, { mail: lookup, tasks: taskLookup })
+  const linked = linkItems(items, got)
   return linked.some((i, n) => i !== items[n]) ? { ...brief, items: linked } : brief
 }
 
+/** How a task is known again later: its id, or its title when the flow sends no ids. */
+const taskKey = (t) => (t?.id ? `id:${t.id}` : `title:${plainSubject(t?.title)}`)
+
+/**
+ * Remember which open task each To Do line is, the first time it is seen. A
+ * line is only ever ticked off against a task it was matched to, so a title
+ * the model reworded is never mistaken for a finished task.
+ * Returns the same array when nothing new was matched.
+ */
+export function anchorTasks(items, tasks) {
+  if (!tasks) return items
+  let changed = false
+  const out = items.map((i) => {
+    if (i.account !== 'Protective' || !isTask(i) || i.taskKey) return i
+    const t = matchTask(i, tasks)
+    if (!t) return i
+    changed = true
+    return { ...i, taskKey: taskKey(t) }
+  })
+  return changed ? out : items
+}
+
+/**
+ * Mark what has been done since the brief was built, so it reads as a live
+ * list rather than a snapshot of this morning:
+ * - a To Do line whose task is no longer open: "ticked off in To Do";
+ * - a Protective email line with a reply in sent mail after it arrived (or,
+ *   if that is unknown, after the brief was built): "replied".
+ * Nothing is removed. A source that could not be read ticks nothing off.
+ * SCG and Gmail lines are left alone: the bridge cannot read those mailboxes.
+ */
+export function tickDone(items, { tasks, sent, builtAt }) {
+  const open = tasks ? new Set(tasks.map(taskKey)) : null
+  return items.map((i) => {
+    if (i.account !== 'Protective' || i.done) return i
+    if (open && i.taskKey && !open.has(i.taskKey)) return { ...i, done: 'ticked off in To Do' }
+    if (sent && isEmail(i)) {
+      const want = plainSubject(i.subject)
+      const received = Date.parse(i.received ?? '')
+      const since = Number.isFinite(received) ? received : builtAt
+      const replied = want && sent.some((m) => plainSubject(m?.subject) === want && Date.parse(m?.sent ?? '') > since)
+      if (replied) return { ...i, done: 'replied' }
+    }
+    return i
+  })
+}
+
+/**
+ * Everything serving the brief adds, in one pass over Protective: source
+ * lines, links, and what is done. Also says how that went, for Diagnostics.
+ * `anchored` is the items with newly remembered tasks, to be saved, or null.
+ */
+export async function serveBrief({ brief, builtAt }, sources = PROTECTIVE_SOURCES, now = new Date()) {
+  const items = Array.isArray(brief?.items) ? brief.items : []
+  const got = await readForBrief(items, sources)
+  const anchored = anchorTasks(items, got.tasks)
+  const served = tickDone(linkItems(withSources({ items: anchored }, now).items, got), { ...got, builtAt })
+  const linkable = (i) => (isEmail(i) && (i.account === 'Protective' || i.account === 'SCG')) || (i.source === 'task' && i.account === 'Protective')
+  const notes = []
+  if (items.some((i) => i.account === 'Protective') && !protectiveConfigured()) {
+    notes.push("Protective flows aren't set up on this Mac, so Protective lines have no links")
+  }
+  for (const [key, what] of [['mail', 'Protective mail'], ['tasks', 'Protective To Do'], ['sent', 'Protective sent mail']]) {
+    if (got.errors[key]) notes.push(`${what} couldn't be read: ${got.errors[key]}`)
+  }
+  if (got.tasks?.length && !got.tasks.some((t) => t.id)) {
+    notes.push("The To Do flow sends no task ids, so plain To Do lines can't open the task")
+  }
+  if (!got.sent && !got.errors.sent && items.some((i) => i.account === 'Protective' && isEmail(i)) && protectiveConfigured()) {
+    notes.push("No sent-mail flow, so replied emails aren't ticked off")
+  }
+  const health = {
+    at: now.getTime(),
+    builtAt,
+    lines: served.length,
+    linked: served.filter((i) => i.link).length,
+    done: served.filter((i) => i.done).length,
+    unlinked: served.filter((i) => linkable(i) && !i.link).map((i) => `${i.account}: ${String(i.subject || i.action || '').slice(0, 60)}`).slice(0, 5),
+    notes,
+  }
+  return { brief: { ...brief, items: served }, anchored: anchored === items ? null : anchored, health }
+}
+
 async function protectiveTasks() {
-  return protectiveConfigured() ? protective.todo() : []
+  return protectiveConfigured() ? protective.todo() : null
 }
 
 async function protectiveMail() {
-  if (!protectiveConfigured()) return []
+  if (!protectiveConfigured()) return null
   const [inbox, flagged] = await Promise.all([protective.inbox(25), protective.flagged().catch(() => [])])
   return [...inbox, ...flagged]
 }
+
+/** Null when there is no sent-mail flow: nothing can be ticked off as replied. */
+async function protectiveSent() {
+  return protectiveConfigured() && hasFlow('sent_email') ? protective.sent(50) : null
+}
+
+/** How the last brief served went: links found, lines done, what got in the way. */
+let lastHealth = null
+export const briefHealth = () => lastHealth
 
 let cached = null
 let building = null
@@ -300,9 +421,17 @@ export function briefServer(deps) {
         { refresh: z.boolean().optional() },
         async ({ refresh }) => {
           try {
-            const { brief, builtAt } = await getBrief(deps, { refresh: Boolean(refresh) })
-            const age = Math.round((Date.now() - builtAt) / 60_000)
-            return { content: [{ type: 'text', text: JSON.stringify({ builtMinutesAgo: age, ...(await withLinks(withSources(brief))) }) }] }
+            const entry = await getBrief(deps, { refresh: Boolean(refresh) })
+            const age = Math.round((Date.now() - entry.builtAt) / 60_000)
+            const { brief, anchored, health } = await serveBrief(entry)
+            lastHealth = health
+            // Which task each To Do line is, kept with the brief, so it can
+            // be ticked off once that task is finished.
+            if (anchored && cached === entry) {
+              cached = { ...entry, brief: { ...entry.brief, items: anchored } }
+              save({ last: cached })
+            }
+            return { content: [{ type: 'text', text: JSON.stringify({ builtMinutesAgo: age, ...brief }) }] }
           } catch (err) {
             return {
               content: [{ type: 'text', text: `The brief could not be built: ${err.message}. Gather what you can directly.` }],

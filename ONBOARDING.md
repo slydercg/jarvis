@@ -47,7 +47,8 @@ Everything it remembers lives in `~/.jarvis`.
 | `steps.mjs` | Tool names in plain words ("Checking Jira") for the tool badge and a job's progress |
 | `transcript.mjs` | The conversation history: every question, answer and alert, a file a day in `~/.jarvis/transcripts`, searchable. The page reads it in `ui/History.tsx` |
 | `protective.mjs` | Protective mail, calendar and To Do through Power Automate flows |
-| `briefing.mjs` | "Brief me": the ranked daily brief, cached and offered each morning |
+| `briefing.mjs` | "Brief me": the ranked daily brief, cached and offered each morning. Each time it is served, lines get their links and anything finished since (task ticked off, email replied) is marked done |
+| `spend.mjs` | What each turn cost, added up by day, and the optional daily cap that pauses background work. Diagnostics (D) shows it |
 | `alerts.mjs` | The watcher: one long-lived, cheap session checking calendar, mail and portfolio; meeting prep; focus blocks |
 | `loop.mjs` | End-of-day wrap-up, meeting dossiers, and the tools over the promise ledger |
 | `commitments.mjs` | The promise ledger, its scan, and its nudges |

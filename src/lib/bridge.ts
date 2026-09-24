@@ -47,6 +47,8 @@ type Frame = {
   focus?: FocusFrame
   items?: StratumItem[]
   today?: TodayFrame
+  spend?: SpendSummary
+  brief?: BriefHealth
   label?: string
   job?: string
   step?: string | null
@@ -84,6 +86,32 @@ export function watchTranscript(fn: (t: TranscriptFrame) => void) {
 export function requestTranscript(day?: string, q?: string): boolean {
   if (socket?.readyState !== WebSocket.OPEN) return false
   socket.send(JSON.stringify({ type: 'transcript', day, q }))
+  return true
+}
+
+/** What today has cost, from bridge/spend.mjs. Estimates at API prices. */
+export type SpendSpan = { total: number; byKind: Record<'conversation' | 'background' | 'watcher', number> }
+export type SpendSummary = { today: SpendSpan; week: SpendSpan; month: SpendSpan; cap: number | null; paused: boolean }
+/** How the last brief served went, from serveBrief in bridge/briefing.mjs. */
+export type BriefHealth = {
+  at: number
+  builtAt: number
+  lines: number
+  linked: number
+  done: number
+  unlinked: string[]
+  notes: string[]
+}
+export type StatusFrame = { spend: SpendSummary | null; brief: BriefHealth | null }
+
+let onStatus: ((s: StatusFrame) => void) | null = null
+export function watchStatus(fn: ((s: StatusFrame) => void) | null) {
+  onStatus = fn
+}
+/** Ask the bridge for spend and brief health; the answer arrives through watchStatus. */
+export function requestStatus(): boolean {
+  if (socket?.readyState !== WebSocket.OPEN) return false
+  socket.send(JSON.stringify({ type: 'status' }))
   return true
 }
 
@@ -407,6 +435,8 @@ function dispatch(ws: WebSocket) {
       onToday?.(msg.today)
     } else if (msg.type === 'progress' && typeof msg.job === 'string') {
       onProgress?.(msg.job, msg.step ?? null)
+    } else if (msg.type === 'status') {
+      onStatus?.({ spend: msg.spend ?? null, brief: msg.brief ?? null })
     } else if (msg.type === 'transcript' && Array.isArray(msg.turns)) {
       onTranscript?.({
         day: msg.day ?? '',
