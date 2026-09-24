@@ -497,6 +497,20 @@ sent-mail flow).
   flow pointed at Sent Items. Without it, Protective promises are still picked
   up from meeting notes, but unanswered asks can only be found at SCG and Gmail.
 
+## Drafts in your voice
+
+Once a week he reads a few dozen emails you sent and writes down how you write
+to each kind of person — leadership, your team, peers, vendors, clients,
+friends: how you open and sign off, how long you run, your tone, the phrases
+you reach for and the ones you never would. Style only; nothing from the mail
+itself is kept. Every draft he writes after that follows it. The notes are in
+`~/.jarvis/voice.json` — delete the file to have them relearned.
+
+- It reads SCG Sent Items and Gmail sent. Protective sent mail needs the
+  optional `"sent_email"` flow (see above); without it, leadership, team and
+  peer mail at Protective is not learned from.
+- `JARVIS_VOICE_DAYS` changes how often it relearns (0 turns it off).
+
 ## Now strip and day timeline
 
 **The now strip** runs across the top: the meeting under way (and when it
