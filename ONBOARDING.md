@@ -70,7 +70,8 @@ Everything it remembers lives in `~/.jarvis`.
 - `store.ts` — all interface state (Zustand).
 - `lib/` — audio, voice, speech and the wake word; `prefs.ts` for per-browser
   settings such as the display mode; `quiet.ts` for quiet hours; `actions.ts`
-  for each item's one-click next step; `history.ts` for search highlighting.
+  for each item's one-click next step; `history.ts` for search highlighting;
+  `alertFit.ts` for how many alert cards fit above the conversation.
 - `ui/` — `Hud`, `Blades`, `AlertStack`, `Stratum` (the review list),
   `History`, `KeysHelp` (the ? sheet), `NowStrip`, `DayTimeline`,
   `ConfirmCard`, `Settings`, `CommandBar`. All styling is in `index.css`,

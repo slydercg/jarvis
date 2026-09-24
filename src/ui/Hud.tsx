@@ -9,7 +9,7 @@ import { Pointer } from './Pointer'
 import { GestureGuide } from './GestureGuide'
 import { CommandBar } from './CommandBar'
 import { ConfirmCard } from './ConfirmCard'
-import { AlertStack } from './AlertStack'
+import { AlertStack, LOWER_EDGE_EVENT } from './AlertStack'
 import { NowStrip } from './NowStrip'
 import { DayTimeline } from './DayTimeline'
 
@@ -506,6 +506,8 @@ function useLowerEdge() {
       const first = [...el.children].find((c) => c.getBoundingClientRect().height > 0)
       const top = (first ?? el).getBoundingClientRect().top
       root.style.setProperty('--lower-top', `${Math.round(top)}px`)
+      // The alert cards re-measure against it (AlertStack.tsx).
+      window.dispatchEvent(new Event(LOWER_EDGE_EVENT))
       // When the conversation panel scrolls (Clear mode caps its height),
       // the newest line is the one to see.
       const log = el.querySelector('.log')

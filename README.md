@@ -483,7 +483,9 @@ brief, the wrap-up, the weekly review, and anything held back during focus.
 - The tab above Settings always shows how many items are waiting. It opens by
   default on a wide screen. While the list is open, alert cards step aside,
   since everything on them is in the list. Otherwise they fade after a minute
-  and a half.
+  and a half. Cards never cover the conversation: when a long answer leaves
+  room for only some of them, the newest stay and the rest fold into
+  "+N more on your review list", which opens it.
 
 The list is kept in `~/.jarvis/stratum.json`, so it survives reloads and
 restarts. Done items are kept for a week.

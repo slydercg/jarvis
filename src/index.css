@@ -261,6 +261,20 @@ body::after {
   text-transform: none;
   letter-spacing: 0.01em;
 }
+/* The cards that did not fit above the conversation (AlertStack.tsx). */
+.alerts-more {
+  align-self: flex-end;
+  padding: 4px 0;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--interface);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .alerts-muted {
   align-self: flex-end;
   font-size: 11px;
