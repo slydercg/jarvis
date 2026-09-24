@@ -45,6 +45,11 @@ export function watchAlerts(fn: (a: bridge.AlertFrame) => void): void {
   if (usingBridge) bridge.watchAlerts(fn)
 }
 
+/** Today's meetings and the portfolio's standing. Bridge mode only. */
+export function watchToday(fn: (t: bridge.TodayFrame) => void): void {
+  if (usingBridge) bridge.watchToday(fn)
+}
+
 /** The review column from the bridge, and changes to it. Bridge mode only. */
 export function watchStratum(fn: (items: bridge.StratumItem[]) => void): void {
   if (usingBridge) bridge.watchStratum(fn)

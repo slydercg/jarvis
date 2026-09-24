@@ -10,6 +10,8 @@ import { GestureGuide } from './GestureGuide'
 import { CommandBar } from './CommandBar'
 import { ConfirmCard } from './ConfirmCard'
 import { AlertStack } from './AlertStack'
+import { NowStrip } from './NowStrip'
+import { DayTimeline } from './DayTimeline'
 
 /**
  * The three things he can be doing, shown as words as well as light.
@@ -176,6 +178,8 @@ function DecodeText({ text }: { text: string }) {
 
 export function Hud() {
   const lower = useLowerEdge()
+  const systemsOpen = useStore((s) => s.systemsOpen)
+  const setSystemsOpen = useStore((s) => s.setSystemsOpen)
   const phase = useStore((s) => s.phase)
   const caption = useStore((s) => s.caption)
   const turns = useStore((s) => s.turns)
@@ -261,15 +265,26 @@ export function Hud() {
         </div>
       </header>
 
-      {/* Left rail: which integrations are live */}
+      <NowStrip />
+
+      {/* Left rail: which integrations are live. Folded to one line by
+          default so today's timeline can have the space; a connector that
+          needs signing in or has failed still shows, folded or not, since
+          that is the one thing on this list that needs him. */}
       {ui.chrome.systems && (
-        <aside className="rail rail-left" aria-label="Connected systems">
-          <div className="rail-title">
+        <aside className={`rail rail-left${systemsOpen ? '' : ' rail-folded'}`} aria-label="Connected systems">
+          <button
+            type="button"
+            className="rail-title rail-toggle"
+            aria-expanded={systemsOpen}
+            onClick={() => setSystemsOpen(!systemsOpen)}
+          >
             SYSTEMS
             {connected.length > 0 && <span className="rail-count">{connected.length}</span>}
-          </div>
+            <span className="rail-caret" aria-hidden="true">{systemsOpen ? '▾' : '▸'}</span>
+          </button>
           {connected.length === 0 && <div className="rail-item dim">none linked</div>}
-          {connected.map((c) => {
+          {connected.filter((c) => systemsOpen || ['auth', 'failed'].includes(health[c] ?? 'live')).map((c) => {
             const h = health[c] ?? 'live'
             return (
               <div key={c} className={`rail-item rail-${h}`} title={`${c} — ${HEALTH_LABEL[h]}`}>
@@ -285,12 +300,15 @@ export function Hud() {
               </div>
             )
           })}
-          <div className="rail-item">
-            <span className="tick" aria-hidden="true" />
-            Web
-          </div>
+          {systemsOpen && (
+            <div className="rail-item">
+              <span className="tick" aria-hidden="true" />
+              Web
+            </div>
+          )}
         </aside>
       )}
+      {ui.chrome.systems && <DayTimeline />}
 
       {/* Right rail: live telemetry, mostly for flavour */}
       <aside className="rail rail-right">

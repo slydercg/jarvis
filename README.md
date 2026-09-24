@@ -411,6 +411,34 @@ turns off the morning offer.
   flow pointed at Sent Items. Without it, Protective promises are still picked
   up from meeting notes.
 
+## Now strip and day timeline
+
+**The now strip** runs across the top: the meeting under way (and when it
+ends) or the next one (and how long until it), whether you're heads-down, how
+many items are waiting on your review list, and the portfolio's standing
+("10 blocked · 1 sprint behind"). Each part is also a shortcut:
+
+- the meeting asks who's in it;
+- the count opens the review list;
+- the portfolio asks what's blocked.
+
+**The day timeline** fills the left side with today's meetings from every
+calendar.
+
+- Each calendar has its own colour: Protective cyan, SCG violet, Google green.
+- Clashes are outlined in amber, and an amber line marks now.
+- Past meetings dim, and the one under way brightens.
+- Click a meeting to hear who you're meeting and what's open with them.
+
+The long Systems list folds into one line above it. Click it to unfold the
+list, which hides the timeline while open. A connector that needs signing in
+still shows when folded. On a screen narrower than 1280px the timeline stays
+hidden, and the strip carries the next meeting alone.
+
+Protective meetings come straight from the calendar flow every few minutes,
+with no model involved. SCG and Google come from the alert watcher's
+calendar check, which now reads the whole day.
+
 ## The review list
 
 Alerts no longer disappear. Everything Jarvis raises also lands in the

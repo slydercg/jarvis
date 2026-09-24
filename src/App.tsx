@@ -32,6 +32,7 @@ import {
   watchAlerts,
   watchFocus,
   watchStratum,
+  watchToday,
   resetConversation,
   watchCapture,
   watchUi,
@@ -760,6 +761,7 @@ export default function App() {
      */
     watchFocus((focus) => store.getState().setFocus(focus))
     watchStratum((items) => store.getState().setStratum(items))
+    watchToday((today) => store.getState().setToday(today))
 
     watchAlerts((raw) => {
       const alert: Alert = {
