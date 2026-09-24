@@ -58,6 +58,7 @@ import {
   connectorsSummary,
   discoverConnectors,
   recordConnectors,
+  statusSettled,
   toolBlocked,
 } from './connectors.mjs'
 import { homedir, tmpdir } from 'node:os'
@@ -284,6 +285,9 @@ function railList(all) {
     .map(([name, status]) => ({ name, status }))
     .sort((a, b) => a.name.localeCompare(b.name))
 }
+
+/** How long a new session's status poll waits for claude.ai connectors to be listed. */
+const CONNECTOR_GRACE_MS = 20_000
 
 /**
  * The first init message is the only place the full list — your claude.ai
@@ -2194,9 +2198,14 @@ wss.on('connection', (socket) => {
    * lazily, so it is asked again every few seconds while any are still pending,
    * and the rail fills in as they come up. Also where the terminal learns what
    * loaded, at startup rather than on the first question.
+   *
+   * The claude.ai connectors join the list a few seconds after everything
+   * else, so "nothing pending" is not the end on its own; statusSettled waits
+   * up to CONNECTOR_GRACE_MS for them to appear before calling it final.
    */
   ;(async () => {
     const deadline = Date.now() + 60_000
+    const graceUntil = Date.now() + CONNECTOR_GRACE_MS
     let last = ''
     while (!closed && Date.now() < deadline) {
       let all
@@ -2213,8 +2222,7 @@ wss.on('connection', (socket) => {
         last = key
         send({ type: 'ready', servers: list })
       }
-      const pending = all.some((s) => s.status === 'pending')
-      if (!pending) {
+      if (statusSettled(all, { graceUntil })) {
         if (!initLogged) {
           initLogged = true
           logServers(all)
@@ -2396,7 +2404,9 @@ wss.on('connection', (socket) => {
               // lazily — so only drop the ones that are actually unusable.
               const all = msg.mcp_servers ?? []
               send({ type: 'ready', servers: railList(all) })
-              if (!initLogged) {
+              // Left to the status poll while the connectors have yet to
+              // appear, for the same reason it waits for them.
+              if (!initLogged && statusSettled(all, { graceUntil: Infinity })) {
                 // Once per bridge, not per page load: the list does not change
                 // between reconnects and the terminal is not a ticker.
                 initLogged = true

@@ -106,6 +106,29 @@ export function connectorDenylist(allow = ALLOW, names = known) {
   return names.filter((n) => !allow.has(connectorKey(n))).map((n) => `mcp__${toolServer(n)}`)
 }
 
+/**
+ * Would claude.ai connectors load at all? Not when the CLI bills an API key,
+ * and not when they are switched off; then there is nothing to wait for.
+ */
+export const connectorsExpected = (env = process.env) =>
+  !env.ANTHROPIC_API_KEY && env.ENABLE_CLAUDEAI_MCP_SERVERS !== '0'
+
+/**
+ * Has a session's server list settled enough to report?
+ *
+ * Connectors are not merely 'pending' at first: for a few seconds after the
+ * CLI starts they are absent from the list altogether, so a list with nothing
+ * pending can still be missing all of them. Reporting then is what printed
+ * "0 MCP servers available" on a working account, and stopped the rail from
+ * ever filling in. So a list with no connectors in it is only final once the
+ * grace period is over, or when none were ever going to load.
+ */
+export function statusSettled(all, { expected = connectorsExpected(), now = Date.now(), graceUntil = 0 } = {}) {
+  if (all.some((s) => s.status === 'pending')) return false
+  if (!expected || all.some((s) => isConnectorName(s.name))) return true
+  return now >= graceUntil
+}
+
 /** A one-line summary for the startup banner. */
 export function connectorsSummary() {
   if (!ALLOW) return 'connectors: all claude.ai connectors (set JARVIS_CONNECTORS to narrow them)'
