@@ -411,6 +411,36 @@ turns off the morning offer.
   flow pointed at Sent Items. Without it, Protective promises are still picked
   up from meeting notes.
 
+## The review list
+
+Alerts no longer disappear. Everything Jarvis raises also lands in the
+**review list** on the right, and stays there until you deal with it. That
+covers portfolio blocks, overdue promises, mail that needs you, the morning
+brief, the wrap-up, the weekly review, and anything held back during focus.
+
+- **Needs you** is at the top. An amber dot marks items you haven't looked at
+  yet.
+- **Done** closes an item. **Later…** puts it off for an hour, until this
+  afternoon, or until tomorrow, and it comes back, spoken, at that time.
+  Closed items stay in a folded "Done this week" section.
+- Ticket keys open the ticket, and "Show all" expands a long list.
+- **Your own reminders:** "remind me to call Chris at three" waits out of sight
+  until three o'clock, then Jarvis says it and it's back at the top.
+- **By voice:** "what's on my list?", "clear the portfolio ones", "remind me
+  about that tomorrow", "show my list" or "hide my list". **L** opens and
+  closes it.
+- **Things that resolve themselves close on their own:**
+  - a promise, once it's kept;
+  - a meeting, half an hour after it starts;
+  - the brief, wrap-up and review, once you've asked for them.
+- The tab above Settings always shows how many items are waiting. It opens by
+  default on a wide screen. While the list is open, alert cards step aside,
+  since everything on them is in the list. Otherwise they fade after a minute
+  and a half.
+
+The list is kept in `~/.jarvis/stratum.json`, so it survives reloads and
+restarts. Done items are kept for a week.
+
 ## Focus
 
 "I'm heads-down until two" or "focus for ninety minutes" holds alerts back. A

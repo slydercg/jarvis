@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AlertItem, AlertKind, FocusFrame } from './lib/bridge'
+import type { AlertItem, AlertKind, FocusFrame, StratumItem } from './lib/bridge'
 
 /** Where things stand before a meeting, gathered ahead of the heads-up. */
 export type MeetingPrep = { summary: string; points: string[] }
@@ -12,10 +12,24 @@ export type Alert = {
   detail: string
   /** Meeting start, or when the mail was flagged, as a Date.now() value. */
   at: number
+  /** When the card went up. */
+  received: number
   prep?: MeetingPrep
   label?: string
   say?: string
   items?: AlertItem[]
+}
+
+const STRATUM_KEY = 'jarvis.stratumOpen'
+/** Open by default on a wide screen, where it has room beside everything else. */
+function readStratumOpen(): boolean {
+  try {
+    const saved = localStorage.getItem(STRATUM_KEY)
+    if (saved !== null) return saved === '1'
+  } catch {
+    // Fall through to the default.
+  }
+  return typeof window !== 'undefined' && window.innerWidth >= 1400
 }
 
 const MUTED_KEY = 'jarvis.alertsMuted'
@@ -281,6 +295,10 @@ type State = {
   alertsMuted: boolean
   /** Heads-down, as the bridge reports it. */
   focus: FocusFrame
+  /** The review column: what is still waiting on him. */
+  stratum: StratumItem[]
+  /** Whether the column is open. Remembered per browser. */
+  stratumOpen: boolean
   /** The settings panel is open. */
   settingsOpen: boolean
   /** Name of the speech-synthesis voice in use, shown in the HUD. */
@@ -328,6 +346,8 @@ type State = {
   dismissAlert: (id: string) => void
   setAlertsMuted: (muted: boolean) => void
   setFocus: (focus: FocusFrame) => void
+  setStratum: (items: StratumItem[]) => void
+  setStratumOpen: (open: boolean) => void
   setSettingsOpen: (open: boolean) => void
   pushTurn: (t: Turn) => void
   /** Replace the transcript: a restored conversation, or a fresh start. */
@@ -358,6 +378,8 @@ export const useStore = create<State>((set) => ({
   alerts: [],
   alertsMuted: readMuted(),
   focus: { active: false },
+  stratum: [],
+  stratumOpen: readStratumOpen(),
   settingsOpen: false,
   voice: '',
   gestures: false,
@@ -440,6 +462,15 @@ export const useStore = create<State>((set) => ({
   dismissAlert: (id) => set((s) => ({ alerts: s.alerts.filter((a) => a.id !== id) })),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setFocus: (focus) => set({ focus }),
+  setStratum: (stratum) => set({ stratum }),
+  setStratumOpen: (stratumOpen) => {
+    try {
+      localStorage.setItem(STRATUM_KEY, stratumOpen ? '1' : '0')
+    } catch {
+      // Not remembered; it still opens for this page.
+    }
+    set({ stratumOpen })
+  },
   setAlertsMuted: (alertsMuted) => {
     try {
       localStorage.setItem(MUTED_KEY, alertsMuted ? '1' : '0')

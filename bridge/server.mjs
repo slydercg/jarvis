@@ -35,7 +35,19 @@ import { protectiveConfigured, protectiveServer } from './protective.mjs'
 import { briefServer, maybeOfferBrief } from './briefing.mjs'
 import { localFilesServer } from './localfiles.mjs'
 import { loopServer, logMeetings, maybeOfferWrap } from './loop.mjs'
-import { commitmentsEnabled, dueNudges, scanCommitments, scanDue } from './commitments.mjs'
+import { commitmentOpen, commitmentsEnabled, dueNudges, scanCommitments, scanDue } from './commitments.mjs'
+import {
+  closeKind,
+  keepAlert,
+  listStratum,
+  markAllSeen,
+  onStratumChange,
+  parseWhen,
+  registerResolver,
+  stratumServer,
+  updateItem,
+  wokenSince,
+} from './stratum.mjs'
 import { focusGate, focusServer, focusState, startFocus, vips } from './focus.mjs'
 import { portfolioServer } from './portfolio.mjs'
 import { maybeOfferReview, reviewServer } from './review.mjs'
@@ -257,7 +269,7 @@ const displayName = (name) =>
  */
 const INTERNAL_SERVERS = new Set([
   'jarvis', 'jarvis_ui', 'jarvis_chrome', 'jarvis_eyes', 'jarvis_memory', 'jarvis_brief', 'jarvis_files',
-  'jarvis_loop', 'jarvis_focus', 'jarvis_portfolio', 'jarvis_review',
+  'jarvis_loop', 'jarvis_focus', 'jarvis_portfolio', 'jarvis_review', 'jarvis_stratum',
 ])
 
 /**
@@ -518,7 +530,9 @@ function decideTool(name) {
     // The wrap, dossiers, portfolio pulse and weekly review are built by
     // read-only sessions; the promise ledger and the focus state are files in
     // ~/.jarvis, like memory. Nothing here reaches another person.
-    if (['jarvis_loop', 'jarvis_focus', 'jarvis_portfolio', 'jarvis_review'].includes(server)) return 'allow'
+    if (['jarvis_loop', 'jarvis_focus', 'jarvis_portfolio', 'jarvis_review', 'jarvis_stratum'].includes(server)) {
+      return 'allow'
+    }
 
     const tool = mcpToolOf(name)
     const key = serverKey(server)
@@ -818,6 +832,15 @@ Focus — "I'm heads-down until two", "focus for ninety minutes", "I'm back":
 - If memory has a focus playlist, start it on the speakers as well. His Teams
   status cannot be set from here; do not offer.
 - "Add Chris to my VIPs": \`focus_vips\`.
+
+The review column — everything that asked for his attention stays on it until
+dealt with, and it is on screen at the right:
+- "What's on my list?", "what do I still need to look at?", "what did I miss?":
+  \`review_list\`, then say the open ones in a clause each, amber first.
+- "That's done", "clear the portfolio ones": \`review_update\` with the item's id
+  or its kind. "Remind me about that in an hour": \`review_update\` with snooze.
+- "Remind me to call Chris at three", "put the budget on my list":
+  \`review_remind\`. Acknowledge in a few words with the time.
 
 The portfolio — "what's blocked across the portfolio?", "which team is behind?",
 "what changed since yesterday?", "how's delivery?":
@@ -1794,7 +1817,26 @@ const focusToPages = (focus) => {
   for (const deliver of pages) deliver({ type: 'focus', focus })
 }
 const focus = focusGate(toPages, focusToPages)
-const broadcastAlert = focus.deliver
+/**
+ * Every alert is kept in the review column before focus decides whether it is
+ * said now — so what focus holds back is on the list too, not only in the
+ * digest. A reminder coming back from the column is not kept a second time.
+ */
+const broadcastAlert = (alert) => {
+  if (!alert.fromStratum) keepAlert(alert)
+  focus.deliver(alert)
+}
+// A promise alert closes itself once the ledger has the promise kept.
+registerResolver('commitment', commitmentOpen)
+onStratumChange((items) => {
+  for (const deliver of pages) deliver({ type: 'stratum', items })
+})
+/** Asking for these is dealing with them: their "ready" item closes. */
+const CLOSES_KIND = {
+  jarvis_brief__get_brief: 'brief',
+  jarvis_loop__get_day_wrap: 'wrap',
+  jarvis_review__get_weekly_review: 'review',
+}
 
 /** Everything the brief builder needs; see briefing.mjs. */
 const briefDeps = () => ({
@@ -1835,6 +1877,7 @@ function ensureWatcher() {
  * log. Only while a page is open, and nudges only within alert hours.
  */
 const ALERT_HOURS = process.env.JARVIS_ALERT_HOURS ?? '8-19'
+let lastWake = Date.now()
 const ALERT_DAYS = process.env.JARVIS_ALERT_WEEKENDS === 'on' ? 'every' : 'weekdays'
 setInterval(() => {
   focus.tick()
@@ -1842,6 +1885,20 @@ setInterval(() => {
   const deps = briefDeps()
   maybeOfferWrap(deps, broadcastAlert)
   maybeOfferReview(deps, broadcastAlert)
+  // Snoozed items and reminders whose time has come: back on the list, and said.
+  for (const i of wokenSince(lastWake)) {
+    broadcastAlert({
+      kind: i.kind === 'reminder' ? 'reminder' : i.kind,
+      label: i.kind === 'reminder' ? 'Reminder' : i.label || 'Back on your list',
+      title: i.title,
+      detail: i.detail,
+      ...(i.items ? { items: i.items } : {}),
+      say: `Sir, a reminder: ${i.title.replace(/[.!]$/, '')}.`,
+      at: new Date().toISOString(),
+      fromStratum: true,
+    })
+  }
+  lastWake = Date.now()
   if (inWindow('16-24', 'every') && firstToday('meeting-log')) void logMeetings()
   if (!commitmentsEnabled() || !inWindow(ALERT_HOURS, ALERT_DAYS)) return
   for (const nudge of dueNudges()) broadcastAlert(nudge)
@@ -1902,6 +1959,7 @@ wss.on('connection', (socket) => {
     broadcast: broadcastAlert,
   })
   send({ type: 'focus', focus: focusState() })
+  send({ type: 'stratum', items: listStratum() })
 
   /**
    * Which question the agent is currently answering.
@@ -2085,6 +2143,8 @@ wss.on('connection', (socket) => {
         jarvis_portfolio: portfolioServer(briefDeps()),
         // Friday's review and the weekly update for leadership.
         jarvis_review: reviewServer(briefDeps()),
+        // The review column: what is still waiting on him, and his reminders.
+        jarvis_stratum: stratumServer(),
         // The Protective mailbox, calendar and To Do, via Power Automate —
         // present only once its flows are set up.
         ...(protectiveConfigured() ? { protective: protectiveServer() } : {}),
@@ -2171,6 +2231,8 @@ wss.on('connection', (socket) => {
           }
         }
         console.log(`[jarvis] tool ${toolName} -> ${verdict}`)
+        const closes = CLOSES_KIND[toolName.replace(/^mcp__/, '')]
+        if (verdict === 'allow' && closes) closeKind(closes)
         return verdict === 'allow'
           ? { behavior: 'allow' }
           : {
@@ -2491,6 +2553,19 @@ wss.on('connection', (socket) => {
 
     // "Start fresh": drop the conversation. Closing the socket makes the page
     // reconnect, and the next connection opens a new session.
+    // The review column: done, open again, snoozed, or looked at.
+    if (msg.type === 'stratum') {
+      if (msg.op === 'seen') markAllSeen()
+      else if (typeof msg.id === 'string') {
+        if (msg.op === 'done' || msg.op === 'open') updateItem(msg.id, { state: msg.op })
+        if (msg.op === 'snooze') {
+          const until = parseWhen(String(msg.when ?? ''))
+          if (until) updateItem(msg.id, { until })
+        }
+      }
+      return
+    }
+
     if (msg.type === 'reset') {
       console.log('[jarvis] starting a fresh conversation')
       forgetSession()

@@ -239,6 +239,7 @@ export function dueNudges(now = new Date()) {
       out.push({
         kind: 'promise',
         label: 'Promise',
+        ref: `commitment:${i.id}`,
         title: `${i.who} — ${i.what}`,
         detail: `Due ${when}`,
         say: `Sir, you told ${i.who} you would ${lowerFirst(i.what)} — that is due ${when}.`,
@@ -253,6 +254,7 @@ export function dueNudges(now = new Date()) {
       out.push({
         kind: 'promise',
         label: 'Overdue',
+        ref: `commitment:${i.id}`,
         title: `${i.who} — ${i.what}`,
         detail: `${late} day${late === 1 ? '' : 's'} late`,
         say:
@@ -267,3 +269,6 @@ export function dueNudges(now = new Date()) {
 }
 
 const lowerFirst = (s) => (s ? s[0].toLowerCase() + s.slice(1) : s)
+
+/** Whether a ledger item is still open — the review column asks. */
+export const commitmentOpen = (id) => readLedger().items.some((i) => i.id === id && i.status === 'open')

@@ -45,6 +45,33 @@ type Frame = {
   turns?: Array<{ role: 'user' | 'jarvis'; text: string }>
   alert?: AlertFrame
   focus?: FocusFrame
+  items?: StratumItem[]
+}
+
+/** One entry in the review column (bridge/stratum.mjs). */
+export type StratumItem = {
+  id: string
+  kind: AlertKind
+  label?: string
+  title: string
+  detail?: string
+  items?: AlertItem[]
+  at: number
+  state: 'open' | 'snoozed' | 'done'
+  seen?: boolean
+  until?: number
+}
+
+let onStratum: ((items: StratumItem[]) => void) | null = null
+export function watchStratum(fn: (items: StratumItem[]) => void) {
+  onStratum = fn
+}
+
+/** Done, open again, snoozed ("in an hour", "tomorrow"), or all looked at. */
+export function sendStratum(op: 'done' | 'open' | 'snooze' | 'seen', id?: string, when?: string) {
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: 'stratum', op, id, when }))
+  }
 }
 
 /** Heads-down: alerts held until `until`, except VIPs and meetings. */
@@ -75,7 +102,8 @@ export type AlertFrame = {
 /** One line on an alert card. `url` is a ticket link, checked again before use. */
 export type AlertItem = { title: string; detail: string; key?: string; url?: string }
 
-export type AlertKind = 'meeting' | 'mail' | 'brief' | 'wrap' | 'review' | 'promise' | 'portfolio' | 'digest'
+export type AlertKind =
+  | 'meeting' | 'mail' | 'brief' | 'wrap' | 'review' | 'promise' | 'portfolio' | 'digest' | 'reminder'
 
 let onAlert: ((a: AlertFrame) => void) | null = null
 export function watchAlerts(fn: (a: AlertFrame) => void) {
@@ -307,6 +335,8 @@ function dispatch(ws: WebSocket) {
       onAlert?.(msg.alert)
     } else if (msg.type === 'focus' && msg.focus) {
       onFocus?.(msg.focus)
+    } else if (msg.type === 'stratum' && Array.isArray(msg.items)) {
+      onStratum?.(msg.items)
     } else if (msg.type === 'history' && Array.isArray(msg.turns)) {
       onHistory?.(msg.turns)
     } else if (msg.type === 'confirm' && msg.id) {
