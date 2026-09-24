@@ -384,10 +384,12 @@ Every line on the brief says where it came from, under what to do: the
 account, mail or To Do, who sent it and when ("Protective mail · Jane Doe ·
 Tue"). Ask "where did that come from?" or "what's the VAS invoice?" and he
 finds the email itself and tells you who sent it, when, and what it asks.
-A Protective email line is also a link: click it and the email opens in
-Outlook on the web, in a new tab. The link is built from the message's own id,
-never written by the model, and only that exact kind of Outlook link is
-clickable.
+A Protective or SCG email line is also a link: click it and the email opens
+in Outlook on the web, in a new tab. The link is built from the message's own
+id, never written by the model, and only that exact kind of Outlook link is
+clickable. Outlook opens it in the Microsoft account the browser is signed
+into, so an SCG line needs the SCG account signed in (a second browser profile
+works if Protective is the main one).
 
 ## Meetings: prep and follow-through
 
