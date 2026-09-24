@@ -16,6 +16,11 @@
  */
 
 // First, so .env.local is in process.env before anything below reads it.
+// Several modules read their settings the moment they load (connectors.mjs,
+// alerts.mjs, …), so this has to stay the very first import: it was lost once
+// in a refactor, and JARVIS_CONNECTORS and the alert intervals silently fell
+// back to their defaults. tests/env-first.test.mjs guards it.
+import './env.mjs'
 import { WebSocketServer } from 'ws'
 import { query, getSessionMessages } from '@anthropic-ai/claude-agent-sdk'
 import { alertsSummary, startAlerts } from './alerts.mjs'
