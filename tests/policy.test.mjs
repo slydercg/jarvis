@@ -129,3 +129,14 @@ test('a task he dictates goes straight on his list; anything else still asks', (
   assert.equal(p.taskGate('mcp__claude_ai_Atlassian_Rovo__createJiraIssue', 'confirm', 'add a task to raise a ticket'), 'confirm')
   assert.equal(p.taskGate('mcp__protective__protective_send_email', 'confirm', 'remind me to email Chris'), 'confirm')
 })
+
+test('a brief line is marked done or moved only when he said so', () => {
+  const line = 'mcp__jarvis_brief__update_brief_line'
+  assert.equal(p.decideTool(line, DEFAULT), 'allow')
+  for (const said of ["that one's done", 'the VAS invoice is finished', 'push the SOW to tomorrow', 'tick that off', 'snooze it']) {
+    assert.equal(p.intentGate(line, 'allow', said, DEFAULT), 'allow', said)
+  }
+  // Nothing about done or tomorrow: the idea came from something he read.
+  assert.equal(p.intentGate(line, 'allow', 'read me the email from Chris', DEFAULT), 'confirm')
+  assert.equal(p.intentGate(line, 'allow', 'read me the email from Chris', NO_CONFIRM), 'deny')
+})
