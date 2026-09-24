@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore, UNDO_MS } from '../store'
 
@@ -15,6 +15,20 @@ import { useStore, UNDO_MS } from '../store'
 export function ConfirmCard() {
   const confirm = useStore((s) => s.confirm)
   const [, tick] = useState(0)
+  const noButton = useRef<HTMLButtonElement>(null)
+
+  // An interruption the keyboard can find: focus lands on "No", the safe
+  // answer, so a stray Enter or Space cancels rather than acts. Wherever focus
+  // was before is given back once the card goes.
+  const asking = confirm?.stage === 'ask'
+  useEffect(() => {
+    if (!asking) return
+    const before = document.activeElement as HTMLElement | null
+    noButton.current?.focus()
+    return () => {
+      if (before && document.contains(before)) before.focus()
+    }
+  }, [asking])
 
   // Repaint the countdown while the undo window is open.
   useEffect(() => {
@@ -41,7 +55,7 @@ export function ConfirmCard() {
         >
           <div className="confirm-head">
             <span className="confirm-kicker">
-              {confirm.stage === 'ask' ? 'Confirm action' : 'Going ahead'}
+              {confirm.stage === 'ask' ? (confirm.money ? 'Confirm · moves money' : 'Confirm action') : 'Going ahead'}
             </span>
             <span className="confirm-service">{confirm.service}</span>
           </div>
@@ -64,10 +78,12 @@ export function ConfirmCard() {
               <button type="button" className="confirm-yes" onClick={() => confirm.answer(true)}>
                 Yes, do it
               </button>
-              <button type="button" className="confirm-no" onClick={() => confirm.answer(false)}>
+              <button ref={noButton} type="button" className="confirm-no" onClick={() => confirm.answer(false)}>
                 No
               </button>
-              <span className="confirm-hint">or say “yes” / “no”</span>
+              <span className="confirm-hint">
+                {confirm.money ? 'press yes or type “yes” · say “no” to cancel' : 'or say “yes” / “no”'}
+              </span>
             </div>
           ) : (
             <div className="confirm-actions">

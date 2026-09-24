@@ -77,6 +77,7 @@ import {
 import {
   conversationDisallowed,
   decideTool as decide,
+  intentGate,
   MONEY_VERB,
   mcpServerOf,
   mcpToolOf,
@@ -370,6 +371,7 @@ const CONFIRM_FIELDS = [
   ['end', 'Ends'], ['attendees', 'Guests'], ['symbol', 'Symbol'], ['side', 'Side'],
   ['quantity', 'Quantity'], ['amount', 'Amount'], ['price', 'Price'],
   ['body', 'Message'], ['text', 'Message'], ['message', 'Message'], ['content', 'Message'],
+  ['note', 'Note'],
 ]
 
 const clip = (v, n) => {
@@ -1781,6 +1783,14 @@ wss.on('connection', (socket) => {
   let answering = null
   const sendTurn = (msg) => send({ ...msg, ask: answering })
 
+  /**
+   * What the user said to start the turn in flight, as they said it. The one
+   * input no email, page or note can write, so it is what `remember` and
+   * drafts are checked against — see intentGate in policy.mjs.
+   */
+  let turnText = ''
+  const decideForTurn = (name) => intentGate(name, decideTool(name), turnText, POLICY)
+
   /** Whether any words have gone out yet in the turn in flight. */
   let spoke = false
 
@@ -1900,7 +1910,7 @@ wss.on('connection', (socket) => {
     // Saving a note is instant and he acknowledges it himself; a badge and a
     // "working on it" line for it would be louder than the thing itself.
     if (name.startsWith('mcp__jarvis_memory__')) return
-    if (decideTool(name) === 'allow') return sendTurn({ type: 'tool', name })
+    if (decideForTurn(name) === 'allow') return sendTurn({ type: 'tool', name })
     if (id) heldTools.set(id, name)
   }
 
@@ -2016,7 +2026,7 @@ wss.on('connection', (socket) => {
       // something with a consequence, like a `touch`. So a deny here is
       // reliable; an absence of a call here is not proof nothing ran.
       canUseTool: async (toolName, input) => {
-        let verdict = decideTool(toolName)
+        let verdict = decideForTurn(toolName)
         if (verdict === 'confirm') {
           const action = describeAction(toolName, input)
           console.log(`[jarvis] tool ${toolName} -> asking: ${action.summary}`)
@@ -2347,6 +2357,7 @@ wss.on('connection', (socket) => {
         }
         console.log(`[jarvis] ${tier} turn (${ROUTES[tier].model})`)
         answering = id
+        turnText = text
         if (deliver) {
           const resolve = deliver
           deliver = null
