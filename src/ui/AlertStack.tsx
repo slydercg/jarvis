@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore, type Alert } from '../store'
+import { isTicketLink } from '../lib/tickets'
 
 const LABELS: Record<Alert['kind'], string> = {
   meeting: 'Meeting',
@@ -87,9 +88,28 @@ export function AlertStack() {
               </ul>
             )}
             {a.items && a.items.length > 0 && (
-              <ul className="alert-prep" aria-label="Held back">
+              <ul className="alert-items" aria-label={a.kind === 'digest' ? 'Held back' : 'Items'}>
                 {a.items.map((it, i) => (
-                  <li key={`${i}:${it.title}`}>{it.title}</li>
+                  <li key={`${i}:${it.key ?? ''}:${it.title}`} className={`alert-item${it.key ? ' has-key' : ''}`}>
+                    {it.key &&
+                        (isTicketLink(it.url) ? (
+                          <a
+                            className="alert-key ticket-link"
+                            href={it.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={`Open ${it.key}`}
+                          >
+                            {it.key}
+                          </a>
+                        ) : (
+                          <span className="alert-key">{it.key}</span>
+                        ))}
+                    <div className="alert-item-body">
+                      <div className="alert-item-title">{it.title}</div>
+                      {it.detail && <div className="alert-item-meta">{it.detail}</div>}
+                    </div>
+                  </li>
                 ))}
               </ul>
             )}

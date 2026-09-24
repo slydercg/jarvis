@@ -452,6 +452,14 @@ While a page is open, the watcher checks Jira every hour
 - A sprint whose time has run well ahead of its work (25 points by default,
   `JARVIS_SPRINT_SLIP_PCT`) is flagged once a day.
 
+The alert card lists every newly blocked ticket on its own line: key, title,
+and who has it. The list scrolls if it's long. Each key opens the ticket in a
+new tab, and so do the keys on the pulse's blade. Links are only ever built to
+your Jira Cloud site and Azure DevOps organisation. Jarvis learns their
+addresses from the Jira connector on his first check. To set them yourself,
+add `JARVIS_JIRA_URL=https://yoursite.atlassian.net` and
+`JARVIS_ADO_URL=https://yourorg.visualstudio.com` to `.env.local`.
+
 ## The weekly review
 
 "Weekly review" (or "how did the week go?") covers:

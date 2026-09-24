@@ -1,6 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { commitmentsWith } from './commitments.mjs'
 import { readJsonFile, writeJsonFile } from './days.mjs'
+import { learnSites, ticketUrl } from './tickets.mjs'
 import { connectorDenylist } from './connectors.mjs'
 
 /**
@@ -372,7 +373,11 @@ export function startAlerts({
         'tools if they are not in front of you) and Azure DevOps if it is connected: (1) issues in ' +
         'open sprints with priority Highest, High, P1 or Critical that are Blocked, On Hold or ' +
         'flagged; (2) for each open sprint, its dates and how many issues are done out of the total. ' +
-        'Answer exactly {"blocked":[{"key":"...","title":"...","status":"...","owner":"<name or empty>"}],' +
+        'Also give the Jira site address (https://<name>.atlassian.net, from the Jira tools) and the ' +
+        'Azure DevOps organisation address if you used it. ' +
+        'Answer exactly {"sites":{"jira":"<https://…atlassian.net or empty>","ado":"<https://… or empty>"},' +
+        '"blocked":[{"key":"<RPT-123, or the ADO id>","source":"jira|ado","project":"<ADO project or empty>",' +
+        '"title":"...","status":"...","owner":"<name or empty>"}],' +
         '"sprints":[{"name":"...","project":"...","start":"YYYY-MM-DD","end":"YYYY-MM-DD","done":0,"total":0}]}. ' +
         'If Jira is not connected, {"blocked":[],"sprints":[],"unavailable":true}.',
     )
@@ -381,6 +386,7 @@ export function startAlerts({
       console.log(`[jarvis] alerts: portfolio ${r?.unavailable ? 'unavailable (no Jira)' : 'check did not come back as expected'}`)
       return
     }
+    if (r.sites) learnSites(r.sites)
     const seen = readJsonFile(PORTFOLIO_SEEN, { blocked: {}, slipping: {} })
     const today = new Date().toLocaleDateString('en-CA')
     const fresh = (Array.isArray(r.blocked) ? r.blocked : []).filter((b) => b?.key && !seen.blocked[b.key])
@@ -391,7 +397,14 @@ export function startAlerts({
         kind: 'portfolio',
         label: 'Portfolio',
         title: fresh.length === 1 ? `${first.key} is blocked` : `${fresh.length} high-priority items newly blocked`,
-        detail: fresh.slice(0, 4).map((b) => `${b.key} ${b.title}${b.owner ? ` (${b.owner})` : ''}`).join(' · '),
+        detail: '',
+        // One line per ticket — key, title, who has it — each key a link.
+        items: fresh.slice(0, 30).map((b) => ({
+          key: String(b.key),
+          title: String(b.title ?? ''),
+          detail: [b.owner, b.status].filter(Boolean).map(String).join(' · '),
+          url: ticketUrl(b) ?? undefined,
+        })),
         say:
           fresh.length === 1
             ? `Sir, ${first.title} is blocked${first.owner ? `, with ${first.owner}` : ''}.`

@@ -56,6 +56,7 @@ Everything it remembers lives in `~/.jarvis`.
 | `memory.mjs` | Remembered facts (`~/.jarvis/memory.md`) and resuming the conversation |
 | `chrome.mjs` | Drives your own browser through the Claude extension |
 | `localfiles.mjs` | Reads `file://` reports and dashboards in the home folder |
+| `tickets.mjs` | Turns Jira keys and Azure DevOps ids into links, only to your own sites. `src/lib/tickets.ts` is the page's own check, and those are the only links the interface shows |
 | `panels.mjs`, `ui.mjs`, `page.mjs`, `vision.mjs` | Blades and markup, interface controls, reader mode, the camera |
 | `settings.mjs`, `env.mjs`, `net.mjs` | The ElevenLabs key and voice, `.env.local`, URL probing |
 

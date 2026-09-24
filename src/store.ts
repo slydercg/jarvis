@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AlertKind, FocusFrame } from './lib/bridge'
+import type { AlertItem, AlertKind, FocusFrame } from './lib/bridge'
 
 /** Where things stand before a meeting, gathered ahead of the heads-up. */
 export type MeetingPrep = { summary: string; points: string[] }
@@ -15,7 +15,7 @@ export type Alert = {
   prep?: MeetingPrep
   label?: string
   say?: string
-  items?: Array<{ title: string; detail: string }>
+  items?: AlertItem[]
 }
 
 const MUTED_KEY = 'jarvis.alertsMuted'

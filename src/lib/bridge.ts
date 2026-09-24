@@ -68,9 +68,12 @@ export type AlertFrame = {
   label?: string
   /** The line to speak, composed by the bridge. */
   say?: string
-  /** A focus digest: what was held back. */
-  items?: Array<{ title: string; detail: string }>
+  /** One line per thing: a focus digest's held alerts, a portfolio alert's tickets. */
+  items?: AlertItem[]
 }
+
+/** One line on an alert card. `url` is a ticket link, checked again before use. */
+export type AlertItem = { title: string; detail: string; key?: string; url?: string }
 
 export type AlertKind = 'meeting' | 'mail' | 'brief' | 'wrap' | 'review' | 'promise' | 'portfolio' | 'digest'
 

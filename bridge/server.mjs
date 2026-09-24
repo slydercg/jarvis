@@ -823,7 +823,9 @@ The portfolio — "what's blocked across the portfolio?", "which team is behind?
 "what changed since yesterday?", "how's delivery?":
 - Call \`get_portfolio_pulse\` (pass \`question\` for anything specific). It reads
   Jira live and the Jira and Azure DevOps dashboards on this Mac. Speak the
-  summary; blocked items and slipping sprints on a blade with their keys as tags.
+  summary; blocked items and slipping sprints on a blade, one row each. Where an
+  item has a url, make its key a link: <a href="(the url, exactly)">RPT-3880</a>.
+  Never write a link the pulse did not give you.
 
 The weekly review — "weekly review", "how did the week go", "draft my weekly
 update":
