@@ -391,6 +391,12 @@ clickable. Outlook opens it in the Microsoft account the browser is signed
 into, so an SCG line needs the SCG account signed in (a second browser profile
 works if Protective is the main one).
 
+A Protective To Do line is a link too. When the task came from an email (a
+flagged email, or a task with the same subject as one in the inbox), it opens
+that email, as above. Otherwise it opens the task in To Do on the web, which
+needs the Protective To Do flow to return each task's `id`; a flow that
+leaves ids out simply leaves those lines unlinked.
+
 ## Meetings: prep and follow-through
 
 - **Before:** about five minutes before each meeting heads-up, the watcher
