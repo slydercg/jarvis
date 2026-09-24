@@ -2610,8 +2610,10 @@ kbd {
   color: var(--ink);
 }
 
-/* A ticket key that opens the ticket, in cards and in blades. */
-.ticket-link {
+/* A ticket key that opens the ticket, and a brief line that opens its email
+   in Outlook, in cards and in blades. */
+.ticket-link,
+.mail-link {
   color: inherit;
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
@@ -2620,8 +2622,10 @@ kbd {
   pointer-events: auto;
 }
 .ticket-link:hover,
-.ticket-link:focus-visible { text-decoration-color: currentColor; }
-.bl-markup .ticket-link { color: var(--interface); }
+.ticket-link:focus-visible,
+.mail-link:hover,
+.mail-link:focus-visible { text-decoration-color: currentColor; }
+.bl-markup :is(.ticket-link, .mail-link) { color: var(--interface); }
 
 :root[data-read='clear'] .alert-item-meta { opacity: 0.9; font-family: var(--read-face); }
 :root[data-read='clear'] .alert-item-title { font-family: var(--read-face); }

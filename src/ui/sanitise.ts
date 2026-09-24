@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify'
 import { BRIDGE_HTTP_URL } from '../config'
-import { isTicketLink } from '../lib/tickets'
+import { isMailLink, isTicketLink } from '../lib/tickets'
 
 /**
  * The safety boundary for model-authored markup.
@@ -223,12 +223,12 @@ export function sanitisePanelHtml(html: string): string {
         // Showing a video result as a line of text was the polite version of
         // refusing to answer.
         'video', 'source', 'iframe',
-        // Links survive only as ticket links; see keepTicketLinks.
+        // Links survive only as ticket or brief email links; see keepTicketLinks.
         'a',
       ],
       // href is let through here only so keepTicketLinks can judge it: a HUD
-      // panel is not a place to navigate from, with one exception — a ticket
-      // key that opens its ticket.
+      // panel is not a place to navigate from, with two exceptions — a ticket
+      // key that opens its ticket, and a brief line that opens its email.
       ALLOWED_ATTR: [
         'class', 'src', 'alt', 'style', 'href',
         'controls', 'poster', 'loop', 'muted', 'playsinline', 'preload',
@@ -286,13 +286,15 @@ export function sanitisePanelHtml(html: string): string {
 }
 
 /**
- * Every <a> becomes plain text unless it points at a ticket (lib/tickets.ts).
- * The ones that stay open in a new tab and carry no referrer or opener.
+ * Every <a> becomes plain text unless it points at a ticket, or at an email in
+ * Outlook as the bridge builds it for the brief (lib/tickets.ts). The ones that
+ * stay open in a new tab and carry no referrer or opener.
  */
 function keepTicketLinks(root: Element) {
   root.querySelectorAll('a').forEach((a) => {
     const href = a.getAttribute('href')
-    if (!isTicketLink(href)) {
+    const mail = isMailLink(href)
+    if (!mail && !isTicketLink(href)) {
       a.replaceWith(...Array.from(a.childNodes))
       return
     }
@@ -301,6 +303,6 @@ function keepTicketLinks(root: Element) {
     }
     a.setAttribute('target', '_blank')
     a.setAttribute('rel', 'noopener noreferrer')
-    a.classList.add('ticket-link')
+    a.classList.add(mail ? 'mail-link' : 'ticket-link')
   })
 }

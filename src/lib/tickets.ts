@@ -16,3 +16,13 @@ const TICKET_LINK =
 export function isTicketLink(url: unknown): url is string {
   return typeof url === 'string' && TICKET_LINK.test(url)
 }
+
+/**
+ * An email opened in Outlook on the web, as bridge/maillinks.mjs builds it for
+ * the brief: this host, this path, an encoded message id and nothing else.
+ */
+const MAIL_LINK = /^https:\/\/outlook\.office\.com\/mail\/deeplink\/read\/[A-Za-z0-9%._-]{8,1600}$/
+
+export function isMailLink(url: unknown): url is string {
+  return typeof url === 'string' && MAIL_LINK.test(url)
+}
