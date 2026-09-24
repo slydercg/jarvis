@@ -78,9 +78,13 @@ import {
 } from './connectors.mjs'
 import {
   conversationDisallowed,
+  bringsContent,
   decideTool as decide,
+  egressGate,
   intentGate,
   noteGate,
+  taskGate,
+  withoutRemoteMedia,
   MONEY_VERB,
   mcpServerOf,
   mcpToolOf,
@@ -90,6 +94,7 @@ import { createStreaks, stuckAlert } from './health.mjs'
 import { ALLOW_NO_ORIGIN, EXTRA_ORIGINS, PORT, createHttpServer, elevenSource, originAllowed } from './http.mjs'
 import { NAME, SYSTEM_PROMPT } from './prompt.mjs'
 import { learnFromMeetings, peopleContext, peopleServer } from './people.mjs'
+import { learnVoice, voiceDue, voicePrompt } from './voice.mjs'
 import { homedir } from 'node:os'
 import { chmodSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -322,6 +327,7 @@ const CONFIRM_FIELDS = [
   ['quantity', 'Quantity'], ['amount', 'Amount'], ['price', 'Price'],
   ['body', 'Message'], ['text', 'Message'], ['message', 'Message'], ['content', 'Message'],
   ['note', 'Note'],
+  ['url', 'Address'],
 ]
 
 const clip = (v, n) => {
@@ -722,6 +728,15 @@ setInterval(() => {
   }
   lastWake = Date.now()
   if (inWindow('16-24', 'every') && firstToday('meeting-log')) void logMeetings()
+  // How he writes, relearned weekly from his sent mail (voice.mjs).
+  if (!paused && inWindow(ALERT_HOURS, ALERT_DAYS) && voiceDue()) {
+    learnVoice(deps)
+      .then(() => jobHealth.ok('voice'))
+      .catch((err) => {
+        console.warn(`[jarvis] voice: ${err.message}`)
+        jobHealth.fail('voice', err.message)
+      })
+  }
   if (!commitmentsEnabled() || !inWindow(ALERT_HOURS, ALERT_DAYS)) return
   for (const nudge of dueNudges()) broadcastAlert(nudge)
   if (!paused && scanDue()) {
@@ -770,6 +785,7 @@ wss.on('connection', (socket) => {
       // The people and projects he mentions, from his own records.
       const context = alertContext(alertsSeen) + peopleContext(text)
       alertsSeen = Date.now()
+      tainted = Boolean(context)
       yield {
         type: 'user',
         message: { role: 'user', content: `[${localNow()}]\n${context}${text}` },
@@ -813,8 +829,20 @@ wss.on('connection', (socket) => {
    * drafts are checked against — see intentGate in policy.mjs.
    */
   let turnText = ''
+  /**
+   * Whether this turn has taken in outside content — mail, calendars, notes,
+   * tickets, web pages, or the alerts just spoken, which are made of them.
+   * After that, reaching an arbitrary address goes to the user first and
+   * panels lose their remote media (egressGate, withoutRemoteMedia).
+   */
+  let tainted = false
   const decideForTurn = (name, input = {}) =>
-    noteGate(name, intentGate(name, decideTool(name), turnText, POLICY), turnText, input, POLICY)
+    egressGate(
+      name,
+      noteGate(name, taskGate(name, intentGate(name, decideTool(name), turnText, POLICY), turnText), turnText, input, POLICY),
+      { tainted, input },
+      POLICY,
+    )
 
   /** Whether any words have gone out yet in the turn in flight. */
   let spoke = false
@@ -961,7 +989,7 @@ wss.on('connection', (socket) => {
     // "working on it" line for it would be louder than the thing itself.
     if (name.startsWith('mcp__jarvis_memory__')) return
     // `label` is what the badge says: "Checking Jira", not the tool's name.
-    if (decideForTurn(name) === 'allow') return sendTurn({ type: 'tool', name, label: describeStep(name) })
+    if (decideForTurn(name, {}) === 'allow') return sendTurn({ type: 'tool', name, label: describeStep(name) })
     if (id) heldTools.set(id, name)
   }
 
@@ -1025,7 +1053,7 @@ wss.on('connection', (socket) => {
       // keeps answers short enough to speak, and cuts cost per turn.
       // Read per connection, so a note remembered (or edited by hand) in one
       // conversation is known in the next.
-      systemPrompt: SYSTEM_PROMPT + memoryPrompt() + carriedPrompt(convo.carried),
+      systemPrompt: SYSTEM_PROMPT + memoryPrompt() + voicePrompt() + carriedPrompt(convo.carried),
       // Run from the home directory so project-scoped MCP servers don't shadow
       // the global ones, and so file tools have a sane root.
       cwd: homedir(),
@@ -1080,6 +1108,8 @@ wss.on('connection', (socket) => {
       // reliable; an absence of a call here is not proof nothing ran.
       canUseTool: async (toolName, input) => {
         let verdict = decideForTurn(toolName, input)
+        // Whatever this tool brings back is outside content from here on.
+        if (verdict !== 'deny' && bringsContent(toolName)) tainted = true
         if (verdict === 'confirm') {
           const action = describeAction(toolName, input)
           console.log(`[jarvis] tool ${toolName} -> asking: ${action.summary}`)
@@ -1105,6 +1135,13 @@ wss.on('connection', (socket) => {
         console.log(`[jarvis] tool ${toolName} -> ${verdict}`)
         const closes = CLOSES_KIND[toolName.replace(/^mcp__/, '')]
         if (verdict === 'allow' && closes) closeKind(closes)
+        if (verdict === 'allow' && tainted) {
+          const quiet = withoutRemoteMedia(toolName, input)
+          if (quiet.removed) {
+            console.log(`[jarvis] ${quiet.removed} remote address${quiet.removed === 1 ? '' : 'es'} taken out of a panel after outside content`)
+            return { behavior: 'allow', updatedInput: quiet.input }
+          }
+        }
         return verdict === 'allow'
           ? { behavior: 'allow' }
           : {

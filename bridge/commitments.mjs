@@ -105,6 +105,8 @@ export function addCommitments(found, { source = 'said', ledger = readLedger(), 
       who: who.slice(0, 80),
       what: what.slice(0, 200),
       due: validDue(f.due),
+      // The day he sent an ask that has had no reply: what chasing counts from.
+      ...(validDue(f.asked) && direction === 'theirs' ? { asked: validDue(f.asked) } : {}),
       source: String(f.source ?? source).slice(0, 60),
       since: localDay(),
       status: 'open',
@@ -195,16 +197,24 @@ Find commitments made in the window you are given:
 - "theirs": someone said they would do something for him ("Cathrene will send
   the provisioning doc"). Look in Granola notes and in the To Do "Waiting On
   Others" list.
+- "theirs" with "asked": a direct question or request he SENT to a person that
+  has had no reply from them since — "can you confirm the numbers by Friday?",
+  "are we still on for Thursday?". Look in mail he sent (SCG Sent Items, Gmail
+  sent, protective_get_sent if it exists) and check for a reply from that
+  person in the same thread. "what" is what he is waiting for ("reply on the
+  Q4 numbers"); "asked" is the day he sent it. Never a reply-all to a crowd,
+  an FYI, or a thread someone else has already answered for them.
 Only real, specific commitments with a person attached. Never newsletters,
 automated mail, vague intentions ("we should…"), or things already done.
 Convert relative dates to YYYY-MM-DD from today's date; no date → null.
 
 You are also given the ledger's open items. For each one you find evidence has
-been KEPT (the reply was sent, the document arrived, the task is completed),
-list its id under "kept". Never guess.
+been KEPT (the reply was sent, the document arrived, the task is completed —
+for an item with "asked", that person has replied), list its id under "kept".
+Never guess.
 
 Answer exactly:
-{"new":[{"direction":"mine|theirs","who":"<person>","what":"<short verb phrase>","due":"YYYY-MM-DD|null","source":"meeting: <name>|email|to do"}],
+{"new":[{"direction":"mine|theirs","who":"<person>","what":"<short verb phrase>","due":"YYYY-MM-DD|null","asked":"YYYY-MM-DD|null","source":"meeting: <name>|email|to do"}],
  "kept":[{"id":"<ledger id>","evidence":"<under 12 words>"}]}`
 
 let scanning = null
@@ -271,6 +281,11 @@ export function dueNudges(now = new Date()) {
   const today = localDay(now)
   const out = []
   for (const i of ledger.items) {
+    const chase = chaseNudge(i, now)
+    if (chase) {
+      out.push(chase)
+      continue
+    }
     if (i.status !== 'open' || !i.due) continue
     const left = daysUntil(i.due, now)
     if (i.direction === 'mine' && (left === 0 || left === 1) && i.nudged !== today) {
@@ -309,6 +324,54 @@ export function dueNudges(now = new Date()) {
 }
 
 const lowerFirst = (s) => (s ? s[0].toLowerCase() + s.slice(1) : s)
+
+/**
+ * Chasing what he asked for. An ask he sent that has had no reply — an item
+ * with "asked" and no date of its own — is said once it has waited
+ * JARVIS_CHASE_DAYS working days (3), then again every three working days
+ * until it is answered or let go (expireStale). One with a date is chased as
+ * overdue instead, like any other promise.
+ */
+const CHASE_DAYS = Number(process.env.JARVIS_CHASE_DAYS ?? 3)
+
+/** Weekdays from `from` (YYYY-MM-DD) up to `now`, not counting the day itself. */
+export function workingDaysSince(from, now = new Date()) {
+  const d = new Date(`${from}T12:00:00`)
+  const end = new Date(`${localDay(now)}T12:00:00`)
+  let n = 0
+  while (d < end) {
+    d.setDate(d.getDate() + 1)
+    const day = d.getDay()
+    if (day !== 0 && day !== 6) n++
+  }
+  return n
+}
+
+/** "your Tuesday ask" within the week, "your ask on 12 September" before. */
+function whenAsked(asked, now) {
+  const d = new Date(`${asked}T12:00:00`)
+  const days = Math.round((new Date(`${localDay(now)}T12:00:00`) - d) / 86_400_000)
+  if (days <= 6) return `your ${d.toLocaleDateString('en-GB', { weekday: 'long' })} ask`
+  return `your ask on ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}`
+}
+
+/** The chase alert owed for one item now, marking it; null when none is. */
+export function chaseNudge(i, now = new Date()) {
+  if (!(CHASE_DAYS > 0) || i.status !== 'open' || i.direction !== 'theirs' || !i.asked || i.due) return null
+  const waited = workingDaysSince(i.asked, now)
+  if (waited < CHASE_DAYS) return null
+  if (i.nudged && workingDaysSince(i.nudged, now) < CHASE_DAYS) return null
+  i.nudged = localDay(now)
+  return {
+    kind: 'promise',
+    label: 'No reply',
+    ref: `commitment:${i.id}`,
+    title: `${i.who} — ${i.what}`,
+    detail: `Asked ${spokenCount(waited)} working day${waited === 1 ? '' : 's'} ago`,
+    say: `Sir, ${i.who} hasn't replied to ${whenAsked(i.asked, now)} — ${lowerFirst(i.what)}. Shall I draft a nudge?`,
+    at: now.toISOString(),
+  }
+}
 
 /** Whether a ledger item is still open — the review column asks. */
 export const commitmentOpen = (id) => readLedger().items.some((i) => i.id === id && i.status === 'open')
