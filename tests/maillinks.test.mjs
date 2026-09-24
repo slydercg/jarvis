@@ -88,6 +88,8 @@ test('a To Do line opens its email when it has one, else the task', async () => 
     async () => [{ id: TASK_ID, title: 'Renew the certificates', list: 'Tasks' }, { title: 'Nothing matches', list: 'Tasks' }],
   )
   assert.deepEqual(out.items.map((i) => i.link ?? null), [mailLink(ID), todoLink(TASK_ID), null, null])
-  assert.equal(todoLink(TASK_ID), `https://to-do.office.com/tasks/id/${TASK_ID}/details`)
+  assert.equal(todoLink(TASK_ID), `https://to-do.office.com/tasks/${TASK_ID}/details`)
+  // '=' padding stays as written; '/' and '+' are encoded so the path holds together.
+  assert.equal(todoLink('AAMkAD+b/c1234=='), 'https://to-do.office.com/tasks/AAMkAD%2Bb%2Fc1234==/details')
   assert.equal(todoLink('javascript:x'), null)
 })

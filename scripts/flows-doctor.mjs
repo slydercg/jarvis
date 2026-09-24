@@ -52,7 +52,7 @@ function open(url) {
   const cmd = platform() === 'darwin' ? 'open' : 'xdg-open'
   return new Promise((done) =>
     execFile(cmd, [url], (err) => {
-      if (err) console.log(`  Couldn't open a browser (${err.code ?? err.message}). Paste this into one:\n  ${url}`)
+      if (err) console.log(`  Couldn't open a browser (${err.code ?? err.message}). Paste the link into one.`)
       done()
     }),
   )
@@ -62,6 +62,7 @@ if (process.argv.includes('--open-mail') && hasFlow('inbox')) {
   const m = (await protective.inbox(25)).find((x) => mailLink(x.id))
   if (m) {
     console.log(`  Opening "${m.subject}" in Outlook. It should open that email, not the inbox.`)
+    console.log(`  Link: ${mailLink(m.id)}`)
     await open(mailLink(m.id))
   } else console.log('  No inbox email with an id Outlook can open.')
 }
@@ -70,6 +71,7 @@ if (process.argv.includes('--open-todo') && hasFlow('todo')) {
   if (t) {
     console.log(`  Opening "${t.title}" in To Do. It should open that task, not the To Do home page.`)
     console.log('  If it lands on the home page, tell Claude: the To Do link format needs changing.')
+    console.log(`  Link: ${todoLink(t.id)}`)
     await open(todoLink(t.id))
   } else console.log('  No open task with an id, so there is no To Do link to try.')
 }

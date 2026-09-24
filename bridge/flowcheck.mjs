@@ -91,7 +91,10 @@ export function judge(key, items) {
   if (key === 'todo') {
     const withId = items.filter((t) => todoLink(t?.id)).length
     const lists = new Set(items.map((t) => t?.list).filter(Boolean)).size
-    const detail = `${n} open task${n === 1 ? '' : 's'} in ${lists} list${lists === 1 ? '' : 's'}; ${withId} with an id`
+    const first = items.find((t) => todoLink(t?.id))?.id
+    // The id's kind decides which link opens the task, so it is worth saying.
+    const kind = first ? ` (${first.slice(0, 4)}…, ${first.length} characters)` : ''
+    const detail = `${n} open task${n === 1 ? '' : 's'} in ${lists} list${lists === 1 ? '' : 's'}; ${withId} with an id${kind}`
     if (n && !withId) {
       return {
         status: 'warn',
