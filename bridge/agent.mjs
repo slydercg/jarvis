@@ -2,6 +2,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import { protectiveServer, protectiveConfigured } from './protective.mjs'
 import { connectorDenylist } from './connectors.mjs'
 import { BACKGROUND_DISALLOWED } from './policy.mjs'
+import { protectiveBlock } from './snapshot.mjs'
 import { describeStep } from './steps.mjs'
 
 /**
@@ -23,11 +24,18 @@ import { describeStep } from './steps.mjs'
  * Jira"), and `onStep(label, null)` once it is over, so the screen can show a
  * job that takes a minute is moving rather than stuck.
  */
-export async function askReadOnly(deps, { system, question, label, maxTurns = 30, timeoutMs = 5 * 60_000, effort = 'medium' }) {
+export async function askReadOnly(
+  deps,
+  { system, question, label, maxTurns = 30, timeoutMs = 5 * 60_000, effort = 'medium', protectiveData = true },
+) {
   const servers = { ...deps.mcpServers }
   if (protectiveConfigured()) servers.protective = protectiveServer({ readOnly: true })
+  // Protective handed over as data, fetched directly and shared between jobs,
+  // instead of each job spending turns fetching it (see snapshot.mjs). The
+  // tools stay, for anything the snapshot does not cover.
+  const withData = protectiveData ? question + (await protectiveBlock()) : question
   const session = query({
-    prompt: question,
+    prompt: withData,
     options: {
       mcpServers: servers,
       systemPrompt: system,

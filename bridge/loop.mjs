@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { askReadOnly, SOURCES } from './agent.mjs'
 import { todaysBrief } from './briefing.mjs'
 import { firstToday, inWindow, localDay, recordDay } from './days.mjs'
-import { protective, protectiveConfigured } from './protective.mjs'
+import { protectiveConfigured } from './protective.mjs'
+import { read } from './snapshot.mjs'
 import {
   addCommitments,
   closeCommitment,
@@ -93,7 +94,8 @@ export function getWrap(deps, { refresh = false } = {}) {
 export async function logMeetings() {
   if (!protectiveConfigured()) return
   try {
-    const events = await protective.calendar('today')
+    const events = await read('calendar')
+    if (!events) return
     recordDay({
       meetings: events
         .filter((e) => !e.allDay && e.showAs !== 'free')
