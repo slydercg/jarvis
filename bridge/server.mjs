@@ -97,6 +97,7 @@ import {
 } from './policy.mjs'
 import { createStreaks, stuckAlert } from './health.mjs'
 import { NAME, SYSTEM_PROMPT } from './prompt.mjs'
+import { learnVoice, voiceDue, voicePrompt } from './voice.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { chmodSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
@@ -1449,6 +1450,15 @@ setInterval(() => {
   }
   lastWake = Date.now()
   if (inWindow('16-24', 'every') && firstToday('meeting-log')) void logMeetings()
+  // How he writes, relearned weekly from his sent mail (voice.mjs).
+  if (!paused && inWindow(ALERT_HOURS, ALERT_DAYS) && voiceDue()) {
+    learnVoice(deps)
+      .then(() => jobHealth.ok('voice'))
+      .catch((err) => {
+        console.warn(`[jarvis] voice: ${err.message}`)
+        jobHealth.fail('voice', err.message)
+      })
+  }
   if (!commitmentsEnabled() || !inWindow(ALERT_HOURS, ALERT_DAYS)) return
   for (const nudge of dueNudges()) broadcastAlert(nudge)
   if (!paused && scanDue()) {
@@ -1748,7 +1758,7 @@ wss.on('connection', (socket) => {
       // keeps answers short enough to speak, and cuts cost per turn.
       // Read per connection, so a note remembered (or edited by hand) in one
       // conversation is known in the next.
-      systemPrompt: SYSTEM_PROMPT + memoryPrompt() + carriedPrompt(convo.carried),
+      systemPrompt: SYSTEM_PROMPT + memoryPrompt() + voicePrompt() + carriedPrompt(convo.carried),
       // Run from the home directory so project-scoped MCP servers don't shadow
       // the global ones, and so file tools have a sane root.
       cwd: homedir(),

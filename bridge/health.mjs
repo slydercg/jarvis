@@ -41,6 +41,7 @@ const SPOKEN = {
   portfolio: 'the portfolio',
   commitments: 'your promises and follow-ups',
   watcher: 'your calendar and mail',
+  voice: 'your sent mail to learn how you write',
 }
 
 /** An alert card and line for a job that has failed `count` times running. */
