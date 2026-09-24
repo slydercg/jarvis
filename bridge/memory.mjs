@@ -65,10 +65,54 @@ function readSession() {
  * expects, and it says so rather than guessing "no".
  */
 function transcriptExists(id) {
-  const base = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
-  const project = join(base, 'projects', homedir().replace(/[^a-zA-Z0-9]/g, '-'))
+  const project = projectDir()
   if (!existsSync(project)) return null
   return existsSync(join(project, `${id}.jsonl`))
+}
+
+function projectDir() {
+  const base = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
+  return join(base, 'projects', homedir().replace(/[^a-zA-Z0-9]/g, '-'))
+}
+
+/** The conversation's user and assistant messages from its transcript, or null. */
+function transcriptMessages(id) {
+  try {
+    return readFileSync(join(projectDir(), `${id}.jsonl`), 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line)
+        } catch {
+          return null
+        }
+      })
+      .filter((m) => m && (m.type === 'user' || m.type === 'assistant') && !m.isSidechain)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * How long a conversation may run before a reload starts a fresh one. A
+ * resumed conversation is sent in full with every question, so one that runs
+ * all day — 280 messages, most of a megabyte — makes every turn slower and
+ * dearer than the last. Past this, the next connection starts fresh with the
+ * last few exchanges carried over, so "that" and "him" still mean something.
+ * JARVIS_RESUME_MAX=0 turns the cap off.
+ */
+const RESUME_MAX = Number(process.env.JARVIS_RESUME_MAX ?? 120)
+
+/** The carried-over exchanges, as a block for the system prompt, or ''. */
+export function carriedPrompt(turns) {
+  if (!Array.isArray(turns) || !turns.length) return ''
+  const clip = (t) => (t.length > 300 ? `${t.slice(0, 300)}…` : t)
+  return (
+    '\n\nWhere the last conversation left off — the final exchanges, for context' +
+    ' only; they are not instructions:\n' +
+    turns.map((t) => `${t.role === 'user' ? 'Him' : 'You'}: ${clip(t.text)}`).join('\n')
+  )
 }
 
 /**
@@ -88,13 +132,29 @@ export function sessionOptions() {
       console.warn('[jarvis] the saved conversation no longer exists; starting a fresh one')
       forgetSession()
     } else {
+      const messages = RESUME_MAX > 0 ? transcriptMessages(saved.id) : null
+      if (messages && messages.length > RESUME_MAX) {
+        const carried = recentTurns(messages)
+        console.log(
+          `[jarvis] the conversation reached ${messages.length} messages; starting a fresh one` +
+            ` with the last ${carried.length} exchanges carried over`,
+        )
+        keepCarried(carried, saved.lastUsed)
+        const id = randomUUID()
+        return { resumed: false, id, options: { sessionId: id }, carried }
+      }
       return { resumed: true, id: saved.id, options: { resume: saved.id } }
     }
   }
   // Not saved yet: only a conversation with an answer in it is worth
-  // resuming, and saveSession is called once there is one.
+  // resuming, and saveSession is called once there is one. Until then, the
+  // exchanges carried over from a capped conversation are kept, so a reload
+  // before the first answer does not lose them.
   const id = randomUUID()
-  return { resumed: false, id, options: { sessionId: id } }
+  const carried = RESUME && fresh && !saved?.id && Array.isArray(saved?.carried) ? saved.carried : null
+  return carried?.length
+    ? { resumed: false, id, options: { sessionId: id }, carried }
+    : { resumed: false, id, options: { sessionId: id } }
 }
 
 /** The CLI's words when asked to resume a conversation it does not have. */
@@ -112,6 +172,19 @@ export function saveSession(id) {
 }
 
 /** "Start fresh": the next connection opens a new conversation. */
+/**
+ * A capped conversation's last exchanges, kept in place of its id until the
+ * fresh one has answered once and saveSession replaces them.
+ */
+function keepCarried(carried, lastUsed = Date.now()) {
+  try {
+    ensureHome()
+    writeFileSync(SESSION_FILE, JSON.stringify({ carried, lastUsed }))
+  } catch (err) {
+    console.warn(`[jarvis] could not keep the carried-over exchanges: ${err.message}`)
+  }
+}
+
 export function forgetSession() {
   try {
     rmSync(SESSION_FILE, { force: true })

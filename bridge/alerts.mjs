@@ -1,6 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { commitmentsWith } from './commitments.mjs'
-import { readJsonFile, writeJsonFile } from './days.mjs'
+import { localDay, readJsonFile, writeJsonFile } from './days.mjs'
 import { learnSites, ticketUrl } from './tickets.mjs'
 import { connectorDenylist } from './connectors.mjs'
 import { BACKGROUND_DISALLOWED } from './policy.mjs'
@@ -34,6 +34,25 @@ import { createStreaks, stuckAlert } from './health.mjs'
 
 const ENABLED = process.env.JARVIS_ALERTS !== 'off'
 const LEAD_MIN = Number(process.env.JARVIS_ALERT_LEAD_MIN ?? 10)
+
+/** When each check last succeeded today, and the calendar's last answer. */
+const STATE_FILE = 'alerts-state.json'
+
+/**
+ * When each check is next due, given what ran before a restart. A check that
+ * succeeded within its interval today waits out the rest of it; anything else
+ * — never run, run yesterday, interval turned off — is due at once (0).
+ */
+export function resumeDue(saved, { now = Date.now(), day = localDay(), minutes }) {
+  const due = { calendar: 0, mail: 0, portfolio: 0 }
+  if (!saved || saved.day !== day) return due
+  for (const job of Object.keys(due)) {
+    const last = Number(saved.last?.[job] ?? 0)
+    const every = Number(minutes?.[job] ?? 0) * 60_000
+    if (last > 0 && every > 0 && now - last < every) due[job] = last + every
+  }
+  return due
+}
 const CAL_MIN = Number(process.env.JARVIS_ALERT_CAL_MIN ?? 20)
 const MAIL_MIN = Number(process.env.JARVIS_ALERT_MAIL_MIN ?? 15)
 const WEEKENDS = process.env.JARVIS_ALERT_WEEKENDS === 'on'
@@ -144,6 +163,13 @@ export function startAlerts({
     },
   })
 
+  /** Note that a check succeeded, for resumeDue after a restart. */
+  function recordRun(job, extra = {}) {
+    const s = readJsonFile(STATE_FILE, {})
+    const today = s.day === localDay() ? s : { day: localDay(), last: {} }
+    writeJsonFile(STATE_FILE, { ...today, ...extra, last: { ...today.last, [job]: Date.now() } })
+  }
+
   // --- one session, fed a question at a time -------------------------------
   const inbox = []
   let wake = null
@@ -244,6 +270,22 @@ export function startAlerts({
     health.ok('calendar')
     health.ok('watcher')
     onCalendar(events)
+    const added = schedule(events)
+    recordRun('calendar', { events })
+    console.log(
+      `[jarvis] alerts: calendar checked, ${events.length} upcoming` +
+        (added ? `, ${added} newly scheduled` : '') +
+        ` ($${spent.toFixed(3)})`,
+    )
+  }
+
+  /**
+   * Set a timer for each meeting's heads-up (and its prep), and for each focus
+   * block. Keyed, so an event already scheduled is left alone. Used by every
+   * calendar check, and at startup with the last check's answer, so a restart
+   * does not lose the heads-ups it had set.
+   */
+  function schedule(events) {
     let added = 0
     for (const e of events) {
       const start = Date.parse(e?.start)
@@ -304,11 +346,7 @@ export function startAlerts({
       scheduled.set(key, entry)
       added++
     }
-    console.log(
-      `[jarvis] alerts: calendar checked, ${events.length} upcoming` +
-        (added ? `, ${added} newly scheduled` : '') +
-        ` ($${spent.toFixed(3)})`,
-    )
+    return added
   }
 
   // --- meeting prep ---------------------------------------------------------------
@@ -369,6 +407,7 @@ export function startAlerts({
     }
     health.ok('mail')
     health.ok('watcher')
+    recordRun('mail')
     let fresh = 0
     for (const m of emails.slice(0, 3)) {
       const key = String(m?.id ?? `${m?.from}|${m?.subject}`)
@@ -413,6 +452,7 @@ export function startAlerts({
       return
     }
     health.ok('portfolio')
+    recordRun('portfolio')
     if (r.sites) learnSites(r.sites)
     onPortfolio({
       blocked: Array.isArray(r.blocked) ? r.blocked.length : 0,
@@ -469,7 +509,17 @@ export function startAlerts({
   }
 
   // --- the clock -----------------------------------------------------------------
-  const due = { calendar: 0, mail: 0, portfolio: 0 }
+  // Carried over a restart: checks that ran recently wait out their interval
+  // instead of running again at once, and the last calendar answer puts the
+  // meeting heads-ups back. Restarts were most of the background spend — the
+  // first check after each costs two to four times a routine one.
+  const saved = readJsonFile(STATE_FILE, {})
+  const due = resumeDue(saved, { minutes: { calendar: CAL_MIN, mail: MAIL_MIN, portfolio: PORTFOLIO_MIN } })
+  if (due.calendar > Date.now() && Array.isArray(saved.events)) {
+    const n = schedule(saved.events)
+    console.log(`[jarvis] alerts: carried over from ${Math.round((Date.now() - saved.last.calendar) / 60_000)} min ago` +
+      `${n ? `, ${n} heads-up${n === 1 ? '' : 's'} rescheduled` : ''}; next calendar check in ${Math.round((due.calendar - Date.now()) / 60_000)} min`)
+  }
   let busy = false
   const tick = async () => {
     if (busy || stopped || !listening() || !withinHours()) return
