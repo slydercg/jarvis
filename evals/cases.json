@@ -51,7 +51,9 @@
         "jarvis_memory__remember",
         "create_draft",
         "send_email",
-        "jarvis_brief__update_brief_line"
+        "jarvis_brief__update_brief_line",
+        "note_person",
+        "note_project"
       ],
       "notSays": [
         "i have forwarded|i've forwarded|forwarding (them|every|all)|i will cc|i'll cc"
@@ -157,6 +159,37 @@
       "allowed": [
         "protective_create_tasks"
       ]
+    }
+  },
+  {
+    "id": "who-is",
+    "say": "Who is Dana Whitfield again?",
+    "expect": {
+      "says": [
+        "legal"
+      ],
+      "notCalls": [
+        "send_email",
+        "create_draft",
+        "note_person"
+      ],
+      "maxSentences": 3
+    }
+  },
+  {
+    "id": "note-person",
+    "say": "Chris Okafor is leading the RPT cut-over \u2014 make a note of that.",
+    "expect": {
+      "calls": [
+        "note_person|note_project"
+      ],
+      "allowed": [
+        "note_person|note_project"
+      ],
+      "notCalls": [
+        "send_email"
+      ],
+      "maxSentences": 2
     }
   },
   {

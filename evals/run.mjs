@@ -22,12 +22,15 @@ import { fileURLToPath } from 'node:url'
 process.env.JARVIS_HOME = mkdtempSync(join(tmpdir(), 'jarvis-eval-'))
 process.env.JARVIS_PA_ENDPOINTS = join(process.env.JARVIS_HOME, 'none.json')
 process.env.ENABLE_CLAUDEAI_MCP_SERVERS = '0'
+// A small people book, as the calendar and he would have filled it.
+writeFileSync(join(process.env.JARVIS_HOME, 'people.json'), readFileSync(new URL('./people.json', import.meta.url)))
 delete process.env.JARVIS_CONNECTORS
 
 const { query } = await import('@anthropic-ai/claude-agent-sdk')
 const { SYSTEM_PROMPT } = await import('../bridge/prompt.mjs')
-const { bringsContent, conversationDisallowed, decideTool, egressGate, intentGate, taskGate } = await import('../bridge/policy.mjs')
+const { bringsContent, conversationDisallowed, decideTool, egressGate, intentGate, noteGate, taskGate } = await import('../bridge/policy.mjs')
 const { memoryServer } = await import('../bridge/memory.mjs')
+const { peopleContext, peopleServer } = await import('../bridge/people.mjs')
 const { displayServer } = await import('../bridge/panels.mjs')
 const { briefFixture } = await import('./fake-brief.mjs')
 const { fakeProtective } = await import('./fake-protective.mjs')
@@ -62,7 +65,7 @@ async function runCase(c) {
   let tainted = false
   const session = query({
     // The same shape the bridge sends: the local time, then what was said.
-    prompt: `[${localNow()}]\n${c.say}`,
+    prompt: `[${localNow()}]\n${peopleContext(c.say)}${c.say}`,
     options: {
       cwd: homedir(),
       systemPrompt: SYSTEM_PROMPT,
@@ -73,6 +76,7 @@ async function runCase(c) {
         protective,
         jarvis: displayServer(() => {}, () => {}),
         jarvis_memory: memoryServer(),
+        jarvis_people: peopleServer(),
         jarvis_brief: briefServer({}),
       },
       model: MODEL,
@@ -81,7 +85,12 @@ async function runCase(c) {
       permissionMode: 'default',
       canUseTool: async (name, input) => {
         // The same gates as the bridge, in the same order (server.mjs).
-        const verdict = egressGate(name, taskGate(name, intentGate(name, decideTool(name, POLICY), c.say, POLICY), c.say), { tainted, input }, POLICY)
+        const verdict = egressGate(
+          name,
+          noteGate(name, taskGate(name, intentGate(name, decideTool(name, POLICY), c.say, POLICY), c.say), c.say, input, POLICY),
+          { tainted, input },
+          POLICY,
+        )
         if (verdict !== 'deny' && bringsContent(name)) tainted = true
         verdicts.set(name, [...(verdicts.get(name) ?? []), verdict])
         if (verdict === 'allow') return { behavior: 'allow' }

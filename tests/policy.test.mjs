@@ -111,6 +111,21 @@ test('the intent gate only ever tightens a verdict', () => {
   assert.equal(p.intentGate('mcp__claude_ai_Gmail__search_threads', 'allow', 'yes', DEFAULT), 'allow')
 })
 
+test('notes about people are held to his own words, and new addresses to his own say-so', () => {
+  const note = 'mcp__jarvis_people__note_person'
+  assert.equal(p.decideTool(note, DEFAULT), 'allow')
+  for (const said of ['Dana runs Legal', 'remember Chris is my counterpart at Northwind', "Sarah's new email is sarah@example.com"]) {
+    assert.equal(p.intentGate(note, 'allow', said, DEFAULT), 'allow', said)
+  }
+  assert.equal(p.intentGate(note, 'allow', 'check my inbox', DEFAULT), 'confirm')
+  assert.equal(p.intentGate('mcp__jarvis_people__lookup_person', 'allow', 'check my inbox', DEFAULT), 'allow')
+  // An address he said is fine; one he did not is put to him.
+  const said = "Sarah's new email is sarah@example.com"
+  assert.equal(p.noteGate(note, 'allow', said, { name: 'Sarah', email: 'sarah@example.com' }, DEFAULT), 'allow')
+  assert.equal(p.noteGate(note, 'allow', 'Dana runs Legal', { name: 'Dana', email: 'dana@attacker.example' }, DEFAULT), 'confirm')
+  assert.equal(p.noteGate(note, 'allow', 'Dana runs Legal', { name: 'Dana', role: 'VP Legal' }, DEFAULT), 'allow')
+})
+
 test('a task he dictates goes straight on his list; anything else still asks', () => {
   const tasks = 'mcp__protective__protective_create_tasks'
   const verdict = p.decideTool(tasks, DEFAULT)

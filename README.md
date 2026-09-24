@@ -511,6 +511,24 @@ itself is kept. Every draft he writes after that follows it. The notes are in
   peer mail at Protective is not learned from.
 - `JARVIS_VOICE_DAYS` changes how often it relearns (0 turns it off).
 
+## People and projects
+
+He keeps a book of who's who in `~/.jarvis/people.json`. Everyone you meet is
+added from your calendars — name, address, organisation, how often you meet
+and when you last did — and you fill in the rest by saying so: "Dana runs
+Legal", "Chris is my counterpart at Northwind", "RPT go-live slipped to
+November". Projects are kept by Jira key (NI, RPT) with their stakeholders.
+
+- When you mention someone, what he knows about them comes along with your
+  question — so a draft to Dana goes to the right address, in the right tone.
+- Meeting prep includes who the attendees are. "Who is Dana?", "what's RPT?"
+  answer from the book.
+- Only you can write to it. Something he reads in an email is never noted, and
+  changing anyone's address needs your say-so on screen unless you said the
+  address yourself.
+- `JARVIS_MY_EMAILS` lists your own addresses (comma separated), so you are
+  never added as someone you met. Default: your Protective address.
+
 ## Now strip and day timeline
 
 **The now strip** runs across the top: the meeting under way (and when it

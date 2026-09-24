@@ -5,6 +5,7 @@ import { todaysBrief } from './briefing.mjs'
 import { firstToday, inWindow, localDay, recordDay } from './days.mjs'
 import { protectiveConfigured } from './protective.mjs'
 import { read } from './snapshot.mjs'
+import { learnFromMeetings } from './people.mjs'
 import {
   addCommitments,
   closeCommitment,
@@ -96,6 +97,8 @@ export async function logMeetings() {
   try {
     const events = await read('calendar')
     if (!events) return
+    // Who he met today, into his people book (people.mjs).
+    learnFromMeetings(events.filter((e) => !e.allDay && e.showAs !== 'free'))
     recordDay({
       meetings: events
         .filter((e) => !e.allDay && e.showAs !== 'free')
