@@ -380,6 +380,11 @@ first time you open Jarvis on a weekday morning (5–11 by default,
 is cached for 90 minutes; "refresh my brief" rebuilds it. `JARVIS_BRIEF=off`
 turns off the morning offer.
 
+Every line on the brief says where it came from, under what to do: the
+account, mail or To Do, who sent it and when ("Protective mail · Jane Doe ·
+Tue"). Ask "where did that come from?" or "what's the VAS invoice?" and he
+finds the email itself and tells you who sent it, when, and what it asks.
+
 ## Meetings: prep and follow-through
 
 - **Before:** about five minutes before each meeting heads-up, the watcher

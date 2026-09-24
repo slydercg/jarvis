@@ -53,9 +53,56 @@ Calendar: today's meetings across all calendars in local time, marking any overl
 
 Answer exactly:
 {"focus":"<one or two spoken sentences: the single most important thing first, then the next two>",
- "items":[{"priority":"now|soon|fyi","account":"Protective|SCG|Gmail","who":"<person or list>","action":"<verb phrase>","why":"<under 12 words>","source":"email|task|email+task"}],
+ "items":[{"priority":"now|soon|fyi","account":"Protective|SCG|Gmail","who":"<person or list>","action":"<verb phrase>","why":"<under 12 words>","source":"email|task|email+task","from":"<the sender's name as it appears on the email, or the To Do list for a task>","subject":"<the email subject or task title, exactly as written>","received":"<when the email arrived or the task was created, ISO 8601, if known>"}],
  "meetings":[{"time":"<h:mm am/pm>","title":"...","account":"Protective|SCG|Google","clash":false}],
  "sources":{"protective":"ok|<why not>","scg":"ok|<why not>","todo":"ok|<why not>","google":"ok|none"}}`
+
+/**
+ * Where a brief line came from, in a few words: "Protective mail · Jane Doe ·
+ * Tue". Built here rather than by the model, so it reads the same on every
+ * line, and shown under each item on screen. "What's the VAS invoice?" had no
+ * answer when the line said only what to do, not whose email asked it.
+ */
+export function sourceLine(item, now = new Date()) {
+  const kind = { email: 'mail', task: 'To Do', 'email+task': 'mail + To Do' }[item?.source] ?? 'mail'
+  const parts = [`${item?.account || 'Mail'} ${kind}`]
+  const from = readableName(String(item?.from || item?.who || '').trim())
+  if (from) parts.push(from)
+  const t = Date.parse(item?.received ?? '')
+  if (Number.isFinite(t)) parts.push(dayWord(new Date(t), now))
+  return parts.join(' · ')
+}
+
+/**
+ * A bare address reads as a name: "chris.patrick@protective.com" -> "Chris
+ * Patrick". Mail flows often carry only the address, and a line full of
+ * addresses is hard to scan. A role address ("cfo@…") stays as it is, upper-cased.
+ */
+function readableName(from) {
+  const named = /^"?([^"<]+?)"?\s*<[^>]+>$/.exec(from)
+  if (named) return named[1]
+  const m = /^([^@\s]+)@[^@\s]+$/.exec(from)
+  if (!m) return from
+  const words = m[1].split(/[._-]+/).filter(Boolean)
+  if (words.length === 1 && words[0].length <= 4) return words[0].toUpperCase()
+  return words.map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase()).join(' ')
+}
+
+/** "today", "yesterday", "Tue" within the week, else "Sep 22". */
+function dayWord(d, now) {
+  const start = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const days = Math.round((start(now) - start(d)) / 86_400_000)
+  if (days <= 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 7) return d.toLocaleDateString('en-US', { weekday: 'short' })
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+/** The brief as the conversation gets it: every item carries its source line. */
+export function withSources(brief, now = new Date()) {
+  const items = Array.isArray(brief?.items) ? brief.items : []
+  return { ...brief, items: items.map((i) => ({ ...i, sourceLine: sourceLine(i, now) })) }
+}
 
 let cached = null
 let building = null
@@ -200,7 +247,7 @@ export function briefServer(deps) {
           try {
             const { brief, builtAt } = await getBrief(deps, { refresh: Boolean(refresh) })
             const age = Math.round((Date.now() - builtAt) / 60_000)
-            return { content: [{ type: 'text', text: JSON.stringify({ builtMinutesAgo: age, ...brief }) }] }
+            return { content: [{ type: 'text', text: JSON.stringify({ builtMinutesAgo: age, ...withSources(brief) }) }] }
           } catch (err) {
             return {
               content: [{ type: 'text', text: `The brief could not be built: ${err.message}. Gather what you can directly.` }],
