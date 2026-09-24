@@ -93,6 +93,7 @@ import {
   mcpToolOf,
   readOnlyTool as readOnly,
 } from './policy.mjs'
+import { createStreaks, stuckAlert } from './health.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { chmodSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
@@ -1646,6 +1647,14 @@ const broadcastAlert = (alert) => {
   if (!alert.fromStratum) keepAlert(alert)
   focus.deliver(alert)
 }
+
+/** The commitment scan, like the alert checks, speaks up once when it keeps failing. */
+const jobHealth = createStreaks({
+  onStuck: (job, n, reason) => {
+    console.warn(`[jarvis] ${job} has failed ${n} times running; telling the user`)
+    broadcastAlert(stuckAlert(job, n, reason))
+  },
+})
 // A promise alert closes itself once the ledger has the promise kept.
 registerResolver('commitment', commitmentOpen)
 onStratumChange((items) => {
@@ -1737,7 +1746,14 @@ setInterval(() => {
   if (inWindow('16-24', 'every') && firstToday('meeting-log')) void logMeetings()
   if (!commitmentsEnabled() || !inWindow(ALERT_HOURS, ALERT_DAYS)) return
   for (const nudge of dueNudges()) broadcastAlert(nudge)
-  if (scanDue()) scanCommitments(deps).catch((err) => console.warn(`[jarvis] commitments: ${err.message}`))
+  if (scanDue()) {
+    scanCommitments(deps)
+      .then(() => jobHealth.ok('commitments'))
+      .catch((err) => {
+        console.warn(`[jarvis] commitments: ${err.message}`)
+        jobHealth.fail('commitments', err.message)
+      })
+  }
 }, 60_000).unref()
 
 wss.on('connection', (socket) => {
@@ -1837,6 +1853,23 @@ wss.on('connection', (socket) => {
    * `result` that follows the interrupt does not say a second, vaguer thing.
    */
   let turnFailed = false
+
+  /**
+   * Why a turn ended without an answer, for the log and for what happens next.
+   * `interrupted` is set when the page cuts a turn off because the user spoke
+   * over it: the SDK then ends that turn as error_during_execution, which is
+   * not a failure and must not be reported as one — in the logs it was most
+   * of them. `lastTool` is the last tool the turn reached for, so a real
+   * failure says where it happened. `failedInARow` counts real failures with
+   * nothing said: a resumed conversation that has gone bad fails every turn,
+   * and the only way out used to be saying "start fresh".
+   */
+  let interrupted = false
+  let inFlight = false
+  let lastTool = ''
+  let failedInARow = 0
+  const FRESH_AFTER_FAILURES = 2
+
   const failTurn = (code) => {
     const known = FATAL_API_ERRORS[code]
     if (!known || turnFailed) return false
@@ -1931,6 +1964,7 @@ wss.on('connection', (socket) => {
   const SETTLE_CAP_MS = 400
 
   const announceTool = (id, name) => {
+    if (name) lastTool = name
     if (!name || (id && seenTools.has(id))) return
     if (id) seenTools.add(id)
     // The display tool isn't work being done, it's the HUD drawing itself —
@@ -2278,21 +2312,43 @@ wss.on('connection', (socket) => {
                 costUsd: msg.total_cost_usd ?? null,
                 tier,
               })
+            } else if (interrupted && msg.subtype === 'error_during_execution') {
+              // Cut off because the user spoke over it: the next question is
+              // already on its way, and there is nothing to report.
+              console.log('[jarvis] turn interrupted')
             } else {
               console.error(
-                `[jarvis] turn failed: ${msg.subtype}`,
+                `[jarvis] turn failed: ${msg.subtype}${lastTool ? ` (last tool: ${lastTool})` : ''}`,
                 msg.errors ?? '',
               )
+              failedInARow = spoke ? 0 : failedInARow + 1
+              if (failedInARow >= FRESH_AFTER_FAILURES) {
+                console.warn(`[jarvis] ${failedInARow} turns in a row failed with nothing said; starting a fresh conversation`)
+                sendTurn({
+                  type: 'error',
+                  message: "That conversation had stopped working, so I've started a fresh one. Please ask again.",
+                })
+                forgetSession()
+                closed = true
+                deliver?.(null)
+                session.close?.()
+                socket.close()
+                break
+              }
               sendTurn({
                 type: 'error',
                 message: RESULT_FAILURES[msg.subtype] ?? RESULT_FAILURES.default,
               })
             }
+            if (msg.subtype === 'success' && !msg.is_error) failedInARow = 0
             // Whatever was waiting on this turn to finish can go now. This is
             // the only place a turn is genuinely over.
             finishTurn?.()
             finishTurn = null
             turnFailed = false
+            interrupted = false
+            inFlight = false
+            lastTool = ''
             spoke = false
             said = ''
             // Keep an active conversation resumable after a reload — only
@@ -2398,6 +2454,7 @@ wss.on('connection', (socket) => {
         console.log(`[jarvis] ${tier} turn (${ROUTES[tier].model})`)
         answering = id
         turnText = text
+        inFlight = true
         if (deliver) {
           const resolve = deliver
           deliver = null
@@ -2461,6 +2518,9 @@ wss.on('connection', (socket) => {
     }
 
     if (msg.type === 'interrupt') {
+      // The page sends this for any "stop", idle or not; only a turn that is
+      // actually running is being cut off.
+      if (inFlight) interrupted = true
       // Held so the next question can wait for it rather than racing it.
       const stopped = turnFinished()
       settling = Promise.resolve(session.interrupt?.())
