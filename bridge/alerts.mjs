@@ -4,6 +4,7 @@ import { readJsonFile, writeJsonFile } from './days.mjs'
 import { learnSites, ticketUrl } from './tickets.mjs'
 import { connectorDenylist } from './connectors.mjs'
 import { BACKGROUND_DISALLOWED } from './policy.mjs'
+import { createStreaks, stuckAlert } from './health.mjs'
 
 /**
  * Proactive alerts: a heads-up before a meeting, and a word when mail arrives
@@ -135,6 +136,14 @@ export function startAlerts({
 }) {
   if (!ENABLED) return { stop() {} }
 
+  // Checks that keep failing are said out loud once, not only logged.
+  const health = createStreaks({
+    onStuck: (job, n, reason) => {
+      console.warn(`[jarvis] alerts: ${job} has failed ${n} times running; telling the user`)
+      broadcast(stuckAlert(job, n, reason))
+    },
+  })
+
   // --- one session, fed a question at a time -------------------------------
   const inbox = []
   let wake = null
@@ -229,8 +238,11 @@ export function startAlerts({
     const events = parseJson(text)?.events
     if (!Array.isArray(events)) {
       console.warn('[jarvis] alerts: the calendar check did not come back as expected')
+      health.fail('calendar', 'no usable answer')
       return
     }
+    health.ok('calendar')
+    health.ok('watcher')
     onCalendar(events)
     let added = 0
     for (const e of events) {
@@ -352,8 +364,11 @@ export function startAlerts({
     const emails = parseJson(text)?.emails
     if (!Array.isArray(emails)) {
       console.warn('[jarvis] alerts: the mail check did not come back as expected')
+      health.fail('mail', 'no usable answer')
       return
     }
+    health.ok('mail')
+    health.ok('watcher')
     let fresh = 0
     for (const m of emails.slice(0, 3)) {
       const key = String(m?.id ?? `${m?.from}|${m?.subject}`)
@@ -393,8 +408,11 @@ export function startAlerts({
     const r = parseJson(text)
     if (!r || r.unavailable) {
       console.log(`[jarvis] alerts: portfolio ${r?.unavailable ? 'unavailable (no Jira)' : 'check did not come back as expected'}`)
+      // No Jira connected is a setting, not a failure.
+      if (!r) health.fail('portfolio', 'no usable answer')
       return
     }
+    health.ok('portfolio')
     if (r.sites) learnSites(r.sites)
     onPortfolio({
       blocked: Array.isArray(r.blocked) ? r.blocked.length : 0,
@@ -472,6 +490,7 @@ export function startAlerts({
       }
     } catch (err) {
       console.warn(`[jarvis] alerts: check failed: ${err?.message ?? err}`)
+      health.fail('watcher', err?.message ?? String(err))
     } finally {
       busy = false
     }

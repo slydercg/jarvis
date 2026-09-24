@@ -143,19 +143,46 @@ export function maybeOfferBrief(deps, { weekends, broadcast }) {
   if (!weekends && (day === 0 || day === 6)) return
   const h = now.getHours()
   if (h < OFFER_FROM || h >= OFFER_TO) return
-  if (readSaved().offered === today()) return
-  save({ offered: today() })
+  if (readSaved().offered === today() || offering) return
+  // Marked offered only once a brief exists. It used to be marked first, so
+  // one slow connector or bad answer at 7am meant no brief at all that day
+  // and no sign one had been tried. A failure now waits and tries again.
+  if (missed.day === today() && (missed.count >= BRIEF_TRIES || Date.now() - missed.at < BRIEF_RETRY_MS)) return
+  offering = true
   getBrief(deps)
-    .then(({ brief }) =>
+    .then(({ brief }) => {
+      save({ offered: today() })
       broadcast({
         kind: 'brief',
         title: 'Morning brief ready',
         detail: brief.focus,
         at: new Date().toISOString(),
-      }),
-    )
-    .catch((err) => console.warn(`[jarvis] brief: ${err.message}`))
+      })
+    })
+    .catch((err) => {
+      missed = { day: today(), count: missed.day === today() ? missed.count + 1 : 1, at: Date.now() }
+      const last = missed.count >= BRIEF_TRIES
+      console.warn(`[jarvis] brief: ${err.message}${last ? '; giving up for today' : '; trying again in 20 min'}`)
+      if (last) {
+        broadcast({
+          kind: 'reminder',
+          title: "Couldn't build the morning brief",
+          detail: `${BRIEF_TRIES} attempts failed. Details are in ~/.jarvis/logs/jarvis.log. Say "brief me" to try again.`,
+          say: "Sir, I couldn't put this morning's brief together. Say 'brief me' if you'd like me to try again.",
+          at: new Date().toISOString(),
+        })
+      }
+    })
+    .finally(() => {
+      offering = false
+    })
 }
+
+/** Tries at the morning brief per day, and the wait between them. */
+const BRIEF_TRIES = 3
+const BRIEF_RETRY_MS = 20 * 60_000
+let offering = false
+let missed = { day: '', count: 0, at: 0 }
 
 /** The tool the conversation uses: `get_brief`, on the internal jarvis_brief server. */
 export function briefServer(deps) {
