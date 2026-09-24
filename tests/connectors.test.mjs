@@ -79,3 +79,25 @@ test('an empty status list never wipes the cache', () => {
   const saved = JSON.parse(readFileSync(join(dir, 'connectors.json'), 'utf8'))
   assert.equal(saved.connectors.length, 2)
 })
+
+test('a list with nothing pending is not final while the connectors have yet to appear', () => {
+  const locals = [{ name: 'sonos-local', status: 'connected' }]
+  const withConnector = [...locals, { name: 'claude.ai Gmail', status: 'connected' }]
+  const opts = { expected: true, now: 1000, graceUntil: 5000 }
+  // The race that printed "0 MCP servers available": locals up, connectors not listed yet.
+  assert.equal(c.statusSettled(locals, opts), false)
+  assert.equal(c.statusSettled(withConnector, opts), true)
+  // Anything still pending always waits.
+  assert.equal(c.statusSettled([...withConnector, { name: 'claude.ai Granola', status: 'pending' }], opts), false)
+  // After the grace period an empty list is final: the account may have none.
+  assert.equal(c.statusSettled(locals, { ...opts, now: 5000 }), true)
+  // And when connectors were never going to load, there is nothing to wait for.
+  assert.equal(c.statusSettled(locals, { ...opts, expected: false }), true)
+  assert.equal(c.statusSettled(locals, { expected: true, now: 1000, graceUntil: Infinity }), false)
+})
+
+test('connectors are expected unless an API key is billed or they are switched off', () => {
+  assert.equal(c.connectorsExpected({}), true)
+  assert.equal(c.connectorsExpected({ ANTHROPIC_API_KEY: 'x' }), false)
+  assert.equal(c.connectorsExpected({ ENABLE_CLAUDEAI_MCP_SERVERS: '0' }), false)
+})
