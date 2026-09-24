@@ -1,6 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { commitmentsWith } from './commitments.mjs'
 import { readJsonFile, writeJsonFile } from './days.mjs'
+import { connectorDenylist } from './connectors.mjs'
 
 /**
  * Proactive alerts: a heads-up before a meeting, and a word when mail arrives
@@ -147,6 +148,7 @@ export function startAlerts({
       systemPrompt: WATCHER_PROMPT,
       settingSources: [],
       strictMcpConfig: false,
+      disallowedTools: connectorDenylist(),
       model,
       effort,
       maxTurns: 12,
