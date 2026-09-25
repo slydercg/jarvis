@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AlertItem, AlertKind, FocusFrame, StratumItem, TodayFrame, TranscriptFrame } from './lib/bridge'
+import type { AlertItem, AlertKind, FocusFrame, HoldingsView, StratumItem, TodayFrame, TranscriptFrame } from './lib/bridge'
 
 /** Where things stand before a meeting, gathered ahead of the heads-up. */
 export type MeetingPrep = { summary: string; points: string[] }
@@ -100,7 +100,7 @@ export type Panel = {
 export type Blade = {
   id: string
   title: string
-  kind: 'article' | 'image' | 'gallery' | 'video' | 'embed' | 'markup' | 'camera'
+  kind: 'article' | 'image' | 'gallery' | 'video' | 'embed' | 'markup' | 'camera' | 'holdings'
   /** article / image / video / embed. */
   url?: string
   /** gallery. */
@@ -111,6 +111,8 @@ export type Blade = {
   mode?: 'reader' | 'live'
   size: 'compact' | 'tall' | 'wide' | 'full'
   hold: 'turn' | 'sticky'
+  /** holdings: the Robinhood card's figures, drawn by ui/Holdings.tsx, never model markup. */
+  holdings?: HoldingsView
   /** One-click next steps under it; each asks Jarvis `ask` as if typed. */
   actions?: Array<{ label: string; ask: string }>
 }
@@ -328,6 +330,8 @@ type State = {
   panels: Panel[]
   /** Blades currently open, newest last — which is also front-most. */
   blades: Blade[]
+  /** The holdings card was closed this visit; refreshes leave it closed. */
+  holdingsClosed: boolean
   /** The blade the user has pulled forward, or null for "the newest one". */
   focusedBlade: string | null
   /** A blade thrown to full screen, or null. */
@@ -343,6 +347,8 @@ type State = {
   clearPanels: () => void
   pushBlade: (b: Blade) => void
   closeBlade: (id: string) => void
+  /** The holdings card: shown on open, then updated in place (no focus change) as figures land. */
+  showHoldings: (view: HoldingsView) => void
   clearBlades: () => void
   focusBlade: (id: string | null) => void
   expandBlade: (id: string | null) => void
@@ -411,6 +417,7 @@ export const useStore = create<State>((set) => ({
   looking: null,
   panels: [],
   blades: [],
+  holdingsClosed: false,
   focusedBlade: null,
   expandedBlade: null,
   bootNote: '',
@@ -454,9 +461,21 @@ export const useStore = create<State>((set) => ({
       // were looking at before.
       return { blades: next, focusedBlade: blade.id }
     }),
+  showHoldings: (view) =>
+    set((s) => {
+      const existing = s.blades.find((b) => b.id === 'holdings')
+      if (existing) {
+        return { blades: s.blades.map((b) => (b.id === 'holdings' ? { ...b, holdings: view } : b)) }
+      }
+      // Closed this visit: stay closed. A refresh is not a reason to reopen it.
+      if (s.holdingsClosed) return {}
+      const card: Blade = { id: 'holdings', title: 'Robinhood', kind: 'holdings', holdings: view, size: 'compact', hold: 'sticky' }
+      return { blades: [...s.blades, card].slice(-6) }
+    }),
   closeBlade: (id) =>
     set((s) => ({
       blades: s.blades.filter((b) => b.id !== id),
+      holdingsClosed: s.holdingsClosed || id === 'holdings',
       focusedBlade: s.focusedBlade === id ? null : s.focusedBlade,
       expandedBlade: s.expandedBlade === id ? null : s.expandedBlade,
     })),
