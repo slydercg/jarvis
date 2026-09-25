@@ -100,6 +100,13 @@ export function toolBlocked(toolName, allow = ALLOW, names = known) {
   return !allow.has(connectorKey(toolName.split('__')[1]))
 }
 
+/**
+ * The allowlist with some connectors added, for one job that needs a connector
+ * the conversation is kept away from (the holdings card reads Robinhood).
+ * Null stays null: with no allowlist, everything is already allowed.
+ */
+export const allowWith = (keys, allow = ALLOW) => (allow ? new Set([...allow, ...keys.map(connectorKey)]) : null)
+
 /** For a session's options: every known connector not on the allowlist, as a whole-server rule. */
 export function connectorDenylist(allow = ALLOW, names = known) {
   if (!allow) return []

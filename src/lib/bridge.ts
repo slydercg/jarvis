@@ -48,6 +48,7 @@ type Frame = {
   items?: StratumItem[]
   today?: TodayFrame
   spend?: SpendSummary
+  holdings?: HoldingsView
   brief?: BriefHealth
   ref?: string
   ok?: boolean
@@ -88,6 +89,34 @@ export function watchTranscript(fn: (t: TranscriptFrame) => void) {
 export function requestTranscript(day?: string, q?: string): boolean {
   if (socket?.readyState !== WebSocket.OPEN) return false
   socket.send(JSON.stringify({ type: 'transcript', day, q }))
+  return true
+}
+
+/** The holdings card, from bridge/holdings.mjs: figures checked against Robinhood's own answer, totals summed there. */
+export type HoldingsAccount = {
+  name: string
+  type: string
+  last4: string
+  value: number | null
+  cash: number | null
+  dayChange: number | null
+  dayChangePct: number | null
+}
+export type HoldingsView = {
+  at?: number
+  accounts?: HoldingsAccount[]
+  totals?: { value: number; valueComplete: boolean; dayChange: number; dayChangeComplete: boolean; dayChangePct: number | null }
+  refreshing?: boolean
+  error?: string
+}
+let onHoldings: ((h: HoldingsView) => void) | null = null
+export function watchHoldings(fn: (h: HoldingsView) => void) {
+  onHoldings = fn
+}
+/** Read Robinhood again now; the answer arrives through watchHoldings. */
+export function refreshHoldings(): boolean {
+  if (socket?.readyState !== WebSocket.OPEN) return false
+  socket.send(JSON.stringify({ type: 'holdings', op: 'refresh' }))
   return true
 }
 
@@ -452,6 +481,8 @@ function dispatch(ws: WebSocket) {
       onProgress?.(msg.job, msg.step ?? null)
     } else if (msg.type === 'brief' && typeof msg.ref === 'string') {
       onBrief?.({ ref: msg.ref, op: String(msg.op ?? ''), ok: msg.ok === true, message: String(msg.message ?? ''), ...(typeof msg.ask === 'string' ? { ask: msg.ask } : {}) })
+    } else if (msg.type === 'holdings' && msg.holdings) {
+      onHoldings?.(msg.holdings)
     } else if (msg.type === 'status') {
       onStatus?.({ spend: msg.spend ?? null, brief: msg.brief ?? null })
     } else if (msg.type === 'transcript' && Array.isArray(msg.turns)) {

@@ -39,6 +39,7 @@ import {
 import { displayServer } from './panels.mjs'
 import { protectiveConfigured, protectiveServer } from './protective.mjs'
 import { briefAction, briefHealth, briefServer, maybeOfferBrief, onBriefAction } from './briefing.mjs'
+import { holdingsEnabled, holdingsOnOpen } from './holdings.mjs'
 import { backgroundPaused, onCapReached, recordSpend, spendSummary } from './spend.mjs'
 import { localFilesServer } from './localfiles.mjs'
 import { loopServer, logMeetings, maybeOfferWrap } from './loop.mjs'
@@ -810,6 +811,9 @@ wss.on('connection', (socket) => {
     weekends: process.env.JARVIS_ALERT_WEEKENDS === 'on',
     broadcast: broadcastAlert,
   })
+  // The holdings card (bridge/holdings.mjs): the last figures at once, read
+  // again if stale. Its own quiet job: no progress badge, nothing spoken.
+  holdingsOnOpen({ ...briefDeps(), onStep: undefined }, send)
   send({ type: 'focus', focus: focusState() })
   send({ type: 'stratum', items: listStratum() })
   send({ type: 'today', today: todayView() })
@@ -1534,6 +1538,14 @@ wss.on('connection', (socket) => {
 
     // The Diagnostics panel: what today has cost, and how the last brief
     // served went (links found, lines ticked off, anything that stopped them).
+    // The holdings card's Refresh: read Robinhood now, and show every page.
+    if (msg.type === 'holdings' && msg.op === 'refresh' && holdingsEnabled()) {
+      holdingsOnOpen({ ...briefDeps(), onStep: undefined }, (frame) => {
+        for (const deliver of pages) deliver(frame)
+      }, { force: true })
+      return
+    }
+
     if (msg.type === 'status') {
       send({ type: 'status', spend: spendSummary(), brief: briefHealth() })
       return

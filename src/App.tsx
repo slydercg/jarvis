@@ -30,6 +30,7 @@ import {
   watchServers,
   watchPanels,
   watchBlades,
+  watchHoldings,
   watchConfirm,
   watchHistory,
   watchAlerts,
@@ -602,6 +603,7 @@ export default function App() {
     })
     watchPanels((panel) => store.getState().pushPanel(panel))
     watchBlades((blade) => store.getState().pushBlade(blade))
+    watchHoldings((view) => store.getState().showHoldings(view))
 
     /**
      * The bridge asking whether an action may run.

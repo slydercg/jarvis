@@ -2091,6 +2091,29 @@ kbd {
   font-size: 12px;
 }
 
+/* The holdings card (ui/Holdings.tsx). Direction is ▲/▼, never colour: red
+   is for what broke and amber for what needs him, and a down day is neither. */
+.hold { padding: 14px 16px; text-transform: none; letter-spacing: normal; font-size: 12px; }
+.hold-total { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
+.hold-k { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.6; }
+.hold-big { font-size: 26px; color: var(--interface); font-variant-numeric: tabular-nums; }
+.hold-move { opacity: 0.85; font-variant-numeric: tabular-nums; }
+.hold-rows { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid color-mix(in srgb, var(--interface) 18%, transparent); padding-top: 10px; }
+.hold-row { display: grid; grid-template-columns: 1fr auto; column-gap: 12px; }
+.hold-name { opacity: 0.9; }
+.hold-last4 { opacity: 0.5; }
+.hold-val { text-align: right; font-variant-numeric: tabular-nums; }
+.hold-sub { grid-column: 1 / -1; opacity: 0.6; font-size: 11px; font-variant-numeric: tabular-nums; }
+.hold-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; opacity: 0.75; font-size: 11px; }
+.hold-note { opacity: 0.6; font-size: 11px; }
+.hold-bad { color: var(--failure); opacity: 1; }
+.hold-refresh {
+  font: inherit; font-size: 11px; padding: 2px 8px; margin-left: auto; cursor: pointer; pointer-events: auto;
+  color: var(--interface); background: transparent;
+  border: 1px solid color-mix(in srgb, var(--interface) 45%, transparent); border-radius: 2px;
+}
+.hold-refresh:hover, .hold-refresh:focus-visible { background: color-mix(in srgb, var(--interface) 14%, transparent); }
+
 .bl-hint {
   position: absolute;
   bottom: 3.2vh;

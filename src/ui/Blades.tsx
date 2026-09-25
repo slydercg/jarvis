@@ -4,6 +4,7 @@ import { useStore, type Blade } from '../store'
 import { BRIDGE_HTTP_URL } from '../config'
 import { sanitisePanelHtml } from './sanitise'
 import { onBriefClick } from './briefActions'
+import { HoldingsCard } from './Holdings'
 import { frameSpan, peaceScroll, pinchCount } from '../lib/hands'
 import * as camera from '../lib/camera'
 import { COMMAND_EVENT } from './CommandBar'
@@ -161,6 +162,7 @@ const CameraView = memo(function CameraView() {
 
 const Body = memo(function Body({ blade }: { blade: Blade }) {
   if (blade.kind === 'camera') return <CameraView />
+  if (blade.kind === 'holdings' && blade.holdings) return <HoldingsCard view={blade.holdings} />
 
   if (blade.kind === 'article' && blade.url) {
     return (

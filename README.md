@@ -655,6 +655,34 @@ same on its own.
 - **Teams status:** the Microsoft 365 connector can't set presence, so Jarvis
   doesn't change it.
 
+## Your Robinhood holdings
+
+Set `JARVIS_HOLDINGS=robinhood` in `.env.local` and restart
+(`npm run autostart:restart`). When Jarvis opens, a card shows every Robinhood
+account with its value, today's move and cash, and the total across them.
+
+- **When it reads.** Figures under 15 minutes old are shown at once. Older
+  ones are read again when the page opens, which takes about half a minute
+  and costs about $0.15 on the quick model. **Refresh** reads again at any
+  time. `JARVIS_HOLDINGS_MAX_AGE_MIN` changes the 15.
+- **It only reads.** Robinhood stays out of the conversation, which is what
+  `JARVIS_CONNECTORS` is for. The card has its own background job, which may
+  call only `get_accounts`, `get_portfolio`, `get_equity_positions` and
+  `get_crypto_positions`. Every other Robinhood tool is refused, orders
+  included.
+- **Every figure is checked.** The model copies figures and never adds
+  anything up. Each one is checked against Robinhood's own answer, and one
+  that isn't there shows as a dash instead of a guess. Totals and percentages
+  are worked out by the bridge.
+- **Colour.** Up and down are ▲ and ▼, not green and red: red on this screen
+  means something broke.
+- **Closing it.** Close the card with ✕. It stays closed until the next time
+  the page opens. Like the other background work, it pauses once the daily
+  spend cap is reached.
+
+Robinhood must be connected to your Claude account (claude.ai → Settings →
+Connectors).
+
 ## The portfolio pulse
 
 Ask "what's blocked across the portfolio?", "which team is behind?" or "what

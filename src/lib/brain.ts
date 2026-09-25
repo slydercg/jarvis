@@ -113,6 +113,11 @@ export function watchBlades(fn: (blade: Blade) => void): void {
   if (usingBridge) bridge.watchBlades(fn)
 }
 
+/** The Robinhood holdings card (bridge/holdings.mjs): a bridge capability, sent when a page opens. */
+export function watchHoldings(fn: (view: bridge.HoldingsView) => void): void {
+  if (usingBridge) bridge.watchHoldings(fn)
+}
+
 /**
  * Redressing the interface — theme, reactor, orbiting objects, effects — is a
  * bridge capability, like panels. The `ui_*` tools live in an in-process MCP
