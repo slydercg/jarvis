@@ -28,12 +28,13 @@ export function readerId(id) {
 export function todoLink(id) {
   const s = String(id ?? '')
   if (!/^[A-Za-z0-9+/=_-]{8,512}$/.test(s)) return null
-  // /tasks/{id}/details, the one form reported to open the task itself
-  // (techcommunity.microsoft.com/discussions/to-do/how-to-link-to-todo-tasks/502415).
-  // /tasks/id/{id}/details, tried first, lands on the To Do home page. The id's
-  // trailing '=' padding is left as written there, as in the working example;
-  // '/' and '+' are still encoded, since a raw '/' would split the path.
-  return `https://to-do.office.com/tasks/${encodeURIComponent(s).replace(/%3D/g, '=')}/details`
+  // /tasks/id/{id}/details, with the id in the URL-safe alphabet: '+' as '-'
+  // and '/' as '_', '=' padding kept. That is exactly what To Do's own address
+  // bar shows for an open task (read off his browser). The flow returns the
+  // Graph id in standard base64, and percent-encoding its '+' and '/' — what
+  // this did before — is not an id To Do knows, so every link landed on the
+  // home page instead of the task.
+  return `https://to-do.office.com/tasks/id/${s.replace(/\+/g, '-').replace(/\//g, '_')}/details`
 }
 
 /** The To Do task a brief line came from: same title, ignoring RE:/FW:. */
