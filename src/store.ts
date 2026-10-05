@@ -1,3 +1,4 @@
+import type { CallOverride } from './lib/oncall'
 import { create } from 'zustand'
 import type { AlertItem, AlertKind, FocusFrame, HoldingsView, StratumItem, TodayFrame, TranscriptFrame } from './lib/bridge'
 
@@ -303,6 +304,8 @@ type State = {
   deviceCall: string | null
   /** Why he is keeping quiet (lib/oncall.ts), or null. */
   hush: string | null
+  /** "I'm on a call" / "call's over", and until when (lib/oncall.ts). */
+  callOverride: CallOverride
   /** Heads-down, as the bridge reports it. */
   focus: FocusFrame
   /** The review column: what is still waiting on him. */
@@ -372,6 +375,7 @@ type State = {
   setAlertsMuted: (muted: boolean) => void
   setDeviceCall: (app: string | null) => void
   setHush: (reason: string | null) => void
+  setCallOverride: (o: CallOverride) => void
   setFocus: (focus: FocusFrame) => void
   setStratum: (items: StratumItem[]) => void
   setStratumOpen: (open: boolean) => void
@@ -412,6 +416,7 @@ export const useStore = create<State>((set) => ({
   alertsMuted: readMuted(),
   deviceCall: null,
   hush: null,
+  callOverride: null,
   focus: { active: false },
   stratum: [],
   today: null,
@@ -533,6 +538,7 @@ export const useStore = create<State>((set) => ({
   },
   setDeviceCall: (deviceCall) => set({ deviceCall }),
   setHush: (hush) => set({ hush }),
+  setCallOverride: (callOverride) => set({ callOverride }),
   setAlertsMuted: (alertsMuted) => {
     try {
       localStorage.setItem(MUTED_KEY, alertsMuted ? '1' : '0')

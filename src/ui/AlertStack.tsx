@@ -98,7 +98,7 @@ export function AlertStack() {
   return (
     <section className="alerts" aria-label="Alerts" aria-live="polite" ref={stack}>
       {muted && <div className="alerts-muted">Alerts muted · say “resume alerts”</div>}
-      {hush && <div className="alerts-muted">{hush} · Jarvis is silent</div>}
+      {hush && <div className="alerts-muted">{hush} · silent · only “Jarvis, …” reaches him</div>}
       {focused && (
         <div className="alerts-muted alerts-focus">
           Heads-down until {new Date(focus.until!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}

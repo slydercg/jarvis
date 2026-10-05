@@ -2937,6 +2937,9 @@ button.now-chip:hover { background: color-mix(in srgb, var(--interface) 10%, tra
 .now-review.unseen { font-weight: 600; }
 .now-focus { color: var(--interface); }
 .now-quiet-hours { color: var(--interface); opacity: 0.85; flex: 0 0 auto; }
+/* The call toggle: there when needed, never louder than the meeting beside it. */
+.now-call { opacity: 0.55; flex: 0 0 auto; }
+.now-call:hover, .now-call:focus-visible { opacity: 1; }
 .now-dot {
   width: 7px;
   height: 7px;
