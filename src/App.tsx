@@ -15,7 +15,8 @@ import { prefs } from './lib/prefs'
 import { breaksQuiet, isQuiet } from './lib/quiet'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
 import { createSpeaker, cycleVoice, currentVoiceName, setHushed as hushSpeech, speakingSince } from './lib/tts'
-import { CALL_OFF, CALL_ON, OVERRIDE_OFF_MS, OVERRIDE_ON_MS, hushReason } from './lib/oncall'
+import { CALL_OFF, CALL_ON, OVERRIDE_OFF_MS, OVERRIDE_ON_MS, callDigest, hushReason } from './lib/oncall'
+import { WRONG, note, trail } from './lib/trail'
 import * as sfx from './lib/sfx'
 import * as music from './lib/music'
 import * as hands from './lib/hands'
@@ -33,6 +34,8 @@ import {
   watchBlades,
   watchHoldings,
   watchCall,
+  sendReport,
+  watchReported,
   watchConfirm,
   watchHistory,
   watchAlerts,
@@ -174,6 +177,8 @@ export default function App() {
   const asking = useRef<string | null>(null)
   /** Re-decide whether to keep quiet now (set by the on-a-call effect). */
   const rehushRef = useRef<() => void>(() => {})
+  /** When the current silence began, for what came in during it. */
+  const hushSince = useRef(0)
   /**
    * His short lines outside any turn: acknowledgements, "Shall I proceed",
    * alerts. Spoken one after another, never two at once, and all cut off by
@@ -262,6 +267,7 @@ export default function App() {
     const mine = ++turn.current
     const stale = () => mine !== turn.current
     asking.current = said
+    note('asked', said)
 
     clearIdle()
     const s = store.getState()
@@ -321,7 +327,11 @@ export default function App() {
         },
       })
 
-      if (stale()) return
+      if (stale()) {
+        note('dropped', `answer to "${said.slice(0, 60)}" arrived after it was superseded`)
+        return
+      }
+      note('answered', text || '(nothing said)')
       if (costUsd != null) store.getState().setUsage(costUsd, tier ?? null)
 
       // The bridge keeps conversation state in its own session, so history is
@@ -339,6 +349,7 @@ export default function App() {
       sfx.play('done')
     } catch (err) {
       if (stale()) return
+      note('error', err instanceof Error ? err.message : String(err))
       console.error(err)
       sfx.play('error')
       store
@@ -396,6 +407,7 @@ export default function App() {
     if (phase === 'offline' || phase === 'boot') return
 
     store.getState().setError(null)
+    note('wake', trailing ? `his name, then: ${trailing}` : local ? 'his name (on-device word)' : 'his name')
     sfx.play('wake')
 
     // "Jarvis, what's happening in AI this week" in one breath. Waiting for a
@@ -409,6 +421,7 @@ export default function App() {
     // it. No greeting and no open mic for the call to fill; on a call he is
     // spoken to in one breath ("Jarvis, what's next?"), or typed to.
     if (store.getState().hush) {
+      note('ignored', 'his name alone, on a call: no greeting, mic not opened')
       goDormant()
       return
     }
@@ -457,16 +470,23 @@ export default function App() {
 
     // On a call, sound is the call. Nothing he hears may cut a turn off;
     // only words addressed to him count (onUtterance).
-    if (store.getState().hush) return
+    if (store.getState().hush) {
+      note('ignored', 'a sound while on a call: nothing cut off')
+      return
+    }
 
     // Still working, nothing being said: there is nothing to talk over yet,
     // so wait for the words instead of abandoning the answer on a sound. A
     // keyboard, a cough or the other side of a call used to cut "Prep me"
     // off here before anyone knew it was not speech. Real words arrive as an
     // utterance and replace the turn then (onUtterance → respond).
-    if (phase === 'thinking' || phase === 'tooling') return
+    if (phase === 'thinking' || phase === 'tooling') {
+      note('ignored', `a sound while ${phase}: waiting for words before cutting anything off`)
+      return
+    }
 
     const wasBusy = phase === 'speaking'
+    if (wasBusy) note('barge-in', 'talked over him: speech stopped')
 
     silence()
     if (wasBusy) {
@@ -569,6 +589,34 @@ export default function App() {
     return true
   }
 
+  /**
+   * "That was wrong": everything the page saw in the last few minutes, and
+   * its state now, saved by the bridge as a report (bridge/reports.mjs) for
+   * `npm run report`. Asked for right after the thing that went wrong, so the
+   * trail ends where it did.
+   */
+  const reportCommand = (raw: string): boolean => {
+    const said = raw.replace(LEADING_NAME, '').trim()
+    if (!WRONG.test(said)) return false
+    const st = store.getState()
+    const w = window as unknown as Record<string, unknown>
+    const sent = sendReport({
+      phase: st.phase,
+      hush: st.hush,
+      deviceCall: st.deviceCall,
+      callOverride: st.callOverride,
+      quietOnCalls: prefs().quietOnCalls,
+      lastTurns: st.turns.slice(-6).map((t) => ({ role: t.role, text: t.text.slice(0, 400) })),
+      trail: trail(),
+      voice: w.__voice ?? null,
+      tts: w.__tts ?? null,
+      page: { width: window.innerWidth, height: window.innerHeight, ua: navigator.userAgent },
+    })
+    st.setCaption(sent ? 'Saving what happened…' : 'The bridge is not connected, so nothing could be saved.')
+    if (sent) say("Noted, sir. I've saved what happened.")
+    return true
+  }
+
   /** "Mute alerts" / "resume alerts". Cards still appear while muted. */
   const toggleAlerts = (raw: string): boolean => {
     if (toggleStratum(raw)) return true
@@ -592,9 +640,11 @@ export default function App() {
     // doing. Anything else is the call: the other people on it were being
     // taken for questions, one after another.
     if (store.getState().hush && !LEADING_NAME.test(text)) {
+      note('ignored', `on a call, not addressed to him: "${text.slice(0, 80)}"`)
       if (phase === 'listening' || phase === 'waking') goDormant()
       return
     }
+    if (reportCommand(text)) return
     if (callCommand(text)) return
 
     // People keep using his name as a vocative once they're already talking to
@@ -624,6 +674,7 @@ export default function App() {
     if (answerConfirm(raw)) return
     if (startFresh(raw)) return
     if (toggleAlerts(raw)) return
+    if (reportCommand(raw)) return
     if (callCommand(raw)) return
     const said = raw.replace(LEADING_NAME, '').trim()
     if (!said) return
@@ -896,6 +947,8 @@ export default function App() {
         ...(isJoinLink(raw.join) ? { join: raw.join } : {}),
       }
       store.getState().pushAlert(alert)
+      // A card only: a recap offer lands as the next meeting starts.
+      if (raw.quiet) return
       if (store.getState().alertsMuted) return
       const busy = () => {
         const st = store.getState()
@@ -1060,14 +1113,33 @@ export default function App() {
         override: st.callOverride,
       })
       if (reason === st.hush) return
+      const wasHushed = Boolean(st.hush)
       st.setHush(reason)
+      note('silent', reason ?? 'call over: speaking again')
       hushSpeech(Boolean(reason))
       sfx.setHushed(Boolean(reason))
       music.setHushed(Boolean(reason))
       // Whatever he was saying stops now, mid-word if need be.
-      if (reason) silence()
+      if (reason) {
+        if (!wasHushed) hushSince.current = Date.now()
+        silence()
+        return
+      }
+      // The call is over: one line for what came in during it, since none of
+      // it was said at the time. Not when alerts are muted or in quiet hours.
+      if (!wasHushed || st.alertsMuted || isQuiet(prefs().quiet)) return
+      const line = callDigest(st.alerts, hushSince.current, Date.now())
+      if (line) {
+        note('digest', line)
+        void afterSpeech().then(() => {
+          if (!store.getState().hush) say(line)
+        })
+      }
     }
     rehushRef.current = rehush
+    watchReported((name) => {
+      store.getState().setCaption(name ? `Report saved (${name}) · npm run report` : "The report couldn't be saved; the bridge log says why.")
+    })
     watchCall((app) => {
       store.getState().setDeviceCall(app)
       rehush()

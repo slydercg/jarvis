@@ -81,6 +81,27 @@ export function keepPast(prev, next, now = Date.now()) {
 }
 
 /**
+ * Meetings that ended a little while ago and have not been offered a recap.
+ *
+ * Offered a few minutes after the end, so the meeting notes (Granola) have
+ * had time to be written, and not after half an hour, by when he has moved
+ * on. Focus blocks and anything shorter than a quarter of an hour are left
+ * out: there is nothing to recap.
+ */
+export const RECAP_AFTER_MS = 5 * 60_000
+export const RECAP_WITHIN_MS = 30 * 60_000
+export function endedForRecap(events, offered, now = Date.now()) {
+  return events.filter(
+    (e) =>
+      !e.focus &&
+      e.end - e.start >= 15 * 60_000 &&
+      now - e.end >= RECAP_AFTER_MS &&
+      now - e.end < RECAP_WITHIN_MS &&
+      !offered.has(e.id),
+  )
+}
+
+/**
  * The day's events: merged, de-duplicated, sorted, with clashes marked. A
  * clash is two real meetings overlapping; focus blocks never clash.
  */

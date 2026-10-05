@@ -664,6 +664,28 @@ Listening → Silent on calls**, or stop the watching with
 whether the bridge is watching, the call it sees and the assertion it went by,
 and why he is or isn't quiet right now.
 
+When the call ends, he says one line for whatever came in during it ("While
+you were on the call: 2 emails, from Chris and Anne; RPT-3806 is blocked"),
+unless alerts are muted or it's quiet hours.
+
+## Meeting recaps
+
+A few minutes after a meeting ends, a **Meeting ended** card offers **Recap &
+actions**: what was decided and your action items, from the meeting notes
+(Granola), with an offer to add yours to To Do. Nothing is added until you say
+yes. The card is never read out, and lapses at the end of the day. Turn it off
+with `JARVIS_MEETING_RECAP=off`.
+
+## When something goes wrong
+
+Right after Jarvis does something odd, say **"Jarvis, that was wrong"**, type
+**that was wrong**, or press **That was wrong** in Diagnostics (**D**). He
+saves what he heard and dropped over the last few minutes, and why; whether he
+thought you were on a call; the last turns; and the bridge's log. It goes in
+`~/.jarvis/reports`, with flow signatures and every other URL query string
+removed. Run `npm run report` to print the latest, ready to paste into a
+conversation about it.
+
 ## Meeting heads-ups
 
 Outlook already reminds you of every meeting, so by default Jarvis announces

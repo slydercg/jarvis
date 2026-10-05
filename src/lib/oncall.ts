@@ -42,3 +42,38 @@ export function hushReason(opts: {
 export const CALL_ON = /^(?:i'?m |i am )?(?:on|in) a (?:call|meeting)[.!]?$/i
 /** "Call's over", "off the call", "I'm off the call", "meeting's over". */
 export const CALL_OFF = /^(?:i'?m |i am )?(?:off the (?:call|meeting)|(?:the )?(?:call|meeting)(?:'s| is)? (?:over|done|finished|ended))[.!]?$/i
+
+/** An alert as the digest needs it (store.ts Alert). */
+type Heard = { kind: string; title: string; at: number; received: number; label?: string }
+
+/**
+ * One line for what came in during a call, said when it ends: "While you were
+ * on the call: 2 emails, from Chris and Anne; RPT-3806 is blocked." Nothing
+ * was read out during the call, so this is the only time he hears of them.
+ * Null when nothing came in. Meeting heads-ups already past are left out.
+ */
+export function callDigest(alerts: Heard[], since: number, now: number): string | null {
+  const fresh = alerts.filter((a) => a.received >= since && !(a.kind === 'meeting' && a.at < now))
+  if (!fresh.length) return null
+  const parts: string[] = []
+  const mail = fresh.filter((a) => a.kind === 'mail')
+  if (mail.length) {
+    const who = [...new Set(mail.map((m) => m.title))].slice(0, 3)
+    parts.push(`${mail.length === 1 ? 'an email' : `${mail.length} emails`}, from ${list(who)}${mail.length > who.length ? ' and others' : ''}`)
+  }
+  const meetings = fresh.filter((a) => a.kind === 'meeting')
+  for (const m of meetings.slice(0, 2)) parts.push(`${m.title} starts in ${Math.max(1, Math.round((m.at - now) / 60_000))} minutes`)
+  const portfolio = fresh.filter((a) => a.kind === 'portfolio')
+  if (portfolio.length === 1) parts.push(portfolio[0].title)
+  else if (portfolio.length > 1) parts.push(`${portfolio.length} portfolio alerts`)
+  for (const r of fresh.filter((a) => a.kind === 'reminder').slice(0, 2)) parts.push(`a reminder: ${r.title}`)
+  const recaps = fresh.filter((a) => a.kind === 'recap').length
+  if (recaps) parts.push(recaps === 1 ? 'a meeting recap is ready' : `${recaps} meeting recaps are ready`)
+  const rest = fresh.length - mail.length - meetings.length - portfolio.length - fresh.filter((a) => a.kind === 'reminder' || a.kind === 'recap').length
+  if (rest > 0) parts.push(rest === 1 ? 'one more on your list' : `${rest} more on your list`)
+  return `While you were on the call: ${parts.join('; ')}.`
+}
+
+function list(xs: string[]): string {
+  return xs.length < 2 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`
+}

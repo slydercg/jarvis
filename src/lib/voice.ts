@@ -6,6 +6,7 @@ import { startVad, type Vad } from './vad'
 import { caps } from './capabilities'
 import { startWakeWord, wakeWordStatus } from './wakeword'
 import { isEcho as isEchoOf, withoutSounds } from './echo'
+import { note } from './trail'
 
 /**
  * The voice loop.
@@ -355,6 +356,7 @@ export const diag = {
  *  the difference between debugging it and speculating about it. */
 function drop(why: string) {
   diag.dropped = why
+  note('dropped', why)
 }
 
 if (typeof window !== 'undefined') {
@@ -509,6 +511,7 @@ async function startElevenVoice(
       diag.dropped = ''
       diag.accepted++
       diag.holding = ''
+      note('heard', text)
       h.onUtterance(text)
     },
     partial: (text) => h.onPartial(text),
@@ -725,6 +728,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       diag.dropped = ''
       diag.accepted++
       diag.holding = ''
+      note('heard', text)
       h.onUtterance(text)
     },
     partial: (text) => h.onPartial(text),

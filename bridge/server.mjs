@@ -68,7 +68,7 @@ import { focusGate, focusServer, focusState, startFocus, vips } from './focus.mj
 import { portfolioServer, pulseStatus, warmPulse } from './portfolio.mjs'
 import { maybeOfferReview, reviewServer } from './review.mjs'
 import { firstToday, inWindow } from './days.mjs'
-import { onToday, refreshToday, setPortfolio, setWatcherEvents, todayView } from './today.mjs'
+import { endedForRecap, onToday, refreshToday, setPortfolio, setWatcherEvents, todayView } from './today.mjs'
 import { describeStep, JOB_PHRASE } from './steps.mjs'
 import { appendTurn, readTranscript, searchTranscripts, transcriptDays } from './transcript.mjs'
 import { uiServer } from './ui.mjs'
@@ -103,9 +103,14 @@ import { learnFromMeetings, peopleContext, peopleServer } from './people.mjs'
 import { learnVoice, voiceDue, voicePrompt } from './voice.mjs'
 import { onSitesLearned, ticketSites } from './tickets.mjs'
 import { callStatus, watchCalls } from './calls.mjs'
+import { logTail, tapConsole, writeReport } from './reports.mjs'
 import { homedir } from 'node:os'
 import { chmodSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+
+// From the first line on, the bridge's log is kept for a "that was wrong"
+// report (reports.mjs).
+tapConsole()
 
 
 /**
@@ -600,6 +605,34 @@ const toPages = (alert) => {
  * draft a nudge?" means something to the conversation, which did not hear it.
  */
 const recentAlerts = []
+/**
+ * A meeting just over: a card offering its recap and action items, from the
+ * meeting notes (Granola), a few minutes after it ends. Card only, never
+ * spoken: the next meeting has often started. JARVIS_MEETING_RECAP=off stops
+ * it. Offered once per meeting per day.
+ */
+const RECAP = process.env.JARVIS_MEETING_RECAP !== 'off'
+let recapDay = ''
+const recapped = new Set()
+function offerRecaps() {
+  const view = todayView()
+  if (view.day !== recapDay) {
+    recapDay = view.day
+    recapped.clear()
+  }
+  for (const e of endedForRecap(view.events ?? [], recapped)) {
+    recapped.add(e.id)
+    broadcastAlert({
+      kind: 'recap',
+      label: 'Meeting ended',
+      title: e.title,
+      detail: 'Recap and action items from the meeting notes',
+      at: new Date(e.end).toISOString(),
+      quiet: true,
+    })
+  }
+}
+
 // On a call (bridge/calls.mjs): every page keeps quiet until it ends.
 let onCall = null
 watchCalls((app) => {
@@ -758,6 +791,8 @@ setInterval(() => {
   if (inWindow('16-24', 'every') && firstToday('meeting-log')) void logMeetings()
   // "What's blocked" kept ready, so it is answered in seconds (portfolio.mjs).
   if (!paused && inWindow(ALERT_HOURS, ALERT_DAYS)) void warmPulse(deps)
+  // Costs nothing until clicked: a card, and the click asks the conversation.
+  if (RECAP && inWindow(ALERT_HOURS, ALERT_DAYS)) offerRecaps()
   // How he writes, relearned weekly from his sent mail (voice.mjs).
   if (!paused && inWindow(ALERT_HOURS, ALERT_DAYS) && voiceDue()) {
     learnVoice(deps)
@@ -1606,6 +1641,21 @@ wss.on('connection', (socket) => {
       holdingsOnOpen({ ...briefDeps(), onStep: undefined }, (frame) => {
         for (const deliver of pages) deliver(frame)
       }, { force: true })
+      return
+    }
+
+    // "That was wrong": the page's trail and state, with the bridge's half,
+    // into ~/.jarvis/reports (reports.mjs). The page is told the file name.
+    if (msg.type === 'report') {
+      try {
+        const turns = readTranscript().slice(-12)
+        const name = writeReport(msg.report ?? {}, { turns, call: callStatus(), pulse: pulseStatus(), log: logTail() })
+        console.log(`[jarvis] report saved: ${name}`)
+        send({ type: 'reported', name })
+      } catch (err) {
+        console.error(`[jarvis] could not save the report: ${err.message}`)
+        send({ type: 'reported', name: '' })
+      }
       return
     }
 

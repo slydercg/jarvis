@@ -22,3 +22,18 @@ test('a past meeting the calendar still returns is not doubled', () => {
   const next = [ev('a2', 'Morning  Sync', 100, 200)]
   assert.equal(keepPast(prev, next, 1000).length, 1)
 })
+
+test('a recap is offered five to thirty minutes after a real meeting ends, once', async () => {
+  const { endedForRecap } = await import('../bridge/today.mjs')
+  const min = 60_000
+  const now = 100 * min
+  const events = [
+    { id: 'a', title: 'Standup', start: 60 * min, end: 90 * min },
+    { id: 'b', title: 'Just ended', start: 70 * min, end: 98 * min },
+    { id: 'c', title: 'Long ago', start: 10 * min, end: 40 * min },
+    { id: 'd', title: 'Focus time', start: 60 * min, end: 90 * min, focus: true },
+    { id: 'e', title: 'Quick sync', start: 85 * min, end: 90 * min },
+    { id: 'f', title: 'Offered', start: 60 * min, end: 90 * min },
+  ]
+  assert.deepEqual(endedForRecap(events, new Set(['f']), now).map((e) => e.id), ['a'])
+})

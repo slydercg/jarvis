@@ -1905,6 +1905,19 @@ kbd {
   margin-bottom: 0.5rem;
 }
 
+.diag-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.diag-report {
+  font: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--interface);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--interface) 40%, transparent);
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+}
+.diag-report:hover, .diag-report:focus-visible { border-color: var(--interface); outline: none; }
+
 .diag-verdict {
   display: flex;
   flex-direction: column;

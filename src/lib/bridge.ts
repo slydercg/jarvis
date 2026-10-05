@@ -114,6 +114,17 @@ export type HoldingsView = {
   refreshing?: boolean
   error?: string
 }
+/** Send a "that was wrong" report (bridge/reports.mjs); the file name comes back through watchReported. */
+export function sendReport(report: unknown): boolean {
+  if (socket?.readyState !== WebSocket.OPEN) return false
+  socket.send(JSON.stringify({ type: 'report', report }))
+  return true
+}
+let onReported: ((name: string) => void) | null = null
+export function watchReported(fn: (name: string) => void) {
+  onReported = fn
+}
+
 let onCall: ((app: string | null) => void) | null = null
 /** The call app the bridge sees in use (bridge/calls.mjs), or null. */
 export function watchCall(fn: (app: string | null) => void) {
@@ -264,13 +275,15 @@ export type AlertFrame = {
   vip?: boolean
   /** Meetings only: the Teams, Zoom, Meet or Webex join link. */
   join?: string
+  /** A card only, never read out (a meeting's recap offer). */
+  quiet?: boolean
 }
 
 /** One line on an alert card. `url` is a ticket link, checked again before use. */
 export type AlertItem = { title: string; detail: string; key?: string; url?: string }
 
 export type AlertKind =
-  | 'meeting' | 'mail' | 'brief' | 'wrap' | 'review' | 'promise' | 'portfolio' | 'digest' | 'reminder'
+  | 'meeting' | 'mail' | 'brief' | 'wrap' | 'review' | 'promise' | 'portfolio' | 'digest' | 'reminder' | 'recap'
 
 let onAlert: ((a: AlertFrame) => void) | null = null
 export function watchAlerts(fn: (a: AlertFrame) => void) {
@@ -516,6 +529,8 @@ function dispatch(ws: WebSocket) {
       onProgress?.(msg.job, msg.step ?? null)
     } else if (msg.type === 'brief' && typeof msg.ref === 'string') {
       onBrief?.({ ref: msg.ref, op: String(msg.op ?? ''), ok: msg.ok === true, message: String(msg.message ?? ''), ...(typeof msg.ask === 'string' ? { ask: msg.ask } : {}) })
+    } else if (msg.type === 'reported') {
+      onReported?.(typeof msg.name === 'string' ? msg.name : '')
     } else if (msg.type === 'call') {
       onCall?.(typeof msg.app === 'string' ? msg.app : null)
     } else if (msg.type === 'holdings' && msg.holdings) {

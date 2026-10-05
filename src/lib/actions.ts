@@ -41,6 +41,15 @@ export function primaryAction(i: ItemLike): Action | null {
       return { label: "What's blocked?", ask: "What's blocked across the portfolio?" }
     case 'meeting':
       return { label: 'Prep me', ask: `Prep me for ${i.title}.` }
+    case 'recap':
+      // Adding to To Do goes through the usual confirmation: nothing is
+      // added until he says yes.
+      return {
+        label: 'Recap & actions',
+        ask:
+          `Recap "${i.title}", the meeting that just ended, from its meeting notes: what was decided, ` +
+          `and the action items that are mine. Offer to add mine to my To Do list, and add them only if I say yes.`,
+      }
     case 'brief':
       return { label: 'Brief me', ask: 'Brief me.' }
     case 'wrap':

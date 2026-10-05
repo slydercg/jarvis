@@ -27,7 +27,8 @@
     "autostart:stop": "node scripts/autostart.mjs stop",
     "autostart:update": "node scripts/update.mjs --now",
     "autostart:uninstall": "node scripts/autostart.mjs uninstall",
-    "eval": "node evals/run.mjs"
+    "eval": "node evals/run.mjs",
+    "report": "node scripts/report.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.220",

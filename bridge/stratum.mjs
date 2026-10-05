@@ -89,7 +89,10 @@ function settle(items, now = Date.now()) {
       delete i.until
       changed = true
     }
-    if (i.state !== 'done' && i.kind === 'meeting' && i.at && now > i.at + 30 * 60_000) {
+    // A meeting's heads-up is over once it has been running a while; a
+    // recap offer is stale by the end of the working day.
+    const lapsed = i.kind === 'meeting' ? 30 * 60_000 : i.kind === 'recap' ? 10 * 3_600_000 : 0
+    if (i.state !== 'done' && lapsed && i.at && now > i.at + lapsed) {
       i.state = 'done'
       i.doneAt = now
       changed = true
