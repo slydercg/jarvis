@@ -56,7 +56,10 @@ export async function checkFlows(api, now = () => Date.now()) {
     rows.push({ key, name, ms: got.ms, ...judge(key, Array.isArray(got.value) ? got.value : []) })
   }
   for (const key of Object.keys(FLOWS).filter((k) => !READS.includes(k))) {
-    rows.push({ key, name: FLOWS[key], status: has(key) ? 'ok' : 'info', detail: has(key) ? 'set up (not called: it changes things)' : 'not set up' })
+    // The meeting-notes flow reads, but needs a meeting to read about; the
+    // rest change things. Neither is called here.
+    const why = key === 'meeting_notes' ? 'set up (not called: it needs a meeting)' : 'set up (not called: it changes things)'
+    rows.push({ key, name: FLOWS[key], status: has(key) ? 'ok' : 'info', detail: has(key) ? why : 'not set up' })
   }
   return rows
 }
