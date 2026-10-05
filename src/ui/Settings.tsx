@@ -31,7 +31,11 @@ type Voice = { id: string; name: string; category: string; accent: string; gende
 type BridgeSettings = {
   version: string
   eleven: { configured: boolean; source: string | null; voiceId: string }
+  /** Absent from an older bridge, which announces every meeting. */
+  meetingAlerts?: MeetingAlerts
+  meetingLeadMin?: number
 }
+type MeetingAlerts = 'important' | 'all' | 'off'
 
 const api = (path: string, init?: RequestInit) => fetch(`${BRIDGE_HTTP_URL}${path}`, init)
 
@@ -89,6 +93,23 @@ export function Settings() {
     setQuiet(next.quiet)
   }
   const [needsReload, setNeedsReload] = useState(false)
+  const [meetings, setMeetings] = useState<MeetingAlerts | null>(null)
+  const lead = bridge?.meetingLeadMin ?? 15
+  const chooseMeetings = async (mode: MeetingAlerts) => {
+    const was = meetings
+    setMeetings(mode)
+    try {
+      const r = await api('/settings/meeting-alerts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      })
+      if (!r.ok) throw new Error(String(r.status))
+    } catch {
+      // Not saved: show what is actually in force.
+      setMeetings(was)
+    }
+  }
 
   const configured = Boolean(bridge?.eleven.configured)
   const effective: 'elevenlabs' | 'system' =
@@ -112,6 +133,7 @@ export function Settings() {
       setBridge(data)
       setBridgeDown(false)
       setVoiceId(data.eleven.voiceId)
+      setMeetings(data.meetingAlerts ?? null)
       if (data.eleven.configured) void loadVoices()
     } catch {
       setBridgeDown(true)
@@ -462,6 +484,43 @@ export function Settings() {
                   ? 'Nothing is spoken and no card pops up; everything waits on your review list. Reminders you set, meetings about to start and VIP mail still come through.'
                   : 'Alerts are spoken whenever they arrive.'}
               </p>
+
+              {meetings && (
+                <>
+                  <div className="settings-row settings-quiet">
+                    <span className="settings-label" id="meetings-label">
+                      Meeting heads-ups
+                    </span>
+                    <div className="settings-seg" role="radiogroup" aria-labelledby="meetings-label">
+                      {(
+                        [
+                          ['off', 'Off'],
+                          ['important', 'Important'],
+                          ['all', 'All'],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={meetings === value}
+                          className={meetings === value ? 'on' : ''}
+                          onClick={() => void chooseMeetings(value)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="settings-hint">
+                    {meetings === 'off'
+                      ? 'No meeting is announced. Outlook still reminds you, and the day timeline still shows them.'
+                      : meetings === 'important'
+                        ? `Only meetings with Outlook's Important label (or marked high importance) are announced, ${lead} minutes before they start.`
+                        : `Every meeting is announced, ${lead} minutes before it starts.`}
+                  </p>
+                </>
+              )}
             </section>
 
             <section aria-labelledby="set-display">

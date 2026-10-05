@@ -58,7 +58,7 @@ test('Protective events become watcher events; focus needs the title and no gues
   const ev = e('Architecture review')
   assert.deepEqual(ev, {
     id: 'e1', title: 'Architecture review', start: '2026-09-24T10:00:00-07:00', end: '2026-09-24T11:00:00-07:00',
-    where: 'Room 4', who: ['a@x.com', 'b@x.com'], focus: false, account: 'Protective',
+    where: 'Room 4', who: ['a@x.com', 'b@x.com'], focus: false, important: false, account: 'Protective',
   })
   assert.equal(e('Focus time', []).focus, true)
   assert.equal(e('Heads down', ['me@x.com']).focus, true)
@@ -75,4 +75,19 @@ test('the same meeting on a second calendar is dropped, so it is not announced t
   ]
   const merged = mergeWatcherEvents(p, model)
   assert.deepEqual(merged.map((e) => `${e.account}:${e.title}`), ['Protective:Intake Triage Meeting', 'SCG:Client call', 'Google:Dentist'])
+})
+
+test('only meetings marked Important are announced, unless all or none are chosen', () => {
+  const labelled = { title: 'QBR', categories: ['Blue category', 'Important'] }
+  const flagged = { title: 'Escalation', importance: 'high' }
+  const plain = { title: 'Standup', categories: ['Blue category'], importance: 'normal' }
+  const modelRead = { title: 'Board', important: true }
+  for (const e of [labelled, flagged, modelRead]) assert.equal(s.announceMeeting(e, 'important'), true, e.title)
+  assert.equal(s.announceMeeting(plain, 'important'), false)
+  assert.equal(s.announceMeeting(plain, undefined), false, 'Important only is the default')
+  assert.equal(s.announceMeeting(plain, 'nonsense'), false)
+  assert.equal(s.announceMeeting(plain, 'all'), true)
+  assert.equal(s.announceMeeting(labelled, 'off'), false)
+  const w = s.watcherEvent({ id: '1', title: 'QBR', start: '', end: '', attendees: ['a', 'b'], categories: ['Important'] })
+  assert.equal(w.important, true)
 })

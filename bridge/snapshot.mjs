@@ -111,6 +111,39 @@ export function watcherEvent(e) {
     where: e.where ?? '',
     who,
     focus: FOCUS_TITLE.test(e.title ?? '') && who.length <= 1,
+    important: importantEvent(e),
     account: 'Protective',
   }
+}
+
+/**
+ * Which meetings get a spoken heads-up: 'important' (the default), 'all' or
+ * 'off'. Chosen in Settings, kept in ~/.jarvis/settings.json.
+ *
+ * Every meeting used to be announced, and Outlook already pops a reminder
+ * for each one, so most heads-ups said what he had just been told. Now only
+ * the ones he has marked as mattering are: an Outlook 'Important' label
+ * (category), or high importance (the "!" flag). Anything else stays on the
+ * timeline, unannounced.
+ */
+export const MEETING_ALERTS = ['important', 'all', 'off']
+// Fifteen minutes: early enough to finish what he is doing and get there,
+// and not the same moment as Outlook's own reminder.
+export const MEETING_LEAD_MIN = Number(process.env.JARVIS_ALERT_LEAD_MIN ?? 15)
+const IMPORTANT = /\bimportant\b/i
+
+export function importantEvent(e) {
+  if (e?.important === true) return true
+  if (String(e?.importance ?? '').toLowerCase() === 'high') return true
+  return Array.isArray(e?.categories) && e.categories.some((c) => IMPORTANT.test(String(c)))
+}
+
+export function meetingAlertMode(mode) {
+  return MEETING_ALERTS.includes(mode) ? mode : 'important'
+}
+
+export function announceMeeting(e, mode) {
+  const m = meetingAlertMode(mode)
+  if (m === 'off') return false
+  return m === 'all' || importantEvent(e)
 }

@@ -17,12 +17,13 @@ test('the flows he relies on are checked, and a missing one says what it costs',
     flows: flows('inbox', 'todo', 'calendar'),
     inbox: async () => [{ id: GRAPH_ID, received: '2026-09-24T08:00:00Z' }],
     todo: async () => [{ id: TASK_ID, list: 'Tasks', title: 'Chase the VAS invoice' }],
-    calendar: async () => [{}, {}],
+    calendar: async () => [{ categories: ['Important'] }, { categories: [] }],
   })
   const by = Object.fromEntries(rows.map((r) => [r.key, r]))
   assert.equal(by.inbox.status, 'ok')
   assert.equal(by.todo.status, 'ok')
-  assert.equal(by.calendar.detail, '2 events today')
+  assert.equal(by.calendar.detail, '2 events today; 1 marked Important, 1 with a label')
+  assert.equal(by.calendar.status, 'ok')
   assert.equal(by.sent_email.status, 'warn')
   assert.match(by.sent_email.fix, /replied to are not ticked off/)
   assert.equal(by.flagged_email.status, 'warn')
@@ -66,4 +67,10 @@ test('what came back is judged against what the brief needs', () => {
   assert.match(judge('inbox', [{ id: 'm2', received: '2026-09-24' }]).fix, /shape Outlook opens/)
   assert.match(judge('sent_email', [{ subject: 'RE: x' }]).fix, /sentDateTime/)
   assert.equal(judge('inbox', []).status, 'ok')
+})
+
+test('a calendar flow that drops Outlook labels is flagged: Important meetings could not be announced', () => {
+  const r = judge('calendar', [{ title: 'Standup' }, { title: 'QBR' }])
+  assert.equal(r.status, 'warn')
+  assert.match(r.fix, /categories/)
 })
