@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import { requestStatus, watchStatus, type StatusFrame } from '../lib/bridge'
 import { prefs } from '../lib/prefs'
+import { COMMAND_EVENT } from './CommandBar'
 
 /**
  * The "why can't he hear me / why can't I hear him" panel.
@@ -115,7 +116,19 @@ export function Diagnostics() {
 
   return (
     <div className="diag" aria-live="polite">
-      <div className="diag-head">DIAGNOSTICS · D to close</div>
+      <div className="diag-head">
+        DIAGNOSTICS · D to close
+        {/* The same as saying "that was wrong": the last few minutes, saved
+            for `npm run report` (bridge/reports.mjs). */}
+        <button
+          type="button"
+          className="diag-report"
+          onClick={() => window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: 'that was wrong' }))}
+          title="Save what just happened, for npm run report"
+        >
+          That was wrong
+        </button>
+      </div>
 
       <div className="diag-verdict">
         <span className={earsOk ? 'diag-ok' : 'diag-bad'}>

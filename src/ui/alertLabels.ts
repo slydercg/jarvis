@@ -11,4 +11,5 @@ export const LABELS: Record<Alert['kind'], string> = {
   promise: 'Promise',
   portfolio: 'Portfolio',
   digest: 'While you were focused',
+  recap: 'Meeting ended',
 }

@@ -33,3 +33,21 @@ test('the phrases that say so', () => {
   for (const s of ["call's over", "I'm off the call", 'the meeting is over', 'call ended']) assert.ok(CALL_OFF.test(s), s)
   for (const s of ['what is on a call today', 'schedule a call']) assert.ok(!CALL_ON.test(s) && !CALL_OFF.test(s), s)
 })
+
+test('what came in during the call is said once, in one line', async () => {
+  const { callDigest } = await import('../src/lib/oncall.ts')
+  const a = (kind: string, title: string, received: number, at = received) => ({ kind, title, received, at })
+  const alerts = [
+    a('mail', 'Chris Martin', 10),
+    a('mail', 'Anne Van', 20),
+    a('portfolio', 'RPT-3806 is blocked', 30),
+    a('meeting', 'Old standup', 15, 40),
+    a('meeting', 'QBR', 25, 50 + 5 * 60_000),
+    a('mail', 'Before the call', 1),
+  ]
+  assert.equal(
+    callDigest(alerts, 5, 50),
+    'While you were on the call: 2 emails, from Chris Martin and Anne Van; QBR starts in 5 minutes; RPT-3806 is blocked.',
+  )
+  assert.equal(callDigest([a('mail', 'Before', 1)], 5, 50), null)
+})
