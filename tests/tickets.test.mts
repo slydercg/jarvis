@@ -79,6 +79,8 @@ test('only an Outlook message link of the exact shape counts as a mail link', as
 test('a To Do task link of the exact shape counts too, and nothing near it', async () => {
   const { isMailLink } = await import('../src/lib/tickets.ts')
   assert.equal(isMailLink('https://to-do.office.com/tasks/AAMkADAwATM0MDAAMS1h%2Fx==/details'), true)
+  assert.equal(isMailLink('https://to-do.office.com/tasks/id/AAMkADAwATM0MDAAMS1h_x-y==/details'), true)
+  assert.equal(isMailLink('https://to-do.office.com/tasks/id/x/AAMkADAwATM0MDAAMS1h/details'), false)
   assert.equal(isMailLink('https://to-do.office.com/tasks/AAMkADAwATM0MDAAMS1h/details?x=1'), false)
   assert.equal(isMailLink('https://to-do.office.com.evil.com/tasks/AAMkADAwATM0MDAAMS1h/details'), false)
   assert.equal(isMailLink('https://to-do.office.com/tasks/AAMk/evil/details'), false)
