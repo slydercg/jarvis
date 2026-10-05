@@ -2,7 +2,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import { commitmentsWith } from './commitments.mjs'
 import { peopleLines } from './people.mjs'
 import { localDay, readJsonFile, writeJsonFile } from './days.mjs'
-import { learnSites, ticketUrl } from './tickets.mjs'
+import { joinUrl, learnSites, ticketUrl } from './tickets.mjs'
 import { connectorDenylist } from './connectors.mjs'
 import { BACKGROUND_DISALLOWED } from './policy.mjs'
 import { createStreaks, stuckAlert } from './health.mjs'
@@ -297,7 +297,8 @@ export function startAlerts({
         (mine ? 'Protective is already known: do not call protective_get_calendar and do not list Protective events. ' : '') +
         `Answer exactly: ` +
         `{"events":[{"id":"...","title":"...","start":"<ISO 8601 with offset>","end":"<ISO 8601 with offset>",` +
-        `"where":"<room, link or empty>","who":["<up to 8 attendee names or addresses>"],"important":false,"focus":false,` +
+        `"where":"<room, link or empty>","join":"<the Teams, Zoom, Meet or Webex join link, or empty>",` +
+        `"who":["<up to 8 attendee names or addresses>"],"important":false,"focus":false,` +
         `"account":"${mine ? 'SCG|Google' : 'Protective|SCG|Google'}"}]}`,
     )
     const answered = parseJson(text)?.events
@@ -367,6 +368,8 @@ export function startAlerts({
             title: String(e.title),
             detail: e.where ? String(e.where) : '',
             at: new Date(start).toISOString(),
+            // Checked again here: the model-read calendars say it themselves.
+            ...(joinUrl(e.join) ? { join: joinUrl(e.join) } : {}),
             ...(entry.prep ? { prep: entry.prep } : {}),
           })
         },

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import { requestStatus, watchStatus, type StatusFrame } from '../lib/bridge'
+import { prefs } from '../lib/prefs'
 
 /**
  * The "why can't he hear me / why can't I hear him" panel.
@@ -153,6 +154,8 @@ export function Diagnostics() {
 
       <SpendRows status={status} />
       <BriefRows status={status} />
+      <CallRows status={status} />
+      <PulseRows status={status} />
     </div>
   )
 }
@@ -211,6 +214,49 @@ function BriefRows({ status }: { status: StatusFrame | null }) {
           ))}
         </>
       )}
+    </>
+  )
+}
+
+/**
+ * Silent on calls (bridge/calls.mjs, lib/oncall.ts): whether the bridge is
+ * watching, what it sees, and why the page is or is not keeping quiet. A
+ * missed call or a false one shows here as the assertion it went by.
+ */
+function CallRows({ status }: { status: StatusFrame | null }) {
+  const hush = useStore((s) => s.hush)
+  const c = status?.call
+  const on = prefs().quietOnCalls
+  return (
+    <>
+      <div className="diag-sec">CALLS</div>
+      <Row k="silent on calls" v={on ? 'on' : 'off (Settings → Listening)'} />
+      <Row k="now" v={hush ? `${hush} · silent` : 'speaking normally'} />
+      {!c ? (
+        <Row k="watcher" v={status ? '—' : 'asking the bridge…'} />
+      ) : !c.watching ? (
+        <Row k="watcher" v={`not watching (${c.why})`} />
+      ) : (
+        <>
+          <Row k="watcher" v={`${c.app ? `on a call: ${c.app} · ${since(c.since)}` : 'no call'} · checked ${c.checkedAt ? since(c.checkedAt) : 'not yet'}`} />
+          <Row k="  went by" v={c.seen || '—'} />
+          {c.failures > 0 && <Row k="  failed checks" v={String(c.failures)} bad />}
+        </>
+      )}
+    </>
+  )
+}
+
+function PulseRows({ status }: { status: StatusFrame | null }) {
+  const p = status?.pulse
+  if (!p) return null
+  return (
+    <>
+      <div className="diag-sec">PORTFOLIO PULSE</div>
+      <Row
+        k="ready"
+        v={`${p.builtAt ? `built ${since(p.builtAt)}` : 'not built yet'}${p.building ? ' · building now' : ''} · ${p.warmMin ? `kept warm every ${p.warmMin} min in alert hours` : 'warming off'}`}
+      />
     </>
   )
 }

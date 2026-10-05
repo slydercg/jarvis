@@ -112,6 +112,7 @@ export function watcherEvent(e) {
     who,
     focus: FOCUS_TITLE.test(e.title ?? '') && who.length <= 1,
     important: importantEvent(e),
+    ...(e.join ? { join: e.join } : {}),
     account: 'Protective',
   }
 }

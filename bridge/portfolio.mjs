@@ -24,7 +24,21 @@ import { learnSites, ticketUrl } from './tickets.mjs'
  * against yesterday's, and the weekly review can see the week.
  */
 
-const MAX_AGE_MS = 30 * 60_000
+/**
+ * Built ahead of time during working hours (warmPulse, from the minute clock
+ * in server.mjs), every JARVIS_PULSE_WARM_MIN minutes (30; 0 turns it off).
+ * Built on demand, the pulse took minutes — long enough that he asked again,
+ * and every repeat used to start it over. Kept ready, "what's blocked" is
+ * answered in seconds. It counts as background spend, so the daily cap
+ * (spend.mjs) stops it like any other unasked-for job.
+ */
+const WARM_MIN = Math.max(0, Number(process.env.JARVIS_PULSE_WARM_MIN ?? 30) || 0)
+// Fresh for a little longer than the warming interval, so a pulse is never
+// rebuilt on demand in the gap before the next one is warmed.
+const MAX_AGE_MS = Math.max(30, WARM_MIN + 15) * 60_000
+// The last pulse survives a restart, so the morning's first question after
+// an update or a reboot is not the slow one.
+const CACHE_FILE = 'portfolio-pulse.json'
 const PROJECTS = (process.env.JARVIS_JIRA_PROJECTS ?? 'NI,RPT').split(',').map((s) => s.trim()).filter(Boolean)
 const SNAPSHOTS = 'portfolio-snapshots.json'
 const KEEP = 14
@@ -83,6 +97,15 @@ Answer exactly:
  "sources":{"jira":"live|unavailable","ado":"live|dashboard|unavailable","dashboards":["<file, age>"]}}`
 
 let cache = null
+let cacheLoaded = false
+function cached() {
+  if (!cacheLoaded) {
+    cacheLoaded = true
+    const saved = readJsonFile(CACHE_FILE, null)
+    if (saved?.pulse?.summary && Number.isFinite(saved.builtAt)) cache = saved
+  }
+  return cache
+}
 // In-flight builds by question. Shared only by the same question: a repeat
 // (a second click, the question asked again while the first is still being
 // worked out) waits for the build already running instead of starting a
@@ -95,8 +118,13 @@ function snapshots() {
 }
 
 export function getPulse(deps, { question, refresh = false } = {}) {
-  const fresh = cache && Date.now() - cache.builtAt < MAX_AGE_MS && !question
-  if (fresh && !refresh) return Promise.resolve(cache)
+  // A fresh pulse answers a specific question too: it carries the whole
+  // picture (blocked, behind, pipelines, changes, risks), and the question
+  // only changed the summary, which the conversation writes anyway. A
+  // question it cannot answer is the conversation's to take further, with
+  // the Jira tools or refresh: true.
+  const c = cached()
+  if (c && Date.now() - c.builtAt < MAX_AGE_MS && !refresh) return Promise.resolve(c)
   const key = pulseKey(question)
   const running = building.get(key)
   if (running) return running
@@ -133,7 +161,10 @@ export function getPulse(deps, { question, refresh = false } = {}) {
       return url ? { ...b, url } : b
     })
     const entry = { builtAt: Date.now(), pulse }
-    if (!question) cache = entry
+    if (!question) {
+      cache = entry
+      writeJsonFile(CACHE_FILE, entry)
+    }
     // Every pulse carries the whole picture (blocked, behind, pipelines), a
     // specific question only changes its summary — so every one is the
     // day's snapshot, the baseline for tomorrow's "what changed".
@@ -147,6 +178,30 @@ export function getPulse(deps, { question, refresh = false } = {}) {
   })
   building.set(key, build)
   return build
+}
+
+/**
+ * Build the general pulse now if it is due: none yet, or older than the
+ * warming interval. The caller decides when (working hours, under the spend
+ * cap). Never throws; a failure waits for the next interval.
+ */
+export function warmPulse(deps, now = Date.now()) {
+  if (!pulseDue(now)) return null
+  return getPulse(deps, { refresh: true }).catch((err) => {
+    console.warn(`[jarvis] portfolio: warming the pulse failed: ${err.message}`)
+    return null
+  })
+}
+
+/** For Diagnostics: when the pulse was last built, and whether one is building. */
+export function pulseStatus() {
+  return { builtAt: cached()?.builtAt ?? 0, building: building.size > 0, warmMin: WARM_MIN }
+}
+
+export function pulseDue(now = Date.now()) {
+  if (!WARM_MIN || building.has('')) return false
+  const c = cached()
+  return !c || now - c.builtAt >= WARM_MIN * 60_000
 }
 
 /** The same question however it was worded: case, spacing and punctuation don't count. */
@@ -170,15 +225,23 @@ export function portfolioServer(deps) {
         'The delivery portfolio across Jira and Azure DevOps: what is blocked and with whom, which ' +
           'sprints or teams are behind, failing pipelines, what changed since yesterday, risks. Use for ' +
           '"what\'s blocked across the portfolio", "which team is behind", "what changed since yesterday", ' +
-          '"how\'s delivery looking". Pass `question` for something specific. Takes a minute; the general ' +
-          'pulse is cached for half an hour.',
+          '"how\'s delivery looking". Pass `question` for something specific. Usually ready at once (it is ' +
+          'kept up to date in the background); answer the question from what comes back, and only pass ' +
+          'refresh: true if he asks for it to be checked again now (that takes minutes).',
         { question: z.string().max(300).optional(), refresh: z.boolean().optional() },
         async ({ question, refresh }) => {
           try {
             const { pulse, builtAt } = await getPulse(deps, { question, refresh: Boolean(refresh) })
             return {
               content: [
-                { type: 'text', text: JSON.stringify({ builtMinutesAgo: Math.round((Date.now() - builtAt) / 60_000), ...pulse }) },
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    builtMinutesAgo: Math.round((Date.now() - builtAt) / 60_000),
+                    ...(question ? { note: 'Answer his question from these fields; the summary may be the general one.' } : {}),
+                    ...pulse,
+                  }),
+                },
               ],
             }
           } catch (err) {

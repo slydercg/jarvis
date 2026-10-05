@@ -18,6 +18,8 @@ export type Alert = {
   label?: string
   say?: string
   items?: AlertItem[]
+  /** Meetings: the join link, checked with isJoinLink. */
+  join?: string
 }
 
 const STRATUM_KEY = 'jarvis.stratumOpen'

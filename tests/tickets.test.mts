@@ -107,3 +107,11 @@ test('only real ticket sites are accepted from the bridge', async () => {
   assert.deepEqual(ticketSites(), { jira: null, ado: 'https://dev.azure.com/aul' })
   setTicketSites(null)
 })
+
+test('the page accepts only call services as join links', async () => {
+  const { isJoinLink } = await import('../src/lib/tickets.ts')
+  assert.equal(isJoinLink('https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc/0'), true)
+  assert.equal(isJoinLink('https://acme.zoom.us/j/8123456789'), true)
+  assert.equal(isJoinLink('https://evil.com/?https://teams.microsoft.com/l/meetup-join/x'), false)
+  assert.equal(isJoinLink('javascript:alert(1)'), false)
+})

@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, wr
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { JARVIS_HOME } from './memory.mjs'
+import { joinUrl } from './tickets.mjs'
 
 /**
  * The Protective mailbox, calendar and To Do, through Power Automate.
@@ -214,6 +215,15 @@ export function normaliseEvent(e) {
     // importance) is what makes a meeting worth a spoken heads-up.
     importance: e.importance ?? 'normal',
     categories: Array.isArray(e.categories) ? e.categories.map(String).slice(0, 10) : [],
+    // The Teams (or Zoom, Meet, Webex) link, for the heads-up's Join button.
+    join: joinUrl(
+      e.onlineMeeting?.joinUrl,
+      e.onlineMeetingUrl,
+      e.joinUrl,
+      typeof e.location === 'string' ? e.location : e.location?.displayName,
+      typeof e.body === 'string' ? e.body : e.body?.content,
+      e.bodyPreview,
+    ),
   }
 }
 

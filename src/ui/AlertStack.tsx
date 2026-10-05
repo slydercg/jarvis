@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useStore, type Alert } from '../store'
 import { LABELS } from './alertLabels'
 import type { AlertItem } from '../lib/bridge'
-import { isTicketLink } from '../lib/tickets'
+import { isJoinLink, isTicketLink } from '../lib/tickets'
 import { primaryAction } from '../lib/actions'
 import { COMMAND_EVENT } from './CommandBar'
 import { cardsThatFit, overlaps } from '../lib/alertFit'
@@ -218,20 +218,30 @@ export function AlertItems({ items, label, limit }: { items: AlertItem[]; label:
  */
 function CardAction({ alert, onDone }: { alert: Alert; onDone: () => void }) {
   const act = primaryAction(alert)
-  if (!act?.ask) return null
+  const join = alert.kind === 'meeting' && isJoinLink(alert.join) ? alert.join : null
+  if (!act?.ask && !join) return null
   return (
     <div className="alert-acts">
-      <button
-        type="button"
-        className="alert-act"
-        title={`Asks: ${act.ask}`}
-        onClick={() => {
-          window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: act.ask }))
-          onDone()
-        }}
-      >
-        {act.label}
-      </button>
+      {join && (
+        // Opens Teams (or Zoom, Meet, Webex) straight into the meeting. Joining
+        // is what this card is for, so the card goes once it is used.
+        <a className="alert-act" href={join} target="_blank" rel="noopener noreferrer" onClick={onDone}>
+          Join
+        </a>
+      )}
+      {act?.ask && (
+        <button
+          type="button"
+          className="alert-act"
+          title={`Asks: ${act.ask}`}
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: act.ask }))
+            onDone()
+          }}
+        >
+          {act.label}
+        </button>
+      )}
     </div>
   )
 }

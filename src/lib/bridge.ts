@@ -52,6 +52,8 @@ type Frame = {
   holdings?: HoldingsView
   sites?: { jira?: string | null; ado?: string | null }
   app?: string | null
+  call?: CallStatus
+  pulse?: PulseStatus
   brief?: BriefHealth
   ref?: string
   ok?: boolean
@@ -141,7 +143,24 @@ export type BriefHealth = {
   unlinked: string[]
   notes: string[]
 }
-export type StatusFrame = { spend: SpendSummary | null; brief: BriefHealth | null }
+/** The bridge's call watcher (bridge/calls.mjs callStatus). */
+export type CallStatus = {
+  watching: boolean
+  why: string
+  app: string | null
+  since: number
+  seen: string
+  checkedAt: number
+  failures: number
+}
+/** The portfolio pulse kept ready (bridge/portfolio.mjs pulseStatus). */
+export type PulseStatus = { builtAt: number; building: boolean; warmMin: number }
+export type StatusFrame = {
+  spend: SpendSummary | null
+  brief: BriefHealth | null
+  call: CallStatus | null
+  pulse: PulseStatus | null
+}
 
 let onStatus: ((s: StatusFrame) => void) | null = null
 export function watchStatus(fn: ((s: StatusFrame) => void) | null) {
@@ -243,6 +262,8 @@ export type AlertFrame = {
   items?: AlertItem[]
   /** Mail from a VIP, or about an incident: it gets through focus and quiet hours. */
   vip?: boolean
+  /** Meetings only: the Teams, Zoom, Meet or Webex join link. */
+  join?: string
 }
 
 /** One line on an alert card. `url` is a ticket link, checked again before use. */
@@ -500,7 +521,7 @@ function dispatch(ws: WebSocket) {
     } else if (msg.type === 'holdings' && msg.holdings) {
       onHoldings?.(msg.holdings)
     } else if (msg.type === 'status') {
-      onStatus?.({ spend: msg.spend ?? null, brief: msg.brief ?? null })
+      onStatus?.({ spend: msg.spend ?? null, brief: msg.brief ?? null, call: msg.call ?? null, pulse: msg.pulse ?? null })
     } else if (msg.type === 'transcript' && Array.isArray(msg.turns)) {
       onTranscript?.({
         day: msg.day ?? '',

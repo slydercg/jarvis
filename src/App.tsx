@@ -54,6 +54,7 @@ import { probeCapabilities } from './lib/capabilities'
 import { env } from './config'
 import { yesOrNo } from './lib/confirm'
 import { sameQuestion } from './lib/repeat'
+import { isJoinLink } from './lib/tickets'
 
 /**
  * The conversation.
@@ -841,6 +842,7 @@ export default function App() {
         ...(raw.label ? { label: raw.label } : {}),
         ...(raw.say ? { say: raw.say } : {}),
         ...(raw.items ? { items: raw.items } : {}),
+        ...(isJoinLink(raw.join) ? { join: raw.join } : {}),
       }
       store.getState().pushAlert(alert)
       if (store.getState().alertsMuted) return

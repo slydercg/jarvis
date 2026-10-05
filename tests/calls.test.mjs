@@ -35,3 +35,14 @@ test('the watcher reports changes only, and does nothing off a Mac', async () =>
   watchCalls(() => {}, { platform: 'linux', enabled: true, run: async () => ((ran = true), '') })()
   assert.equal(ran, false)
 })
+
+test('Diagnostics is told what the watcher went by', async () => {
+  const { callMatch, callStatus } = await import('../bridge/calls.mjs')
+  assert.deepEqual(callMatch(line('MSTeams', 'PreventUserIdleDisplaySleep', 'Call in progress')), {
+    app: 'Teams',
+    seen: 'MSTeams: Call in progress',
+  })
+  watchCalls(() => {}, { platform: 'linux', enabled: true })()
+  assert.equal(callStatus().watching, false)
+  assert.equal(callStatus().why, 'not a Mac')
+})

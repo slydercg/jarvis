@@ -80,3 +80,25 @@ export function ticketUrl({ key, source, project } = {}, sites = ticketSites()) 
   }
   return null
 }
+
+/**
+ * A meeting's join link, so an Important meeting's heads-up has a Join button.
+ *
+ * Only the call services' own join addresses: a Teams meeting, a Zoom, Google
+ * Meet or Webex meeting. Taken from wherever the calendar put it (the online
+ * meeting field, the location, the invitation text), first match wins. Like a
+ * ticket link, nothing else a calendar says can become a link. The page checks
+ * again (src/lib/tickets.ts isJoinLink).
+ */
+export const JOIN_LINK =
+  /^https:\/\/(?:teams\.microsoft\.com\/(?:l\/meetup-join|meet)\/|teams\.live\.com\/meet\/|(?:[a-z0-9-]+\.)?zoom\.us\/[jw]\/\d|meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}(?:$|[?#])|[a-z0-9-]+\.webex\.com\/)[^\s"'<>]*$/i
+
+export function joinUrl(...sources) {
+  for (const src of sources) {
+    for (const m of String(src ?? '').matchAll(/https:\/\/[^\s"'<>)\]]+/g)) {
+      const url = m[0].replace(/[.,;:!?]+$/, '')
+      if (url.length <= 2000 && JOIN_LINK.test(url)) return url
+    }
+  }
+  return ''
+}
