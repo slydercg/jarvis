@@ -202,8 +202,14 @@ const synth: Record<Cue, () => void> = {
   },
 }
 
+/** On a call: no cues at all (lib/oncall.ts). */
+let hushed = false
+export function setHushed(on: boolean): void {
+  hushed = on
+}
+
 export function play(cue: Cue) {
-  if (!ctx || ctx.state !== 'running') return
+  if (hushed || !ctx || ctx.state !== 'running') return
 
   const sample = samples.get(cue)
   if (sample) {

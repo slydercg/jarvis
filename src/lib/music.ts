@@ -129,7 +129,16 @@ export function enable() {
  * written, and pulling it down mid-flight reads as a fault rather than as
  * headroom being made.
  */
+/** On a call: every bed silent until it ends (lib/oncall.ts). */
+let hushed = false
+export function setHushed(on: boolean): void {
+  if (hushed === on) return
+  hushed = on
+  tracks.forEach((_, c) => fadeTo(c, level(c), on ? 250 : 900))
+}
+
 function level(cue: Cue): number {
+  if (hushed) return 0
   return ducked && cue !== 'boot-music' ? want[cue] * DUCK : want[cue]
 }
 

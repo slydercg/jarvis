@@ -14,6 +14,7 @@ import {
   setEnvLocal,
   writeSettings,
 } from './settings.mjs'
+import { MEETING_ALERTS, MEETING_LEAD_MIN, meetingAlertMode } from './snapshot.mjs'
 
 /**
  * The bridge's HTTP side, apart from the conversation: who may connect (the
@@ -401,6 +402,8 @@ const handleRequest = async (req, res) => {
     return json(200, {
       version: VERSION,
       eleven: { configured: Boolean(elevenKey()), source: ELEVEN.source, voiceId },
+      meetingAlerts: meetingAlertMode(readSettings().meetingAlerts),
+      meetingLeadMin: MEETING_LEAD_MIN,
     })
   }
 
@@ -449,6 +452,14 @@ const handleRequest = async (req, res) => {
     voiceId = body.voiceId
     writeSettings({ voiceId })
     return json(200, { ok: true, voiceId })
+  }
+
+  if (req.method === 'POST' && req.url === '/settings/meeting-alerts') {
+    const body = await readJson(req)
+    if (!MEETING_ALERTS.includes(body?.mode)) return json(400, { ok: false, reason: 'not a meeting alert mode' })
+    writeSettings({ meetingAlerts: body.mode })
+    console.log(`[jarvis] meeting heads-ups: ${body.mode}`)
+    return json(200, { ok: true, meetingAlerts: body.mode })
   }
 
   if (req.method === 'GET' && req.url === '/health') {

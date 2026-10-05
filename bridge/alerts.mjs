@@ -6,7 +6,8 @@ import { learnSites, ticketUrl } from './tickets.mjs'
 import { connectorDenylist } from './connectors.mjs'
 import { BACKGROUND_DISALLOWED } from './policy.mjs'
 import { createStreaks, stuckAlert } from './health.mjs'
-import { asData, read, watcherEvent } from './snapshot.mjs'
+import { MEETING_LEAD_MIN, announceMeeting, asData, meetingAlertMode, read, watcherEvent } from './snapshot.mjs'
+import { readSettings } from './settings.mjs'
 import { backgroundPaused, recordSpend } from './spend.mjs'
 
 /**
@@ -36,7 +37,7 @@ import { backgroundPaused, recordSpend } from './spend.mjs'
  */
 
 const ENABLED = process.env.JARVIS_ALERTS !== 'off'
-const LEAD_MIN = Number(process.env.JARVIS_ALERT_LEAD_MIN ?? 10)
+const LEAD_MIN = MEETING_LEAD_MIN
 
 /** When each check last succeeded today, and the calendar's last answer. */
 const STATE_FILE = 'alerts-state.json'
@@ -119,11 +120,17 @@ export function alertsEnabled() {
   return ENABLED
 }
 
+function meetingsSummary() {
+  const mode = meetingAlertMode(readSettings().meetingAlerts)
+  if (mode === 'off') return 'meeting heads-ups off'
+  return `${mode === 'important' ? 'Important meetings' : 'meetings'} ${LEAD_MIN} min ahead`
+}
+
 export function alertsSummary() {
   if (!ENABLED) return 'alerts off'
   const days = WEEKENDS ? 'every day' : 'weekdays'
   return (
-    `alerts: meetings ${LEAD_MIN} min ahead (calendar checked every ${CAL_MIN} min)` +
+    `alerts: ${meetingsSummary()} (calendar checked every ${CAL_MIN} min)` +
     (MAIL_MIN > 0 ? `, urgent mail every ${MAIL_MIN} min` : ', mail off') +
     (PORTFOLIO_MIN > 0 ? `, portfolio every ${PORTFOLIO_MIN} min (${JIRA_PROJECTS.join(', ')})` : '') +
     `; ${FROM_H}:00–${TO_H}:00 ${days}`
@@ -283,13 +290,14 @@ export function startAlerts({
       `It is ${localNow()}. List events on ${mine ? 'the SCG (Microsoft 365 / Outlook) and Google calendars' : 'every calendar'} that start at any time today, ` +
         `or between now and ${HORIZON_MIN} minutes from now — earlier ones today included, ` +
         `for the day's timeline. Skip all-day events and events the user ` +
-        `declined, and list a meeting that appears on two calendars once. Mark "focus": true ` +
+        `declined, and list a meeting that appears on two calendars once. Mark "important": true ` +
+        `on events with an 'Important' category or label, or high importance. Mark "focus": true ` +
         `on blocks he set aside for himself — Focus time, Heads down, Deep work, Do not book, ` +
         `no other attendees and a title that says so. ` +
         (mine ? 'Protective is already known: do not call protective_get_calendar and do not list Protective events. ' : '') +
         `Answer exactly: ` +
         `{"events":[{"id":"...","title":"...","start":"<ISO 8601 with offset>","end":"<ISO 8601 with offset>",` +
-        `"where":"<room, link or empty>","who":["<up to 8 attendee names or addresses>"],"focus":false,` +
+        `"where":"<room, link or empty>","who":["<up to 8 attendee names or addresses>"],"important":false,"focus":false,` +
         `"account":"${mine ? 'SCG|Google' : 'Protective|SCG|Google'}"}]}`,
     )
     const answered = parseJson(text)?.events
@@ -351,6 +359,9 @@ export function startAlerts({
           scheduled.delete(key)
           clearTimeout(entry.prepTimer)
           if (!listening()) return
+          // Read now, not when it was scheduled, so a change in Settings
+          // applies to meetings already on the clock.
+          if (!announceMeeting(e, readSettings().meetingAlerts)) return
           broadcast({
             kind: 'meeting',
             title: String(e.title),
@@ -368,6 +379,8 @@ export function startAlerts({
         entry.prepTimer = setTimeout(
           () => {
             if (!listening() || stopped) return
+            // No prep (model turns) for a heads-up that will not be given.
+            if (!announceMeeting(e, readSettings().meetingAlerts)) return
             void prepMeeting(String(e.title), start, who).then((prep) => {
               entry.prep = prep
             })

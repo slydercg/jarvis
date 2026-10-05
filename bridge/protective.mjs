@@ -210,6 +210,10 @@ export function normaliseEvent(e) {
       : String(attendees).split(';').map((s) => s.trim()).filter(Boolean).slice(0, 20),
     showAs: e.showAs ?? '',
     cancelled: Boolean(e.isCancelled),
+    // Outlook's labels and its "!" flag: an 'Important' label (or high
+    // importance) is what makes a meeting worth a spoken heads-up.
+    importance: e.importance ?? 'normal',
+    categories: Array.isArray(e.categories) ? e.categories.map(String).slice(0, 10) : [],
   }
 }
 

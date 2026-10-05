@@ -14,7 +14,8 @@ import { useStore, UNDO_MS, type Alert } from './store'
 import { prefs } from './lib/prefs'
 import { breaksQuiet, isQuiet } from './lib/quiet'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
-import { createSpeaker, cycleVoice, currentVoiceName, speakingSince } from './lib/tts'
+import { createSpeaker, cycleVoice, currentVoiceName, setHushed as hushSpeech, speakingSince } from './lib/tts'
+import { hushReason } from './lib/oncall'
 import * as sfx from './lib/sfx'
 import * as music from './lib/music'
 import * as hands from './lib/hands'
@@ -31,6 +32,7 @@ import {
   watchPanels,
   watchBlades,
   watchHoldings,
+  watchCall,
   watchConfirm,
   watchHistory,
   watchAlerts,
@@ -361,7 +363,8 @@ export default function App() {
         // the difference between a conversation and a vending machine —
         // unless it has been set to 0, and then that is what was asked for.
         const window = followUpMs()
-        if (window > 0) listen(window)
+        // On a call, an open mic would take the other side for a question.
+        if (window > 0 && !store.getState().hush) listen(window)
         else goDormant()
       }
     }
@@ -983,6 +986,42 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase])
+
+  // -- on a call --------------------------------------------------------------
+
+  /**
+   * Silent while he is on a call or in a meeting (lib/oncall.ts): no speech,
+   * no cues, no music, and no listening on after an answer. Answers and alerts
+   * still appear on screen. Checked when the bridge reports a call starting or
+   * ending, and every few seconds for meetings starting and ending and for the
+   * setting changing.
+   */
+  useEffect(() => {
+    const rehush = () => {
+      const st = store.getState()
+      const reason = hushReason({
+        enabled: prefs().quietOnCalls,
+        deviceCall: st.deviceCall,
+        events: st.today?.events ?? [],
+        now: Date.now(),
+      })
+      if (reason === st.hush) return
+      st.setHush(reason)
+      hushSpeech(Boolean(reason))
+      sfx.setHushed(Boolean(reason))
+      music.setHushed(Boolean(reason))
+      // Whatever he was saying stops now, mid-word if need be.
+      if (reason) silence()
+    }
+    watchCall((app) => {
+      store.getState().setDeviceCall(app)
+      rehush()
+    })
+    rehush()
+    const id = setInterval(rehush, 5000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // -- level pump + keys ----------------------------------------------------
 

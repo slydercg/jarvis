@@ -114,6 +114,11 @@ export function watchBlades(fn: (blade: Blade) => void): void {
 }
 
 /** The Robinhood holdings card (bridge/holdings.mjs): a bridge capability, sent when a page opens. */
+/** The call app in use, from the bridge; never on the direct path. */
+export function watchCall(fn: (app: string | null) => void): void {
+  if (usingBridge) bridge.watchCall(fn)
+}
+
 export function watchHoldings(fn: (view: bridge.HoldingsView) => void): void {
   if (usingBridge) bridge.watchHoldings(fn)
 }

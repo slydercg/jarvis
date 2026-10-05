@@ -1,5 +1,6 @@
 import { FLOWS } from './protective.mjs'
 import { mailLink, todoLink } from './maillinks.mjs'
+import { importantEvent } from './snapshot.mjs'
 
 /**
  * What each Protective flow actually sends back, checked against what Jarvis
@@ -110,5 +111,17 @@ export function judge(key, items) {
     if (n && timed < n) return { status: 'warn', detail, fix: "Add 'sentDateTime': a reply only counts if it was sent after the email arrived." }
     return { status: 'ok', detail }
   }
-  return { status: 'ok', detail: `${n} event${n === 1 ? '' : 's'} today` }
+  // Only Important meetings are announced, so whether the flow passes on
+  // Outlook's labels decides whether any heads-up is given at all.
+  const labelled = items.filter((e) => Array.isArray(e?.categories) && e.categories.length).length
+  const important = items.filter(importantEvent).length
+  const detail = `${n} event${n === 1 ? '' : 's'} today; ${important} marked Important, ${labelled} with a label`
+  if (n && !labelled && !items.some((e) => String(e?.importance ?? '').toLowerCase() === 'high')) {
+    return {
+      status: 'warn',
+      detail,
+      fix: "If a meeting today has the 'Important' label, add 'categories' (and 'importance') to the flow's output, or no Important meeting is announced.",
+    }
+  }
+  return { status: 'ok', detail }
 }

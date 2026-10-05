@@ -638,6 +638,33 @@ on the review list, where they wait for the morning. The now strip shows
 It's on by default from 8 PM to 7 AM and all weekend. Change the hours, or turn
 it off, in **Settings → Listening**. It's remembered in this browser.
 
+## Silent on calls
+
+While you're on a Zoom, Teams, Webex, FaceTime or browser (Teams or Meet on
+the web) call, or a meeting with other people is under way on your calendar,
+Jarvis makes no sound: nothing is spoken, no alert is read out, and he stops
+listening after an answer so the call is never taken for a question. Answers
+and alerts still appear on screen, and the alert area says why he's quiet.
+
+The bridge spots a call from macOS's `pmset -g assertions` (a call app keeps
+the display awake while the call lasts). Turn it off in **Settings →
+Listening → Silent on calls**, or stop the watching with
+`JARVIS_CALL_DETECT=off`.
+
+## Meeting heads-ups
+
+Outlook already reminds you of every meeting, so by default Jarvis announces
+only the ones you have marked as mattering: an Outlook **Important** label
+(category), or high importance. They're announced 15 minutes before they start
+(`JARVIS_ALERT_LEAD_MIN`). Every other meeting stays on the day timeline,
+unannounced.
+
+Choose **Off**, **Important** or **All** in **Settings → Listening**. The choice
+is kept in `~/.jarvis/settings.json` and applies straight away, including to
+meetings already scheduled. `npm run doctor:flows` says how many of today's
+Protective meetings carry the label; if none do, the calendar flow may not be
+passing on Outlook's categories.
+
 ## Focus
 
 "I'm heads-down until two" or "focus for ninety minutes" holds alerts back. A
@@ -910,7 +937,7 @@ check. The terminal logs each check and its cost.
 | Variable | Default | Effect |
 |---|---|---|
 | `JARVIS_ALERTS` | on | `off` disables the watcher entirely |
-| `JARVIS_ALERT_LEAD_MIN` | `10` | Minutes before a meeting to warn |
+| `JARVIS_ALERT_LEAD_MIN` | `15` | Minutes before a meeting to warn. Which meetings are announced (Important only, all, or none) is chosen in Settings |
 | `JARVIS_ALERT_CAL_MIN` | `20` | How often the calendar is checked |
 | `JARVIS_ALERT_MAIL_MIN` | `15` | How often mail is checked (`0` turns mail alerts off) |
 | `JARVIS_ALERT_HOURS` | `8-19` | Local hours the watcher runs |
