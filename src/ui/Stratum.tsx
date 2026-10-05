@@ -233,7 +233,7 @@ function Row({ item: i }: { item: StratumItem }) {
       </div>
       <div className="stratum-title">{i.title}</div>
       {i.detail && <div className="stratum-detail">{i.detail}</div>}
-      {i.items && i.items.length > 0 && <AlertItems items={i.items} label="Items" limit={3} />}
+      {i.items && i.items.length > 0 && <AlertItems items={i.items} label="Items" limit={3} nudge={i.kind === 'portfolio' && i.state === 'open'} />}
       <div className="stratum-acts">
         {i.state === 'done' ? (
           <button type="button" onClick={() => sendStratum('open', i.id)}>

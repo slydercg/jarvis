@@ -86,3 +86,23 @@ test('the scan records the day an ask was sent, only for what others owe', () =>
   assert.equal(added[1].asked, undefined)
   assert.equal(added[2].asked, undefined)
 })
+
+test('the brief carries his promises due today, tomorrow or late, and theirs that are late', async () => {
+  const { promisesForBrief } = await import('../bridge/commitments.mjs')
+  const now = new Date('2026-10-06T09:00:00')
+  const item = (direction, who, what, due, status = 'open') => ({ id: `${who}${what}`, direction, who, what, due, status })
+  const ledger = {
+    items: [
+      item('mine', 'Chris', 'send the roadmap', '2026-10-06'),
+      item('mine', 'Anne', 'review the SOW', '2026-10-07'),
+      item('mine', 'Sam', 'book the offsite', '2026-10-03'),
+      item('mine', 'Joe', 'next week thing', '2026-10-12'),
+      item('mine', 'Done', 'already kept', '2026-10-06', 'done'),
+      item('theirs', 'Daniel', 'send the API spec', '2026-10-02'),
+      item('theirs', 'Kim', 'not yet due', '2026-10-09'),
+    ],
+  }
+  const p = promisesForBrief(ledger, now)
+  assert.deepEqual(p.mine.map((m) => `${m.who}:${m.when}`), ['Sam:3 days late', 'Chris:today', 'Anne:tomorrow'])
+  assert.deepEqual(p.theirsLate.map((t) => `${t.who}:${t.late}`), ['Daniel:4'])
+})

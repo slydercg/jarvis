@@ -114,6 +114,11 @@ export function watchBlades(fn: (blade: Blade) => void): void {
 }
 
 /** The Robinhood holdings card (bridge/holdings.mjs): a bridge capability, sent when a page opens. */
+/** The voice loop's counts to the bridge; false on the direct path. */
+export function sendVoiceStats(counts: Record<string, number>): boolean {
+  return usingBridge ? bridge.sendVoiceStats(counts) : false
+}
+
 /** A "that was wrong" report to the bridge; false on the direct path. */
 export function sendReport(report: unknown): boolean {
   return usingBridge ? bridge.sendReport(report) : false

@@ -5,7 +5,8 @@ import { firstToday, inWindow, localDay, recentDays } from './days.mjs'
 import { readLedger } from './commitments.mjs'
 import { logMeetings } from './loop.mjs'
 import { memoryPrompt } from './memory.mjs'
-import { weekOfSnapshots } from './portfolio.mjs'
+import { blockedTrend, weekOfSnapshots } from './portfolio.mjs'
+import { selfCheck } from './selfcheck.mjs'
 
 /**
  * The weekly CTO review, on Friday afternoon: wins, slips and risks across the
@@ -52,7 +53,9 @@ ledger, and his stated priorities (from memory — there may be none).
   beat padded ones — say so plainly if the week had none.
 - slips: what was meant to happen and did not — brief items that kept coming
   back, broken promises, sprint work that did not land.
-- risks: what is building up for next week.
+- risks: what is building up for next week. Use the blocked-work trend:
+  whether blocked work is rising or falling, what has been stuck longest,
+  and who holds the most — in one or two risks when it matters.
 - time: put every meeting of the week (Protective from the log, SCG from its
   calendar) into three to six buckets that make sense for him — vendor and
   commercial, delivery reviews, one-to-ones, architecture and roadmap,
@@ -60,6 +63,10 @@ ledger, and his stated priorities (from memory — there may be none).
   sentence comparing that against his stated priorities, or saying none are
   on record.
 - promises: counts of his commitments kept, still open, and late; theirs late.
+  Then name them: each of his kept this week ("done"), each of his still
+  open with its due date ("open"), and each of theirs that is late ("owed"),
+  as "<who> — <what>" lines from the ledger. Action items recorded from
+  meeting recaps are in the ledger like any other promise.
 - update: a weekly update for leadership in the Progress / Plans / Problems
   form — short, concrete, no filler — as simple HTML (<h3>, <ul>, <li>, <p>).
 
@@ -67,7 +74,7 @@ Answer exactly:
 {"headline":"<one or two spoken sentences: the week in a line, then the one thing for next week>",
  "wins":["..."],"slips":["..."],"risks":["..."],
  "time":{"meetingHours":0,"buckets":[{"name":"...","hours":0,"pct":0}],"vsPriorities":"<one sentence>"},
- "promises":{"kept":0,"open":0,"late":0,"theirsLate":0},
+ "promises":{"kept":0,"open":0,"late":0,"theirsLate":0,"done":["..."],"stillOpen":["..."],"owed":["..."]},
  "update":{"subject":"Weekly update — <week of …>","html":"..."}}`
 
 let cache = null
@@ -89,6 +96,7 @@ export function getReview(deps, { refresh = false } = {}) {
         `Day log: ${JSON.stringify(days)}\n` +
         `Meeting hours by day (Protective): ${JSON.stringify(meetingHours(days))}\n` +
         `Portfolio snapshots: ${JSON.stringify(weekOfSnapshots(7))}\n` +
+        `Blocked-work trend: ${JSON.stringify(blockedTrend())}\n` +
         `Promise ledger (this week): ${JSON.stringify(promises)}\n` +
         `What he has told you (priorities may be here): ${memoryPrompt() || 'nothing on record'}`,
       label: 'weekly review',
@@ -96,6 +104,12 @@ export function getReview(deps, { refresh = false } = {}) {
       timeoutMs: 8 * 60_000,
     })
     if (!review?.headline) throw new Error('the weekly review did not come back as expected')
+    // How Jarvis himself did, counted rather than judged by a model.
+    try {
+      review.jarvis = selfCheck(7)
+    } catch {
+      // Without it the review is still the review.
+    }
     cache = { day: localDay(), builtAt: Date.now(), review }
     return cache
   })().finally(() => {

@@ -16,7 +16,8 @@ import { breaksQuiet, isQuiet } from './lib/quiet'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
 import { createSpeaker, cycleVoice, currentVoiceName, setHushed as hushSpeech, speakingSince } from './lib/tts'
 import { CALL_OFF, CALL_ON, OVERRIDE_OFF_MS, OVERRIDE_ON_MS, callDigest, hushReason } from './lib/oncall'
-import { WRONG, note, trail } from './lib/trail'
+import { WRONG, note, takeCounts, trail } from './lib/trail'
+import { onsetAction, utteranceIsHis, wakeAction } from './lib/decide'
 import * as sfx from './lib/sfx'
 import * as music from './lib/music'
 import * as hands from './lib/hands'
@@ -35,6 +36,7 @@ import {
   watchHoldings,
   watchCall,
   sendReport,
+  sendVoiceStats,
   watchReported,
   watchConfirm,
   watchHistory,
@@ -412,7 +414,8 @@ export default function App() {
 
     // "Jarvis, what's happening in AI this week" in one breath. Waiting for a
     // greeting he didn't need is the most common way an assistant wastes time.
-    if (trailing) {
+    const wake = wakeAction(trailing, Boolean(store.getState().hush))
+    if (wake === 'ask') {
       void respond(trailing)
       return
     }
@@ -420,7 +423,7 @@ export default function App() {
     // His name alone, on a call: most likely the call saying it, or close to
     // it. No greeting and no open mic for the call to fill; on a call he is
     // spoken to in one breath ("Jarvis, what's next?"), or typed to.
-    if (store.getState().hush) {
+    if (wake === 'stand-down') {
       note('ignored', 'his name alone, on a call: no greeting, mic not opened')
       goDormant()
       return
@@ -466,26 +469,21 @@ export default function App() {
   const onSpeechStart = () => {
     clearIdle()
     const phase = store.getState().phase
-    if (phase === 'offline' || phase === 'boot' || phase === 'dormant') return
-
-    // On a call, sound is the call. Nothing he hears may cut a turn off;
-    // only words addressed to him count (onUtterance).
-    if (store.getState().hush) {
+    // lib/decide.ts: on a call nothing a sound does cuts a turn off; while he
+    // works, a sound waits for words (a keyboard used to cut "Prep me" off
+    // here before anyone knew it was not speech); while he speaks, it stops him.
+    const act = onsetAction(phase, Boolean(store.getState().hush))
+    if (act === 'none') return
+    if (act === 'ignore-call') {
       note('ignored', 'a sound while on a call: nothing cut off')
       return
     }
-
-    // Still working, nothing being said: there is nothing to talk over yet,
-    // so wait for the words instead of abandoning the answer on a sound. A
-    // keyboard, a cough or the other side of a call used to cut "Prep me"
-    // off here before anyone knew it was not speech. Real words arrive as an
-    // utterance and replace the turn then (onUtterance → respond).
-    if (phase === 'thinking' || phase === 'tooling') {
+    if (act === 'wait-for-words') {
       note('ignored', `a sound while ${phase}: waiting for words before cutting anything off`)
       return
     }
 
-    const wasBusy = phase === 'speaking'
+    const wasBusy = act === 'barge-in'
     if (wasBusy) note('barge-in', 'talked over him: speech stopped')
 
     silence()
@@ -632,18 +630,18 @@ export default function App() {
   const onUtterance = (text: string) => {
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot' || phase === 'dormant') return
-    if (answerConfirm(text, true)) return
-    if (startFresh(text)) return
-    if (toggleAlerts(text)) return
-
     // On a call, only words that start with his name are his, whatever he is
-    // doing. Anything else is the call: the other people on it were being
-    // taken for questions, one after another.
-    if (store.getState().hush && !LEADING_NAME.test(text)) {
+    // doing — checked first, so the call can't answer a confirmation ("yes")
+    // or mute his alerts for him either. The other people on the call were
+    // being taken for questions, one after another.
+    if (!utteranceIsHis(text, Boolean(store.getState().hush), LEADING_NAME)) {
       note('ignored', `on a call, not addressed to him: "${text.slice(0, 80)}"`)
       if (phase === 'listening' || phase === 'waking') goDormant()
       return
     }
+    if (answerConfirm(text, true)) return
+    if (startFresh(text)) return
+    if (toggleAlerts(text)) return
     if (reportCommand(text)) return
     if (callCommand(text)) return
 
@@ -1146,7 +1144,17 @@ export default function App() {
     })
     rehush()
     const id = setInterval(rehush, 5000)
-    return () => clearInterval(id)
+    // The voice loop's counts, every ten minutes, for Friday's self-check
+    // (bridge/selfcheck.mjs). Kept for the next try if the bridge is away.
+    let pending: Record<string, number> = {}
+    const stats = setInterval(() => {
+      for (const [k, n] of Object.entries(takeCounts())) pending[k] = (pending[k] ?? 0) + n
+      if (Object.keys(pending).length && sendVoiceStats(pending)) pending = {}
+    }, 10 * 60_000)
+    return () => {
+      clearInterval(id)
+      clearInterval(stats)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

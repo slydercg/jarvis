@@ -676,6 +676,25 @@ actions**: what was decided and your action items, from the meeting notes
 yes. The card is never read out, and lapses at the end of the day. Turn it off
 with `JARVIS_MEETING_RECAP=off`.
 
+## Promises and action items
+
+What you and others commit to — in meetings, mail and the Waiting On Others
+list — goes on a promise ledger. A meeting's **Recap & actions** records its
+action items there straight away (yours and what others owe you), with due
+dates when one was said. Yours due today or tomorrow, or already late, and
+theirs that are late, are on every brief; you're nudged the day before yours
+are due; the Friday review lists what was kept, what's still open and what's
+owed.
+
+## Blocked work
+
+On a portfolio alert or the review list, each blocked ticket has **Nudge**: a
+short Teams message to whoever has it, drafted from the ticket and shown to
+you; nothing is sent until you say yes. Ask **"how's the trend?"** or
+**"what's been stuck longest?"** for blocked work over the last two weeks, from
+the daily snapshots: rising or falling, what's stuck longest, who holds the
+most, what came unblocked. The weekly review uses it too.
+
 ## When something goes wrong
 
 Right after Jarvis does something odd, say **"Jarvis, that was wrong"**, type
@@ -685,6 +704,9 @@ thought you were on a call; the last turns; and the bridge's log. It goes in
 `~/.jarvis/reports`, with flow signatures and every other URL query string
 removed. Run `npm run report` to print the latest, ready to paste into a
 conversation about it.
+
+The Friday review ends with one line on how Jarvis did: reports that week,
+how many sounds and call sentences he ignored, and the week's spend.
 
 ## Meeting heads-ups
 
