@@ -673,7 +673,14 @@ unless alerts are muted or it's quiet hours.
 A few minutes after a meeting ends, a **Meeting ended** card offers **Recap &
 actions**: what was decided and your action items, from the meeting notes
 (Granola), with an offer to add yours to To Do. Nothing is added until you say
-yes. The card is never read out, and lapses at the end of the day. Turn it off
+yes.
+
+When Granola has nothing (you weren't on the call, or it wasn't running), an
+optional Protective **meeting notes** flow (`meeting_notes` in
+`pa_endpoints.json`) fills in: Copilot's meeting notes and action items, else
+the Teams transcript, else a Copilot recap emailed to your inbox (Teams: Recap
+→ Share → Email). Jarvis says which source it used. `npm run doctor:flows`
+shows whether the flow is set up. The card is never read out, and lapses at the end of the day. Turn it off
 with `JARVIS_MEETING_RECAP=off`.
 
 ## Promises and action items

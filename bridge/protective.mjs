@@ -34,6 +34,7 @@ export const FLOWS = {
   send_email: 'Send mail',
   todo_add: 'Add to Daily Meeting Actions',
   todo_waiting: 'Add to Waiting On Others',
+  meeting_notes: 'Meeting notes (Copilot, transcript or recap email)',
 }
 
 const SAVED = join(JARVIS_HOME, 'power-automate.json')
@@ -276,6 +277,36 @@ export const protective = {
   async sent(limit = 25) {
     return list(await callFlow('sent_email')).map(normaliseSent).slice(0, limit)
   },
+  /**
+   * Optional ("meeting_notes" flow): what Microsoft has on one meeting, for
+   * when Granola has nothing — he was not on the call, or Granola was not
+   * running. The flow tries Copilot's meeting notes, then the Teams transcript,
+   * then a recap email in the inbox, and says which it found.
+   */
+  async meetingNotes({ subject, start, end }) {
+    return normaliseNotes(await callFlow('meeting_notes', { subject, start, end: end ?? '' }, 90_000))
+  },
+}
+
+/**
+ * The meeting-notes flow's answer, bounded: a transcript can run to a
+ * hundred thousand characters, and all of it would go into the turn.
+ */
+export function normaliseNotes(r) {
+  const s = (v, n) => (typeof v === 'string' ? v : v == null ? '' : JSON.stringify(v)).slice(0, n)
+  const items = Array.isArray(r?.actionItems) ? r.actionItems : []
+  // The flow starts with an empty email object and fills it only when one is found.
+  const email = r?.email && typeof r.email === 'object' && (r.email.subject || r.email.body) ? r.email : null
+  const source = ['copilot', 'transcript', 'email', 'none'].includes(r?.source) ? r.source : 'none'
+  return {
+    source,
+    meeting: s(r?.meeting, 200),
+    notes: s(r?.notes, 20_000),
+    actionItems: items.map((i) => s(typeof i === 'string' ? i : i?.text ?? i?.title ?? i, 400)).filter(Boolean).slice(0, 30),
+    transcript: s(r?.transcript, 60_000),
+    email: email ? { subject: s(email.subject, 300), from: s(email.from, 200), received: s(email.received, 40), body: s(email.body, 20_000) } : null,
+    errors: (Array.isArray(r?.errors) ? r.errors : []).map((e) => s(e, 300)).slice(0, 5),
+  }
 }
 
 export const hasFlow = (key) => Boolean((cache ?? loadFlows()).flows[key])
@@ -358,6 +389,29 @@ export function protectiveServer({ readOnly = false } = {}) {
       },
     ),
   ]
+  if (hasFlow('meeting_notes')) {
+    tools.push(
+      tool(
+        'protective_get_meeting_notes',
+        'What Microsoft has on one Protective meeting when Granola has nothing (he was not on the call, ' +
+          'or Granola was not running): Copilot\'s meeting notes and action items, else the Teams ' +
+          'transcript, else a recap email in the inbox. `source` says which (none when there is nothing). ' +
+          'Give the meeting\'s subject as on the calendar and its start (ISO 8601).',
+        {
+          subject: z.string().min(2).max(300),
+          start: z.string().min(10).describe('The meeting start, ISO 8601, from the calendar.'),
+          end: z.string().optional(),
+        },
+        async ({ subject, start, end }) => {
+          try {
+            return text(await protective.meetingNotes({ subject, start, end }))
+          } catch (err) {
+            return failed(err)
+          }
+        },
+      ),
+    )
+  }
   if (hasFlow('sent_email')) {
     tools.push(
       tool(
