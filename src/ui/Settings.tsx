@@ -93,6 +93,8 @@ export function Settings() {
     setQuiet(next.quiet)
   }
   const [needsReload, setNeedsReload] = useState(false)
+  const [quietOnCalls, setQuietOnCalls] = useState(prefs().quietOnCalls)
+  const chooseQuietOnCalls = (on: boolean) => setQuietOnCalls(setPrefs({ quietOnCalls: on }).quietOnCalls)
   const [meetings, setMeetings] = useState<MeetingAlerts | null>(null)
   const lead = bridge?.meetingLeadMin ?? 15
   const chooseMeetings = async (mode: MeetingAlerts) => {
@@ -483,6 +485,36 @@ export function Settings() {
                 {quiet.on
                   ? 'Nothing is spoken and no card pops up; everything waits on your review list. Reminders you set, meetings about to start and VIP mail still come through.'
                   : 'Alerts are spoken whenever they arrive.'}
+              </p>
+
+              <div className="settings-row settings-quiet">
+                <span className="settings-label" id="calls-label">
+                  Silent on calls
+                </span>
+                <div className="settings-seg" role="radiogroup" aria-labelledby="calls-label">
+                  {(
+                    [
+                      [false, 'Off'],
+                      [true, 'On'],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      role="radio"
+                      aria-checked={quietOnCalls === value}
+                      className={quietOnCalls === value ? 'on' : ''}
+                      onClick={() => chooseQuietOnCalls(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="settings-hint">
+                {quietOnCalls
+                  ? 'While Zoom, Teams, Webex, FaceTime or a browser call is live, or a meeting with other people is under way on your calendar, he says nothing and plays no sound. Answers and alerts still appear on screen.'
+                  : 'He speaks whether or not you are on a call.'}
               </p>
 
               {meetings && (

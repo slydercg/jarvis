@@ -297,6 +297,10 @@ type State = {
   alerts: Alert[]
   /** Alerts still show, but are not spoken. Remembered per browser. */
   alertsMuted: boolean
+  /** The call app the bridge sees (bridge/calls.mjs), or null. */
+  deviceCall: string | null
+  /** Why he is keeping quiet (lib/oncall.ts), or null. */
+  hush: string | null
   /** Heads-down, as the bridge reports it. */
   focus: FocusFrame
   /** The review column: what is still waiting on him. */
@@ -364,6 +368,8 @@ type State = {
   pushAlert: (a: Alert) => void
   dismissAlert: (id: string) => void
   setAlertsMuted: (muted: boolean) => void
+  setDeviceCall: (app: string | null) => void
+  setHush: (reason: string | null) => void
   setFocus: (focus: FocusFrame) => void
   setStratum: (items: StratumItem[]) => void
   setStratumOpen: (open: boolean) => void
@@ -402,6 +408,8 @@ export const useStore = create<State>((set) => ({
   confirm: null,
   alerts: [],
   alertsMuted: readMuted(),
+  deviceCall: null,
+  hush: null,
   focus: { active: false },
   stratum: [],
   today: null,
@@ -521,6 +529,8 @@ export const useStore = create<State>((set) => ({
     }
     set({ stratumOpen })
   },
+  setDeviceCall: (deviceCall) => set({ deviceCall }),
+  setHush: (hush) => set({ hush }),
   setAlertsMuted: (alertsMuted) => {
     try {
       localStorage.setItem(MUTED_KEY, alertsMuted ? '1' : '0')

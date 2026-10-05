@@ -28,6 +28,8 @@ export type Prefs = {
   textSize: TextSize
   /** Quiet hours: nothing spoken or popped up (see quiet.ts). */
   quiet: Quiet
+  /** Say nothing while he is on a call or in a meeting (see oncall.ts). */
+  quietOnCalls: boolean
 }
 
 const KEY = 'jarvis.prefs'
@@ -37,6 +39,7 @@ const DEFAULTS: Prefs = {
   readMode: 'clear',
   textSize: 'normal',
   quiet: DEFAULT_QUIET,
+  quietOnCalls: true,
 }
 
 export function prefs(): Prefs {

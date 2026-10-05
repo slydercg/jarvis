@@ -112,6 +112,15 @@ if (typeof window !== 'undefined') {
  */
 let nativeBroken = false
 
+/**
+ * On a call: nothing new is spoken (lib/oncall.ts). Words already in the air
+ * are cut by the caller's silence(); this stops any more being queued.
+ */
+let hushed = false
+export function setHushed(on: boolean): void {
+  hushed = on
+}
+
 let speakingAt = 0
 let spokeEnd = 0
 
@@ -449,7 +458,7 @@ export function createSpeaker(): Speaker {
   }
 
   const enqueue = (sentence: string, priority = false) => {
-    if (cancelled) return
+    if (cancelled || hushed) return
     // Shape once here so both engines get the same text — stripped markdown,
     // and the comma before "sir" that buys the beat.
     const text = shape(sentence)

@@ -1,6 +1,7 @@
 import type { AskHandlers } from './anthropic'
 import type { Blade, Panel } from '../store'
 import { BRIDGE_WS_URL } from '../config'
+import { setTicketSites } from './tickets'
 
 /**
  * Client for the local bridge (see bridge/server.mjs).
@@ -49,6 +50,8 @@ type Frame = {
   today?: TodayFrame
   spend?: SpendSummary
   holdings?: HoldingsView
+  sites?: { jira?: string | null; ado?: string | null }
+  app?: string | null
   brief?: BriefHealth
   ref?: string
   ok?: boolean
@@ -108,6 +111,11 @@ export type HoldingsView = {
   totals?: { value: number; valueComplete: boolean; dayChange: number; dayChangeComplete: boolean; dayChangePct: number | null }
   refreshing?: boolean
   error?: string
+}
+let onCall: ((app: string | null) => void) | null = null
+/** The call app the bridge sees in use (bridge/calls.mjs), or null. */
+export function watchCall(fn: (app: string | null) => void) {
+  onCall = fn
 }
 let onHoldings: ((h: HoldingsView) => void) | null = null
 export function watchHoldings(fn: (h: HoldingsView) => void) {
@@ -428,6 +436,12 @@ function dispatch(ws: WebSocket) {
       return
     }
 
+    if (msg.type === 'sites') {
+      // Where tickets live, so a bare key in a panel can be linked.
+      setTicketSites(msg.sites)
+      return
+    }
+
     if (msg.type === 'ready') {
       // The bridge announces immediately on connect from Claude Code's config,
       // then again with live status once the agent initialises. Keep listening
@@ -481,6 +495,8 @@ function dispatch(ws: WebSocket) {
       onProgress?.(msg.job, msg.step ?? null)
     } else if (msg.type === 'brief' && typeof msg.ref === 'string') {
       onBrief?.({ ref: msg.ref, op: String(msg.op ?? ''), ok: msg.ok === true, message: String(msg.message ?? ''), ...(typeof msg.ask === 'string' ? { ask: msg.ask } : {}) })
+    } else if (msg.type === 'call') {
+      onCall?.(typeof msg.app === 'string' ? msg.app : null)
     } else if (msg.type === 'holdings' && msg.holdings) {
       onHoldings?.(msg.holdings)
     } else if (msg.type === 'status') {

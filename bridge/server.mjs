@@ -101,6 +101,8 @@ import { ALLOW_NO_ORIGIN, EXTRA_ORIGINS, PORT, createHttpServer, elevenSource, o
 import { NAME, SYSTEM_PROMPT } from './prompt.mjs'
 import { learnFromMeetings, peopleContext, peopleServer } from './people.mjs'
 import { learnVoice, voiceDue, voicePrompt } from './voice.mjs'
+import { onSitesLearned, ticketSites } from './tickets.mjs'
+import { watchCalls } from './calls.mjs'
 import { homedir } from 'node:os'
 import { chmodSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -598,6 +600,20 @@ const toPages = (alert) => {
  * draft a nudge?" means something to the conversation, which did not hear it.
  */
 const recentAlerts = []
+// On a call (bridge/calls.mjs): every page keeps quiet until it ends.
+let onCall = null
+watchCalls((app) => {
+  onCall = app
+  console.log(app ? `[jarvis] on a call (${app}); keeping quiet` : '[jarvis] call ended')
+  for (const deliver of pages) deliver({ type: 'call', app })
+})
+
+// A Jira or Azure DevOps site learned mid-session: every open page can link
+// ticket keys from now on, not only after a reload.
+onSitesLearned((sites) => {
+  for (const deliver of pages) deliver({ type: 'sites', sites })
+})
+
 const RECENT_ALERT_MS = 10 * 60_000
 function alertContext(since) {
   const lines = recentAlerts.filter((a) => a.at > since && a.at > Date.now() - RECENT_ALERT_MS).map((a) => a.line)
@@ -820,6 +836,9 @@ wss.on('connection', (socket) => {
   // The holdings card (bridge/holdings.mjs): the last figures at once, read
   // again if stale. Its own quiet job: no progress badge, nothing spoken.
   holdingsOnOpen({ ...briefDeps(), onStep: undefined }, send)
+  // Where tickets live, so the page links a bare key in any panel.
+  send({ type: 'sites', sites: ticketSites() })
+  send({ type: 'call', app: onCall })
   send({ type: 'focus', focus: focusState() })
   send({ type: 'stratum', items: listStratum() })
   send({ type: 'today', today: todayView() })

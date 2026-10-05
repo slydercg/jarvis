@@ -31,6 +31,7 @@ const GUESS_HEIGHT = 110
 export function AlertStack() {
   const alerts = useStore((s) => s.alerts)
   const muted = useStore((s) => s.alertsMuted)
+  const hush = useStore((s) => s.hush)
   const dismiss = useStore((s) => s.dismissAlert)
   const focus = useStore((s) => s.focus)
   const listOpen = useStore((s) => s.stratumOpen)
@@ -97,6 +98,7 @@ export function AlertStack() {
   return (
     <section className="alerts" aria-label="Alerts" aria-live="polite" ref={stack}>
       {muted && <div className="alerts-muted">Alerts muted · say “resume alerts”</div>}
+      {hush && <div className="alerts-muted">{hush} · Jarvis is silent</div>}
       {focused && (
         <div className="alerts-muted alerts-focus">
           Heads-down until {new Date(focus.until!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}

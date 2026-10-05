@@ -638,6 +638,19 @@ on the review list, where they wait for the morning. The now strip shows
 It's on by default from 8 PM to 7 AM and all weekend. Change the hours, or turn
 it off, in **Settings → Listening**. It's remembered in this browser.
 
+## Silent on calls
+
+While you're on a Zoom, Teams, Webex, FaceTime or browser (Teams or Meet on
+the web) call, or a meeting with other people is under way on your calendar,
+Jarvis makes no sound: nothing is spoken, no alert is read out, and he stops
+listening after an answer so the call is never taken for a question. Answers
+and alerts still appear on screen, and the alert area says why he's quiet.
+
+The bridge spots a call from macOS's `pmset -g assertions` (a call app keeps
+the display awake while the call lasts). Turn it off in **Settings →
+Listening → Silent on calls**, or stop the watching with
+`JARVIS_CALL_DETECT=off`.
+
 ## Meeting heads-ups
 
 Outlook already reminds you of every meeting, so by default Jarvis announces

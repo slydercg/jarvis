@@ -48,7 +48,17 @@ export function learnSites({ jira, ado } = {}) {
   const next = { ...saved }
   if (validSite(jira ?? '', 'jira')) next.jira = validSite(jira, 'jira')
   if (validSite(ado ?? '', 'ado')) next.ado = validSite(ado, 'ado')
-  if (next.jira !== saved.jira || next.ado !== saved.ado) writeJsonFile(FILE, next)
+  if (next.jira !== saved.jira || next.ado !== saved.ado) {
+    writeJsonFile(FILE, next)
+    for (const fn of listeners) fn(ticketSites())
+  }
+}
+
+/** Told when a site is learned, so open pages can link keys straight away. */
+const listeners = new Set()
+export function onSitesLearned(fn) {
+  listeners.add(fn)
+  return () => listeners.delete(fn)
 }
 
 const JIRA_KEY = /^[A-Z][A-Z0-9_]+-\d+$/

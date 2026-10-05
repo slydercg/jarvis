@@ -84,3 +84,26 @@ test('a To Do task link of the exact shape counts too, and nothing near it', asy
   assert.equal(isMailLink('https://to-do.office.com/tasks/AAMk/evil/details'), false)
   assert.equal(isMailLink('https://to-do.office.com/tasks/AQMkADAwATM0MDAAMS1h'), false)
 })
+
+test('bare ticket keys in a panel become links on the known sites, and nothing else does', async () => {
+  const { linkTicketKeys } = await import('../src/lib/tickets.ts')
+  const sites = { jira: 'https://acme.atlassian.net', ado: 'https://dev.azure.com/aul' }
+  const pieces = linkTicketKeys('NI-12687 — Vander API, see RPT-3783 and ADO #4567; 2026-10-05 is a date', sites)
+  assert.deepEqual(
+    pieces.filter((p) => p.href).map((p) => [p.text, p.href]),
+    [
+      ['NI-12687', 'https://acme.atlassian.net/browse/NI-12687'],
+      ['RPT-3783', 'https://acme.atlassian.net/browse/RPT-3783'],
+      ['ADO #4567', 'https://dev.azure.com/aul/_workitems/edit/4567'],
+    ],
+  )
+  assert.equal(pieces.map((p) => p.text).join(''), 'NI-12687 — Vander API, see RPT-3783 and ADO #4567; 2026-10-05 is a date')
+  assert.deepEqual(linkTicketKeys('NI-12687', { jira: null, ado: null }), [{ text: 'NI-12687' }], 'no known site, no link')
+})
+
+test('only real ticket sites are accepted from the bridge', async () => {
+  const { setTicketSites, ticketSites } = await import('../src/lib/tickets.ts')
+  setTicketSites({ jira: 'https://evil.example.com', ado: 'https://dev.azure.com/aul' })
+  assert.deepEqual(ticketSites(), { jira: null, ado: 'https://dev.azure.com/aul' })
+  setTicketSites(null)
+})

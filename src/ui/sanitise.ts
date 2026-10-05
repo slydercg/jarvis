@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify'
 import { BRIDGE_HTTP_URL } from '../config'
-import { isMailLink, isTicketLink } from '../lib/tickets'
+import { isMailLink, isTicketLink, linkTicketKeys } from '../lib/tickets'
 import { briefOps } from '../lib/brief'
 
 /**
@@ -287,6 +287,7 @@ export function sanitisePanelHtml(html: string): string {
   // narrowClasses so a dropped element takes its classes with it.
   rewriteMedia(doc.body)
   keepTicketLinks(doc.body)
+  linkKeys(doc.body)
   addBriefButtons(doc.body)
   rewriteEmbeds(doc.body)
   hardenMedia(doc.body)
@@ -313,6 +314,39 @@ function keepTicketLinks(root: Element) {
     a.setAttribute('rel', 'noopener noreferrer')
     a.classList.add(mail ? 'mail-link' : 'ticket-link')
   })
+}
+
+/**
+ * Bare ticket keys become links to their ticket (lib/tickets.ts), so a list of
+ * what is blocked can be clicked through whether or not the model linked it.
+ * Text already inside a link or a button is left alone.
+ */
+function linkKeys(root: Element) {
+  const doc = root.ownerDocument
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const nodes: Text[] = []
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!(n.parentElement?.closest('a, button'))) nodes.push(n as Text)
+  }
+  for (const node of nodes) {
+    const pieces = linkTicketKeys(node.data)
+    if (!pieces.some((p) => p.href)) continue
+    const frag = doc.createDocumentFragment()
+    for (const p of pieces) {
+      if (!p.href) {
+        frag.append(p.text)
+        continue
+      }
+      const a = doc.createElement('a')
+      a.href = p.href
+      a.textContent = p.text
+      a.target = '_blank'
+      a.rel = 'noopener noreferrer'
+      a.className = 'ticket-link'
+      frag.append(a)
+    }
+    node.replaceWith(frag)
+  }
 }
 
 /**
