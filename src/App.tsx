@@ -51,6 +51,7 @@ import { startAnalyser, micLevel } from './lib/audio'
 import { probeCapabilities } from './lib/capabilities'
 import { env } from './config'
 import { yesOrNo } from './lib/confirm'
+import { sameQuestion } from './lib/repeat'
 
 /**
  * The conversation.
@@ -166,6 +167,20 @@ export default function App() {
    * the phase, the speaker, or the busy state on its way to the floor.
    */
   const turn = useRef(0)
+  /** The question the turn in flight is answering, so a repeat can be let be. */
+  const asking = useRef<string | null>(null)
+  /**
+   * His short lines outside any turn: acknowledgements, "Shall I proceed",
+   * alerts. Spoken one after another, never two at once, and all cut off by
+   * `silence()` like the answer is. They used to be fire-and-forget, so two
+   * alerts, or an alert and a confirmation, talked over each other and over
+   * the next answer, and a barge-in could not stop them.
+   */
+  const side = useRef({
+    speakers: new Set<ReturnType<typeof createSpeaker>>(),
+    chain: Promise.resolve(),
+    gen: 0,
+  })
   const booting = useRef(false)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const voicePoll = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -185,14 +200,30 @@ export default function App() {
 
   /** A short line of his own, outside any turn's speaker. */
   const say = (line: string) => {
-    const p = createSpeaker()
-    p.say(line)
-    void p.end()
+    const s = side.current
+    const gen = s.gen
+    s.chain = s.chain
+      .then(async () => {
+        if (gen !== s.gen) return // silenced while waiting its turn
+        const p = createSpeaker()
+        s.speakers.add(p)
+        p.say(line)
+        try {
+          await p.end()
+        } finally {
+          s.speakers.delete(p)
+        }
+      })
+      .catch(() => {})
   }
 
   const silence = () => {
     speaker.current?.cancel()
     speaker.current = null
+    const s = side.current
+    s.gen++
+    for (const p of s.speakers) p.cancel()
+    s.speakers.clear()
   }
 
   const goDormant = () => {
@@ -225,6 +256,7 @@ export default function App() {
   const respond = async (said: string): Promise<void> => {
     const mine = ++turn.current
     const stale = () => mine !== turn.current
+    asking.current = said
 
     clearIdle()
     const s = store.getState()
@@ -319,6 +351,7 @@ export default function App() {
       }
     } finally {
       if (!stale()) {
+        asking.current = null
         speaker.current = null
         sfx.duck(false)
         music.duck(false)
@@ -539,7 +572,14 @@ export default function App() {
     if (toggleAlerts(raw)) return
     const said = raw.replace(LEADING_NAME, '').trim()
     if (!said) return
-    if (phase === 'thinking' || phase === 'tooling' || phase === 'speaking') onSpeechStart()
+    const busy = phase === 'thinking' || phase === 'tooling' || phase === 'speaking'
+    // Clicked or typed again while he is still on it: let the first one
+    // finish rather than cutting it off and starting the lookup over.
+    if (busy && sameQuestion(asking.current, said)) {
+      store.getState().setCaption('Still working on that, sir.')
+      return
+    }
+    if (busy) onSpeechStart()
     store.getState().setError(null)
     void respond(said)
   }
@@ -816,10 +856,19 @@ export default function App() {
       const announce = () => {
         if (store.getState().alertsMuted) return
         if (!store.getState().alerts.some((a) => a.id === alert.id)) return // dismissed
-        if (busy() && Date.now() < deadline) return void setTimeout(announce, 1500)
+        if (busy()) {
+          // Still busy after five minutes: the card is on screen, and saying
+          // it now would be saying it over him. It used to be said anyway.
+          if (Date.now() < deadline) setTimeout(announce, 1500)
+          return
+        }
         if (alert.kind === 'meeting' && alert.at < Date.now() - 60_000) return
-        sfx.play('wake')
-        void afterSpeech().then(() => say(alertLine(alert)))
+        void afterSpeech().then(() => {
+          // A question can have started while the last words died away.
+          if (busy()) return void setTimeout(announce, 1500)
+          sfx.play('wake')
+          say(alertLine(alert))
+        })
       }
       announce()
     })

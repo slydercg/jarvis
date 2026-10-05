@@ -83,7 +83,12 @@ Answer exactly:
  "sources":{"jira":"live|unavailable","ado":"live|dashboard|unavailable","dashboards":["<file, age>"]}}`
 
 let cache = null
-let building = null
+// In-flight builds by question. Shared only by the same question: a repeat
+// (a second click, the question asked again while the first is still being
+// worked out) waits for the build already running instead of starting a
+// second minutes-long one, but a different question never gets another's
+// answer.
+const building = new Map()
 
 function snapshots() {
   return readJsonFile(SNAPSHOTS, {})
@@ -92,7 +97,10 @@ function snapshots() {
 export function getPulse(deps, { question, refresh = false } = {}) {
   const fresh = cache && Date.now() - cache.builtAt < MAX_AGE_MS && !question
   if (fresh && !refresh) return Promise.resolve(cache)
-  building ??= (async () => {
+  const key = pulseKey(question)
+  const running = building.get(key)
+  if (running) return running
+  const build = (async () => {
     const snaps = snapshots()
     const yesterday = Object.keys(snaps).filter((d) => d < localDay()).sort().pop()
     const boards = []
@@ -135,9 +143,15 @@ export function getPulse(deps, { question, refresh = false } = {}) {
     writeJsonFile(SNAPSHOTS, next)
     return entry
   })().finally(() => {
-    building = null
+    building.delete(key)
   })
-  return building
+  building.set(key, build)
+  return build
+}
+
+/** The same question however it was worded: case, spacing and punctuation don't count. */
+export function pulseKey(question) {
+  return (question ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
 /** The week's snapshots, for the weekly review. */
