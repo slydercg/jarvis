@@ -28,3 +28,11 @@ for (const [heard, spoken, want] of cases) {
     assert.equal(isEcho(heard, spoken, OVERRIDE), want)
   })
 }
+
+test('sounds the transcriber wrote down are not words', async () => {
+  const { withoutSounds } = await import('../src/lib/echo.ts')
+  assert.equal(withoutSounds('[typing]'), '')
+  assert.equal(withoutSounds('(keyboard clicking) [background noise]'), '')
+  assert.equal(withoutSounds('[laughs] prep me for the standup'), 'prep me for the standup')
+  assert.equal(withoutSounds("what's blocked?"), "what's blocked?")
+})

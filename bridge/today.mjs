@@ -66,6 +66,21 @@ function event(e, account) {
 }
 
 /**
+ * The new list, plus every meeting already over that it leaves out.
+ *
+ * The calendar flow (and the watcher) can answer from "now" onwards, so each
+ * refresh used to wipe the morning off the timeline and he could not look
+ * back at what he had been in. A meeting that has ended is kept for the rest
+ * of the day once seen; one still to come follows the calendar, so a cancelled
+ * or moved meeting does not linger.
+ */
+export function keepPast(prev, next, now = Date.now()) {
+  const same = (a, b) => a.id === b.id || (a.start === b.start && norm(a.title) === norm(b.title))
+  const kept = prev.filter((p) => p.end <= now && !next.some((n) => same(p, n)))
+  return [...kept, ...next].sort((a, b) => a.start - b.start || a.end - b.end)
+}
+
+/**
  * The day's events: merged, de-duplicated, sorted, with clashes marked. A
  * clash is two real meetings overlapping; focus blocks never clash.
  */
@@ -106,10 +121,13 @@ export async function refreshToday({ force = false } = {}) {
     // Shared with the watcher and the read-only jobs (snapshot.mjs).
     const events = await read('calendar')
     if (!events) return
-    const next = events
-      .filter((e) => !e.allDay && e.showAs !== 'free')
-      .map((e) => event(e, 'Protective'))
-      .filter(Boolean)
+    const next = keepPast(
+      state.protective,
+      events
+        .filter((e) => !e.allDay && e.showAs !== 'free')
+        .map((e) => event(e, 'Protective'))
+        .filter(Boolean),
+    )
     if (JSON.stringify(next) !== JSON.stringify(state.protective)) {
       state.protective = next
       changed()
@@ -126,10 +144,13 @@ export async function refreshToday({ force = false } = {}) {
 export function setWatcherEvents(events) {
   rollDay()
   const today = localDay()
-  const next = events
-    .filter((e) => (e.account ?? '') !== 'Protective')
-    .map((e) => event(e, e.account === 'Google' ? 'Google' : 'SCG'))
-    .filter((e) => e && localDay(new Date(e.start)) === today)
+  const next = keepPast(
+    state.others,
+    events
+      .filter((e) => (e.account ?? '') !== 'Protective')
+      .map((e) => event(e, e.account === 'Google' ? 'Google' : 'SCG'))
+      .filter((e) => e && localDay(new Date(e.start)) === today),
+  )
   if (JSON.stringify(next) !== JSON.stringify(state.others)) {
     state.others = next
     changed()

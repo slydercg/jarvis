@@ -736,6 +736,10 @@ const handleRequest = async (req, res) => {
             : 'webm'
       const form = new FormData()
       form.append('model_id', 'scribe_v1')
+      // Words only. Scribe otherwise writes the room's sounds as words —
+      // "[typing]", "(keyboard clicking)" — and typing on a call became a
+      // question that cut off the answer he had just asked for.
+      form.append('tag_audio_events', 'false')
       form.append(
         'file',
         new Blob([Buffer.concat(chunks)], { type }),
