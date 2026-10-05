@@ -273,6 +273,12 @@ function railList(all) {
 const CONNECTOR_GRACE_MS = 20_000
 
 /**
+ * How often a working turn tells the page it is still alive. Well inside the
+ * page's two-minute give-up (IDLE_TIMEOUT_MS in src/lib/bridge.ts).
+ */
+const HEARTBEAT_MS = 20_000
+
+/**
  * The first init message is the only place the full list — your claude.ai
  * connectors included — is known, so say what came up and what did not.
  * A connector that needs signing in again is otherwise just absent, and
@@ -884,6 +890,41 @@ wss.on('connection', (socket) => {
    */
   let interrupted = false
   let inFlight = false
+
+  /**
+   * The questions handed to the agent and not yet finished, oldest first.
+   *
+   * The agent answers them in order, one `result` each (measured with the
+   * real SDK: interrupt a turn in the middle of a tool and the question queued
+   * behind it still runs as its own turn with its own result). So the turn
+   * being streamed is always the head of this list, not the question most
+   * recently delivered. Tagging frames with the latest one instead was how
+   * the tail of a cut-off turn — or the whole of a slow one — arrived under
+   * the next question's id: the page took it for the answer to the wrong
+   * question, or, when that question had been superseded too, dropped it, and
+   * he heard nothing.
+   */
+  const asked = []
+  const startTurn = ({ id, text }) => {
+    answering = id
+    turnText = text
+    inFlight = true
+  }
+
+  /**
+   * Proof of life while a turn is working.
+   *
+   * The page gives up on a turn after two minutes without a frame, and a turn
+   * can legitimately be silent for longer: the portfolio pulse reads Jira and
+   * Azure DevOps for minutes, and its progress repeats ("Checking Jira") so
+   * nothing new is sent. The page then said the turn was lost while the answer
+   * was still being worked out, he asked again, and the new question cut off
+   * the old one — round and round, never an answer. Any frame re-arms the
+   * page's timer; this one is ignored otherwise.
+   */
+  const heartbeat = setInterval(() => {
+    if (inFlight && !closed) sendTurn({ type: 'working' })
+  }, HEARTBEAT_MS)
   let sessionCost = 0
   let lastTool = ''
   let failedInARow = 0
@@ -1399,6 +1440,8 @@ wss.on('connection', (socket) => {
             turnFailed = false
             interrupted = false
             inFlight = false
+            asked.shift()
+            if (asked.length) startTurn(asked[0])
             lastTool = ''
             spoke = false
             said = ''
@@ -1504,9 +1547,8 @@ wss.on('connection', (socket) => {
           }
         }
         console.log(`[jarvis] ${tier} turn (${ROUTES[tier].model})`)
-        answering = id
-        turnText = text
-        inFlight = true
+        asked.push({ id, text })
+        if (asked.length === 1) startTurn(asked[0])
         if (deliver) {
           const resolve = deliver
           deliver = null
@@ -1612,6 +1654,7 @@ wss.on('connection', (socket) => {
   })
 
   socket.on('close', () => {
+    clearInterval(heartbeat)
     pages.delete(send)
     console.log('[jarvis] client disconnected')
     closed = true
