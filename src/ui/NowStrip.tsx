@@ -24,6 +24,7 @@ export function NowStrip() {
   // redraws the strip when Settings closes, so a change shows straight away
   // rather than on the next tick.
   useStore((s) => s.settingsOpen)
+  const hush = useStore((s) => s.hush)
   const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
@@ -43,6 +44,28 @@ export function NowStrip() {
 
   return (
     <nav className="now-strip" aria-label="Right now">
+      {/* On a call: one click either way, for when the guess is wrong, and
+          before joining one. The same as saying "I'm on a call" / "call's over". */}
+      {hush ? (
+        <button
+          type="button"
+          className="now-chip now-quiet-hours"
+          onClick={() => ask("call's over")}
+          title={`${hush}: nothing is spoken, and only "Jarvis, …" in one breath reaches him. Click when the call is over.`}
+        >
+          Silent<span className="now-quiet-until"> · {hush}</span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="now-chip now-call"
+          onClick={() => ask("I'm on a call")}
+          title="Going on a call? He goes silent and stops listening for anything but his name."
+        >
+          On a call?
+        </button>
+      )}
+
       {quietEnd ? (
         <span
           className="now-chip now-quiet-hours"

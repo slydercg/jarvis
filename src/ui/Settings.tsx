@@ -513,7 +513,7 @@ export function Settings() {
               </div>
               <p className="settings-hint">
                 {quietOnCalls
-                  ? 'While Zoom, Teams, Webex, FaceTime or a browser call is live, or a meeting with other people is under way on your calendar, he says nothing and plays no sound. Answers and alerts still appear on screen.'
+                  ? 'While Zoom, Teams, Webex, FaceTime or a browser call is live, or a meeting is under way on your calendar, he says nothing, plays no sound and only hears "Jarvis, …" said in one breath. Answers and alerts still appear on screen. "I\'m on a call" or "call\'s over" (or the button at the top) settles it either way.'
                   : 'He speaks whether or not you are on a call.'}
               </p>
 

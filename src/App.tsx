@@ -15,7 +15,7 @@ import { prefs } from './lib/prefs'
 import { breaksQuiet, isQuiet } from './lib/quiet'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
 import { createSpeaker, cycleVoice, currentVoiceName, setHushed as hushSpeech, speakingSince } from './lib/tts'
-import { hushReason } from './lib/oncall'
+import { CALL_OFF, CALL_ON, OVERRIDE_OFF_MS, OVERRIDE_ON_MS, hushReason } from './lib/oncall'
 import * as sfx from './lib/sfx'
 import * as music from './lib/music'
 import * as hands from './lib/hands'
@@ -172,6 +172,8 @@ export default function App() {
   const turn = useRef(0)
   /** The question the turn in flight is answering, so a repeat can be let be. */
   const asking = useRef<string | null>(null)
+  /** Re-decide whether to keep quiet now (set by the on-a-call effect). */
+  const rehushRef = useRef<() => void>(() => {})
   /**
    * His short lines outside any turn: acknowledgements, "Shall I proceed",
    * alerts. Spoken one after another, never two at once, and all cut off by
@@ -403,6 +405,14 @@ export default function App() {
       return
     }
 
+    // His name alone, on a call: most likely the call saying it, or close to
+    // it. No greeting and no open mic for the call to fill; on a call he is
+    // spoken to in one breath ("Jarvis, what's next?"), or typed to.
+    if (store.getState().hush) {
+      goDormant()
+      return
+    }
+
     store.getState().setPhase('waking')
 
     // The on-device word fires the instant his name is said, before anyone
@@ -538,6 +548,27 @@ export default function App() {
     return true
   }
 
+  /**
+   * "I'm on a call" / "call's over": his word on whether he is on a call,
+   * for when the guess is wrong either way (lib/oncall.ts). Typed works too,
+   * and is the sure way while a call is on.
+   */
+  const callCommand = (raw: string): boolean => {
+    const said = raw.replace(LEADING_NAME, '').trim()
+    const on = CALL_ON.test(said)
+    if (!on && !CALL_OFF.test(said)) return false
+    store.getState().setCallOverride({ on, until: Date.now() + (on ? OVERRIDE_ON_MS : OVERRIDE_OFF_MS) })
+    rehushRef.current()
+    if (on) {
+      // Nothing is said: he is on a call. The alert area says so.
+      goDormant()
+    } else {
+      say('Very good, sir.')
+      listen(AWAIT_SPEECH_MS)
+    }
+    return true
+  }
+
   /** "Mute alerts" / "resume alerts". Cards still appear while muted. */
   const toggleAlerts = (raw: string): boolean => {
     if (toggleStratum(raw)) return true
@@ -557,10 +588,14 @@ export default function App() {
     if (startFresh(text)) return
     if (toggleAlerts(text)) return
 
-    // On a call, while he is working on something: only words addressed to
-    // him by name are his. Anything else is the call.
-    const busy = phase === 'thinking' || phase === 'tooling' || phase === 'speaking'
-    if (busy && store.getState().hush && !LEADING_NAME.test(text)) return
+    // On a call, only words that start with his name are his, whatever he is
+    // doing. Anything else is the call: the other people on it were being
+    // taken for questions, one after another.
+    if (store.getState().hush && !LEADING_NAME.test(text)) {
+      if (phase === 'listening' || phase === 'waking') goDormant()
+      return
+    }
+    if (callCommand(text)) return
 
     // People keep using his name as a vocative once they're already talking to
     // him. Strip it rather than sending "jarvis" to the model as a question.
@@ -589,6 +624,7 @@ export default function App() {
     if (answerConfirm(raw)) return
     if (startFresh(raw)) return
     if (toggleAlerts(raw)) return
+    if (callCommand(raw)) return
     const said = raw.replace(LEADING_NAME, '').trim()
     if (!said) return
     const busy = phase === 'thinking' || phase === 'tooling' || phase === 'speaking'
@@ -1021,6 +1057,7 @@ export default function App() {
         deviceCall: st.deviceCall,
         events: st.today?.events ?? [],
         now: Date.now(),
+        override: st.callOverride,
       })
       if (reason === st.hush) return
       st.setHush(reason)
@@ -1030,6 +1067,7 @@ export default function App() {
       // Whatever he was saying stops now, mid-word if need be.
       if (reason) silence()
     }
+    rehushRef.current = rehush
     watchCall((app) => {
       store.getState().setDeviceCall(app)
       rehush()

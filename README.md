@@ -644,12 +644,17 @@ it off, in **Settings → Listening**. It's remembered in this browser.
 ## Silent on calls
 
 While you're on a Zoom, Teams, Webex, FaceTime or browser (Teams or Meet on
-the web) call, or a meeting with other people is under way on your calendar,
+the web) call, or a meeting is under way on your calendar,
 Jarvis makes no sound: nothing is spoken, no alert is read out, and he stops
 listening after an answer so the call is never taken for a question. Answers
 and alerts still appear on screen, and the alert area says why he's quiet.
-While he's working on something during a call, only words that start with his
-name reach him; the rest is the call. Background sounds are never taken as
+During a call, only words that start with his name, said in one breath
+("Jarvis, what's next?"), reach him; everything else is the call, and his name
+alone doesn't open the mic. Typing always works.
+
+When the guess is wrong either way, tell him: say or type **"I'm on a call"**
+(holds up to three hours) or **"call's over"** (holds for thirty minutes), or
+click **On a call?** / **Silent** at the top of the screen. Background sounds are never taken as
 words: a keyboard, a cough or "[typing]" doesn't cut an answer off.
 
 The bridge spots a call from macOS's `pmset -g assertions` (a call app keeps
