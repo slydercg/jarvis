@@ -65,7 +65,7 @@ import {
   wokenSince,
 } from './stratum.mjs'
 import { focusGate, focusServer, focusState, startFocus, vips } from './focus.mjs'
-import { portfolioServer } from './portfolio.mjs'
+import { portfolioServer, pulseStatus, warmPulse } from './portfolio.mjs'
 import { maybeOfferReview, reviewServer } from './review.mjs'
 import { firstToday, inWindow } from './days.mjs'
 import { onToday, refreshToday, setPortfolio, setWatcherEvents, todayView } from './today.mjs'
@@ -102,7 +102,7 @@ import { NAME, SYSTEM_PROMPT } from './prompt.mjs'
 import { learnFromMeetings, peopleContext, peopleServer } from './people.mjs'
 import { learnVoice, voiceDue, voicePrompt } from './voice.mjs'
 import { onSitesLearned, ticketSites } from './tickets.mjs'
-import { watchCalls } from './calls.mjs'
+import { callStatus, watchCalls } from './calls.mjs'
 import { homedir } from 'node:os'
 import { chmodSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -756,6 +756,8 @@ setInterval(() => {
   }
   lastWake = Date.now()
   if (inWindow('16-24', 'every') && firstToday('meeting-log')) void logMeetings()
+  // "What's blocked" kept ready, so it is answered in seconds (portfolio.mjs).
+  if (!paused && inWindow(ALERT_HOURS, ALERT_DAYS)) void warmPulse(deps)
   // How he writes, relearned weekly from his sent mail (voice.mjs).
   if (!paused && inWindow(ALERT_HOURS, ALERT_DAYS) && voiceDue()) {
     learnVoice(deps)
@@ -1608,7 +1610,7 @@ wss.on('connection', (socket) => {
     }
 
     if (msg.type === 'status') {
-      send({ type: 'status', spend: spendSummary(), brief: briefHealth() })
+      send({ type: 'status', spend: spendSummary(), brief: briefHealth(), call: callStatus(), pulse: pulseStatus() })
       return
     }
 

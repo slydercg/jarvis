@@ -22,7 +22,7 @@ test('the flows he relies on are checked, and a missing one says what it costs',
   const by = Object.fromEntries(rows.map((r) => [r.key, r]))
   assert.equal(by.inbox.status, 'ok')
   assert.equal(by.todo.status, 'ok')
-  assert.equal(by.calendar.detail, '2 events today; 1 marked Important, 1 with a label')
+  assert.equal(by.calendar.detail, '2 events today; 1 marked Important, 1 with a label, 0 with a join link')
   assert.equal(by.calendar.status, 'ok')
   assert.equal(by.sent_email.status, 'warn')
   assert.match(by.sent_email.fix, /replied to are not ticked off/)

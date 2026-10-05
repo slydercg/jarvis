@@ -115,7 +115,8 @@ export function judge(key, items) {
   // Outlook's labels decides whether any heads-up is given at all.
   const labelled = items.filter((e) => Array.isArray(e?.categories) && e.categories.length).length
   const important = items.filter(importantEvent).length
-  const detail = `${n} event${n === 1 ? '' : 's'} today; ${important} marked Important, ${labelled} with a label`
+  const joinable = items.filter((e) => e?.join).length
+  const detail = `${n} event${n === 1 ? '' : 's'} today; ${important} marked Important, ${labelled} with a label, ${joinable} with a join link`
   if (n && !labelled && !items.some((e) => String(e?.importance ?? '').toLowerCase() === 'high')) {
     return {
       status: 'warn',

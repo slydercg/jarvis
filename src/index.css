@@ -3116,6 +3116,8 @@ button.now-chip:hover { background: color-mix(in srgb, var(--interface) 10%, tra
   letter-spacing: 0.02em;
 }
 .alert-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+/* Join is a link (it opens the meeting), drawn as the card's other buttons are. */
+a.alert-act { display: inline-block; text-decoration: none; }
 .bl-action,
 .alert-act {
   padding: 6px 12px;

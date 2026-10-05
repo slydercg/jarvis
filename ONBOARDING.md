@@ -56,7 +56,7 @@ Everything it remembers lives in `~/.jarvis`.
 | `loop.mjs` | End-of-day wrap-up, meeting dossiers, and the tools over the promise ledger |
 | `commitments.mjs` | The promise ledger, its scan, and its nudges |
 | `focus.mjs` | Focus guard: holds alerts except VIPs, then one digest |
-| `portfolio.mjs` | Portfolio pulse from Jira and the dashboards on the Mac; daily snapshots |
+| `portfolio.mjs` | Portfolio pulse from Jira and the dashboards on the Mac, kept warm in the background (`warmPulse`) and across restarts; daily snapshots |
 | `review.mjs` | The Friday weekly review and leadership update |
 | `days.mjs` | Once-a-day offers and the per-day log the review reads back |
 | `memory.mjs` | Remembered facts (`~/.jarvis/memory.md`) and resuming the conversation |

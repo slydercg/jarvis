@@ -649,7 +649,9 @@ and alerts still appear on screen, and the alert area says why he's quiet.
 The bridge spots a call from macOS's `pmset -g assertions` (a call app keeps
 the display awake while the call lasts). Turn it off in **Settings →
 Listening → Silent on calls**, or stop the watching with
-`JARVIS_CALL_DETECT=off`.
+`JARVIS_CALL_DETECT=off`. Diagnostics (press **D**) has a **Calls** section:
+whether the bridge is watching, the call it sees and the assertion it went by,
+and why he is or isn't quiet right now.
 
 ## Meeting heads-ups
 
@@ -664,6 +666,11 @@ is kept in `~/.jarvis/settings.json` and applies straight away, including to
 meetings already scheduled. `npm run doctor:flows` says how many of today's
 Protective meetings carry the label; if none do, the calendar flow may not be
 passing on Outlook's categories.
+
+An announced meeting's card has a **Join** button when the invitation carries a
+Teams, Zoom, Google Meet or Webex link; it opens the meeting and clears the
+card. Only those services' join addresses ever become the button.
+`npm run doctor:flows` also counts today's meetings with a join link.
 
 ## Focus
 
@@ -726,6 +733,13 @@ changed since yesterday?". Jarvis reads two sources:
 
 Each pulse is saved as that day's snapshot, so he can say what changed since
 yesterday.
+
+The pulse is kept ready: during alert hours it's rebuilt in the background
+every 30 minutes (`JARVIS_PULSE_WARM_MIN`, 0 turns it off), and the last one is
+kept in `~/.jarvis/portfolio-pulse.json` across restarts. So "what's blocked"
+is answered in seconds instead of minutes, and "check again now" builds a fresh
+one. It counts as background spend, so `JARVIS_DAILY_CAP_USD` stops it too.
+Diagnostics shows when it was last built.
 
 While a page is open, the watcher checks Jira every hour
 (`JARVIS_PORTFOLIO_ALERT_MIN`, 0 turns it off):

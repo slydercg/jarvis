@@ -32,16 +32,32 @@ const AWAKE = /PreventUserIdleDisplaySleep|NoDisplaySleepAssertion/
  *   pid 412(zoom.us): [0x…] 00:12:03 PreventUserIdleDisplaySleep named: "…"
  */
 export function callFrom(text) {
+  return callMatch(text)?.app ?? null
+}
+
+/** The call app and the assertion that showed it, for Diagnostics. */
+export function callMatch(text) {
   for (const line of String(text ?? '').split('\n')) {
     const m = /pid\s+\d+\(([^)]+)\):.*?(\w*Sleep\w*|NoDisplaySleepAssertion)\s+named:\s*"([^"]*)"/.exec(line)
     if (!m) continue
     const [, proc, kind, name] = m
-    if (WEBRTC.test(name)) return 'a browser call'
+    const seen = `${proc.trim()}: ${name}`.slice(0, 160)
+    if (WEBRTC.test(name)) return { app: 'a browser call', seen }
     if (!AWAKE.test(kind)) continue
     const app = CALL_APPS.find(([re]) => re.test(proc.trim()))
-    if (app) return app[1]
+    if (app) return { app: app[1], seen }
   }
   return null
+}
+
+/**
+ * What the watcher has seen, for Diagnostics: whether it is watching at all,
+ * the call it sees (and since when), the assertion that showed it, and when
+ * it last looked. A missed or false call can be read off here, not guessed.
+ */
+const state = { watching: false, why: '', app: null, since: 0, seen: '', checkedAt: 0, failures: 0 }
+export function callStatus() {
+  return { ...state }
 }
 
 const defaultRun = () =>
@@ -57,15 +73,28 @@ export function watchCalls(
   onChange,
   { intervalMs = 5000, platform = process.platform, run = defaultRun, enabled = process.env.JARVIS_CALL_DETECT !== 'off' } = {},
 ) {
-  if (platform !== 'darwin' || !enabled) return () => {}
+  if (platform !== 'darwin' || !enabled) {
+    state.watching = false
+    state.why = platform !== 'darwin' ? 'not a Mac' : 'JARVIS_CALL_DETECT=off'
+    return () => {}
+  }
+  state.watching = true
+  state.why = ''
   let last = null
   let busy = false
   const tick = async () => {
     if (busy) return
     busy = true
     try {
-      const now = callFrom(await run())
+      const out = await run()
+      if (!out) state.failures++
+      const hit = callMatch(out)
+      const now = hit?.app ?? null
+      state.checkedAt = Date.now()
+      state.seen = hit?.seen ?? ''
       if (now !== last) {
+        state.app = now
+        state.since = now ? Date.now() : 0
         last = now
         onChange(now)
       }

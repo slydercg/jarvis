@@ -77,3 +77,14 @@ export function linkTicketKeys(text: string, sites: TicketSites = known): Piece[
   if (last < text.length) out.push({ text: text.slice(last) })
   return out.length ? out : [{ text }]
 }
+
+/**
+ * A meeting's join link (bridge/tickets.mjs JOIN_LINK): Teams, Zoom, Google
+ * Meet or Webex, and nothing else, for the Join button on a meeting heads-up.
+ */
+const JOIN_LINK =
+  /^https:\/\/(?:teams\.microsoft\.com\/(?:l\/meetup-join|meet)\/|teams\.live\.com\/meet\/|(?:[a-z0-9-]+\.)?zoom\.us\/[jw]\/\d|meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}(?:$|[?#])|[a-z0-9-]+\.webex\.com\/)[^\s"'<>]*$/i
+
+export function isJoinLink(url: unknown): url is string {
+  return typeof url === 'string' && url.length <= 2000 && JOIN_LINK.test(url)
+}
