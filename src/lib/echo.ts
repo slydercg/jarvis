@@ -111,3 +111,16 @@ export function isEcho(heard: string, spoken: string, override?: RegExp): boolea
   for (const w of content) if (mine.has(w)) hits++
   return hits / content.length >= 0.6
 }
+
+/**
+ * A transcript with the room's sounds taken out: "[typing]", "(laughs)",
+ * "[background noise]". What is left is what was said, which may be nothing.
+ * The bridge asks Scribe not to write them (tag_audio_events); this is the
+ * page's own check, for the browser recogniser and older bridges too.
+ */
+export function withoutSounds(text: string): string {
+  return text
+    .replace(/[[(][^\])]{1,48}[\])]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}

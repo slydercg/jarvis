@@ -5,7 +5,7 @@ import { speakingNow, speakingSince, spokeUntil } from './tts'
 import { startVad, type Vad } from './vad'
 import { caps } from './capabilities'
 import { startWakeWord, wakeWordStatus } from './wakeword'
-import { isEcho as isEchoOf } from './echo'
+import { isEcho as isEchoOf, withoutSounds } from './echo'
 
 /**
  * The voice loop.
@@ -551,11 +551,12 @@ async function startElevenVoice(
       }
       failures = 0
       const { text } = (await res.json()) as { text?: string }
-      const said = (text ?? '').trim()
+      const raw = (text ?? '').trim()
+      const said = withoutSounds(raw)
       diag.lastError = ''
 
       if (!said) {
-        drop('nothing intelligible in the segment')
+        drop(raw ? `only a sound, not words (${raw.slice(0, 40)})` : 'nothing intelligible in the segment')
         return
       }
 

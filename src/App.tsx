@@ -445,8 +445,18 @@ export default function App() {
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot' || phase === 'dormant') return
 
-    const wasBusy =
-      phase === 'thinking' || phase === 'tooling' || phase === 'speaking'
+    // On a call, sound is the call. Nothing he hears may cut a turn off;
+    // only words addressed to him count (onUtterance).
+    if (store.getState().hush) return
+
+    // Still working, nothing being said: there is nothing to talk over yet,
+    // so wait for the words instead of abandoning the answer on a sound. A
+    // keyboard, a cough or the other side of a call used to cut "Prep me"
+    // off here before anyone knew it was not speech. Real words arrive as an
+    // utterance and replace the turn then (onUtterance → respond).
+    if (phase === 'thinking' || phase === 'tooling') return
+
+    const wasBusy = phase === 'speaking'
 
     silence()
     if (wasBusy) {
@@ -546,6 +556,11 @@ export default function App() {
     if (answerConfirm(text, true)) return
     if (startFresh(text)) return
     if (toggleAlerts(text)) return
+
+    // On a call, while he is working on something: only words addressed to
+    // him by name are his. Anything else is the call.
+    const busy = phase === 'thinking' || phase === 'tooling' || phase === 'speaking'
+    if (busy && store.getState().hush && !LEADING_NAME.test(text)) return
 
     // People keep using his name as a vocative once they're already talking to
     // him. Strip it rather than sending "jarvis" to the model as a question.

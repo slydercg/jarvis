@@ -545,7 +545,10 @@ calendar.
 
 - Each calendar has its own colour: Protective cyan, SCG violet, Google green.
 - Clashes are outlined in amber, and a white line marks now.
-- Past meetings dim, and the one under way brightens.
+- Past meetings dim, and the one under way brightens. They stay for the rest
+  of the day once seen. For the morning's meetings to show even when Jarvis
+  started later, the Protective calendar flow's start time should be the start
+  of the day (`startOfDay(utcNow())`), not now.
 - Click a meeting to hear who you're meeting and what's open with them.
 
 The long Systems list folds into one line above it. Click it to unfold the
@@ -645,6 +648,9 @@ the web) call, or a meeting with other people is under way on your calendar,
 Jarvis makes no sound: nothing is spoken, no alert is read out, and he stops
 listening after an answer so the call is never taken for a question. Answers
 and alerts still appear on screen, and the alert area says why he's quiet.
+While he's working on something during a call, only words that start with his
+name reach him; the rest is the call. Background sounds are never taken as
+words: a keyboard, a cough or "[typing]" doesn't cut an answer off.
 
 The bridge spots a call from macOS's `pmset -g assertions` (a call app keeps
 the display awake while the call lasts). Turn it off in **Settings →
