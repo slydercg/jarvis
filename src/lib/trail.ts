@@ -17,7 +17,11 @@ const MAX = 120
 const AGE_MS = 15 * 60_000
 let entries: TrailEntry[] = []
 
+/** How many of each kind since the counts were last taken, for the weekly self-check. */
+let counts: Record<string, number> = {}
+
 export function note(kind: string, text: string, now = Date.now()): void {
+  counts[kind] = (counts[kind] ?? 0) + 1
   entries.push({ at: now, kind, text: String(text).slice(0, 300) })
   if (entries.length > MAX) entries = entries.slice(-MAX)
 }
@@ -29,6 +33,14 @@ export function trail(now = Date.now()): TrailEntry[] {
 
 export function clearTrail(): void {
   entries = []
+  counts = {}
+}
+
+/** The counts since last time, cleared (bridge/selfcheck.mjs keeps them a day at a time). */
+export function takeCounts(): Record<string, number> {
+  const out = counts
+  counts = {}
+  return out
 }
 
 /** "That was wrong", "that's wrong", "report that": a report, not a question. */

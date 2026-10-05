@@ -148,6 +148,27 @@ export function daysUntil(due, now = new Date()) {
 }
 
 /**
+ * The promises the morning brief should carry: his due today or tomorrow (or
+ * already late), and theirs that are late. Read straight from the ledger, so
+ * an action item recorded from a meeting recap comes back the morning it is
+ * due without waiting for anything to notice it.
+ */
+export function promisesForBrief(ledger = readLedger(), now = new Date()) {
+  const open = ledger.items.filter((i) => i.status === 'open' && i.due)
+  const mine = open
+    .filter((i) => i.direction === 'mine' && daysUntil(i.due, now) <= 1)
+    .map((i) => {
+      const left = daysUntil(i.due, now)
+      return { who: i.who, what: i.what, due: i.due, when: left < 0 ? `${-left} day${left === -1 ? '' : 's'} late` : left === 0 ? 'today' : 'tomorrow' }
+    })
+  const theirsLate = open
+    .filter((i) => i.direction === 'theirs' && daysUntil(i.due, now) < 0)
+    .map((i) => ({ who: i.who, what: i.what, due: i.due, late: -daysUntil(i.due, now) }))
+  const byDue = (a, b) => a.due.localeCompare(b.due)
+  return { mine: mine.sort(byDue).slice(0, 8), theirsLate: theirsLate.sort(byDue).slice(0, 8) }
+}
+
+/**
  * Whether two ways of naming someone are the same person, by whole words:
  * every word of the shorter is a word of the longer. "Chris" matches "Chris
  * Smith" and "chris.smith@x.com", and no longer matches "Christine" — which

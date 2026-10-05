@@ -39,3 +39,12 @@ test('a promise title splits on its dash, and survives not having one', () => {
   assert.deepEqual(splitPromise('Cathrene — send the doc'), ['Cathrene', 'send the doc'])
   assert.deepEqual(splitPromise('Just a note'), ['Just a note', ''])
 })
+
+test('Nudge on a blocked ticket drafts a message to whoever has it, never sends', async () => {
+  const { nudgeAsk } = await import('../src/lib/actions.ts')
+  const ask = nudgeAsk({ key: 'NI-12891', title: 'Reverse Claims misses zero-dollar services', detail: 'Chris Martin · Business Testing (flagged)' })
+  assert.match(ask ?? '', /^Draft a short, friendly Teams message to Chris Martin about NI-12891/)
+  assert.match(ask ?? '', /send it only if I say yes/)
+  assert.equal(nudgeAsk({ key: 'NI-1', title: 'x', detail: 'Unassigned · To Do' }), null)
+  assert.equal(nudgeAsk({ title: 'no key', detail: 'Chris' }), null)
+})

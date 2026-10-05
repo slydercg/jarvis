@@ -209,6 +209,46 @@ export function pulseKey(question) {
   return (question ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
+/**
+ * What is blocked over time, from the daily snapshots (the last KEEP days):
+ * the count each day and which way it is going, what has been blocked
+ * longest (counted from the first snapshot it appears in), who holds the most,
+ * and what came unblocked in the window. No model: the snapshots already hold
+ * it, so "how's the trend?" is answered from the files.
+ */
+export function blockedTrend(snaps = snapshots()) {
+  const days = Object.keys(snaps).sort()
+  if (!days.length) return { days: 0, series: [], direction: 'unknown', longest: [], byOwner: [], cleared: [] }
+  const keysOf = (d) => (Array.isArray(snaps[d]?.blocked) ? snaps[d].blocked : []).filter((b) => b?.key)
+  const series = days.map((d) => ({ day: d, blocked: keysOf(d).length }))
+  const latestDay = days.at(-1)
+  const latest = keysOf(latestDay)
+  const firstSeen = new Map()
+  for (const d of days) for (const b of keysOf(d)) if (!firstSeen.has(b.key)) firstSeen.set(b.key, d)
+  const dayDiff = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000)
+  const longest = latest
+    .map((b) => ({ key: b.key, title: b.title ?? '', owner: b.owner ?? '', since: firstSeen.get(b.key), days: dayDiff(firstSeen.get(b.key), latestDay) }))
+    .sort((a, b) => b.days - a.days || a.key.localeCompare(b.key))
+    .slice(0, 5)
+  const owners = new Map()
+  for (const b of latest) {
+    const o = String(b.owner || 'Unassigned').trim()
+    owners.set(o, (owners.get(o) ?? 0) + 1)
+  }
+  const byOwner = [...owners].map(([owner, count]) => ({ owner, count })).sort((a, b) => b.count - a.count).slice(0, 5)
+  // Against a week ago, or the oldest snapshot there is.
+  const weekAgo = days.filter((d) => dayDiff(d, latestDay) >= 7).at(-1) ?? days[0]
+  const then = keysOf(weekAgo).length
+  const now = latest.length
+  const direction = weekAgo === latestDay ? 'unknown' : now > then ? 'rising' : now < then ? 'falling' : 'flat'
+  const latestKeys = new Set(latest.map((b) => b.key))
+  const cleared = [...new Map(days.filter((d) => d >= weekAgo).flatMap((d) => keysOf(d)).map((b) => [b.key, b])).values()]
+    .filter((b) => !latestKeys.has(b.key))
+    .map((b) => ({ key: b.key, title: b.title ?? '' }))
+    .slice(0, 10)
+  return { days: days.length, from: days[0], to: latestDay, series, direction, comparedWith: weekAgo, then, now, longest, byOwner, cleared }
+}
+
 /** The week's snapshots, for the weekly review. */
 export function weekOfSnapshots(days = 7) {
   const cutoff = localDay(new Date(Date.now() - days * 86_400_000))
@@ -220,6 +260,15 @@ export function portfolioServer(deps) {
     name: 'jarvis_portfolio',
     version: '1.0.0',
     tools: [
+      tool(
+        'get_portfolio_trend',
+        'How blocked work is trending, from the daily portfolio snapshots (up to two weeks): the count ' +
+          'each day and whether it is rising or falling against a week ago, what has been blocked longest, ' +
+          'who holds the most, and what came unblocked. Instant. Use for "how\'s the trend", "is it getting ' +
+          'better", "what\'s been stuck longest", "who has the most blocked".',
+        {},
+        async () => ({ content: [{ type: 'text', text: JSON.stringify(blockedTrend()) }] }),
+      ),
       tool(
         'get_portfolio_pulse',
         'The delivery portfolio across Jira and Azure DevOps: what is blocked and with whom, which ' +

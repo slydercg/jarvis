@@ -114,6 +114,13 @@ export type HoldingsView = {
   refreshing?: boolean
   error?: string
 }
+/** The voice loop's counts for the weekly self-check (bridge/selfcheck.mjs). */
+export function sendVoiceStats(counts: Record<string, number>): boolean {
+  if (socket?.readyState !== WebSocket.OPEN) return false
+  socket.send(JSON.stringify({ type: 'voicestats', counts }))
+  return true
+}
+
 /** Send a "that was wrong" report (bridge/reports.mjs); the file name comes back through watchReported. */
 export function sendReport(report: unknown): boolean {
   if (socket?.readyState !== WebSocket.OPEN) return false

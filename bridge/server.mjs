@@ -104,6 +104,7 @@ import { learnVoice, voiceDue, voicePrompt } from './voice.mjs'
 import { onSitesLearned, ticketSites } from './tickets.mjs'
 import { callStatus, watchCalls } from './calls.mjs'
 import { logTail, tapConsole, writeReport } from './reports.mjs'
+import { recordVoiceStats } from './selfcheck.mjs'
 import { homedir } from 'node:os'
 import { chmodSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -1641,6 +1642,16 @@ wss.on('connection', (socket) => {
       holdingsOnOpen({ ...briefDeps(), onStep: undefined }, (frame) => {
         for (const deliver of pages) deliver(frame)
       }, { force: true })
+      return
+    }
+
+    // The voice loop's counts, for the Friday self-check (selfcheck.mjs).
+    if (msg.type === 'voicestats') {
+      try {
+        recordVoiceStats(msg.counts)
+      } catch (err) {
+        console.warn(`[jarvis] voice stats: ${err.message}`)
+      }
       return
     }
 

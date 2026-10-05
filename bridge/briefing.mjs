@@ -8,6 +8,7 @@ import { recordDay } from './days.mjs'
 import { hasFlow, protective, protectiveConfigured } from './protective.mjs'
 import { mailLink, matchMail, matchTask, plainSubject, readerId, todoLink } from './maillinks.mjs'
 import { addReminder, parseWhen } from './stratum.mjs'
+import { promisesForBrief } from './commitments.mjs'
 
 /**
  * The brief: what needs doing today, ranked, from every mailbox and calendar.
@@ -262,7 +263,15 @@ export async function serveBrief({ brief, builtAt }, sources = PROTECTIVE_SOURCE
     unlinked: served.filter((i) => linkable(i) && !i.link).map((i) => `${i.account}: ${String(i.subject || i.action || '').slice(0, 60)}`).slice(0, 5),
     notes,
   }
-  return { brief: { ...brief, items: served }, anchored: anchored === items ? null : anchored, health }
+  // Promises are read fresh from the ledger each time, not baked into the
+  // morning's build: one recorded at ten from a meeting is on the brief at two.
+  let promises = { mine: [], theirsLate: [] }
+  try {
+    promises = promisesForBrief(undefined, now)
+  } catch {
+    // A ledger that can't be read leaves the brief as it was.
+  }
+  return { brief: { ...brief, items: served, promises }, anchored: anchored === items ? null : anchored, health }
 }
 
 /**
@@ -506,7 +515,9 @@ export function briefServer(deps) {
       tool(
         'get_brief',
         "Today's ranked brief across the Protective and SCG mailboxes, calendars and To Do: a focus line, " +
-          'up to eight actions with priority, and the meetings. Cached for the morning; pass refresh to ' +
+          'up to eight actions with priority, and the meetings, then `promises`: his due today or tomorrow ' +
+          '(or late) and other people\'s that are late, from the promise ledger — say those after the actions. ' +
+          'Cached for the morning; pass refresh to ' +
           'rebuild (takes a minute). Use it for "brief me", "what do I need to do today", "how does my day look".',
         { refresh: z.boolean().optional() },
         async ({ refresh }) => {

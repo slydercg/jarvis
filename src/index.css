@@ -2631,6 +2631,22 @@ kbd {
   align-items: baseline;
 }
 .alert-item-body { min-width: 0; }
+.alert-item.has-key:has(.alert-nudge) { grid-template-columns: 76px 1fr auto; }
+/* "Nudge" at the end of a blocked ticket's row: information-coloured, quiet until wanted. */
+.alert-nudge {
+  align-self: start;
+  font: inherit;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--interface);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--interface) 35%, transparent);
+  padding: 2px 8px;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0.75;
+}
+.alert-nudge:hover, .alert-nudge:focus-visible { opacity: 1; border-color: var(--interface); outline: none; }
 .alert-item-title {
   font-size: 14px;
   line-height: 1.4;

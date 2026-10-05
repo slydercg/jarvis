@@ -4,7 +4,7 @@ import { useStore, type Alert } from '../store'
 import { LABELS } from './alertLabels'
 import type { AlertItem } from '../lib/bridge'
 import { isJoinLink, isTicketLink } from '../lib/tickets'
-import { primaryAction } from '../lib/actions'
+import { nudgeAsk, primaryAction } from '../lib/actions'
 import { COMMAND_EVENT } from './CommandBar'
 import { cardsThatFit, overlaps } from '../lib/alertFit'
 
@@ -141,7 +141,7 @@ export function AlertStack() {
               </ul>
             )}
             {a.items && a.items.length > 0 && (
-              <AlertItems items={a.items} label={a.kind === 'digest' ? 'Held back' : 'Items'} />
+              <AlertItems items={a.items} label={a.kind === 'digest' ? 'Held back' : 'Items'} nudge={a.kind === 'portfolio'} />
             )}
             {/* Last, so it reads: what it is, the detail, then what to do. */}
             <CardAction alert={a} onDone={() => dismiss(a.id)} />
@@ -173,7 +173,7 @@ function when(a: Pick<Alert, 'kind' | 'at'>): string {
  * the title, then who has it. Shared by the alert cards and the review column.
  * `limit` shows the first few with a "show all" to open the rest.
  */
-export function AlertItems({ items, label, limit }: { items: AlertItem[]; label: string; limit?: number }) {
+export function AlertItems({ items, label, limit, nudge }: { items: AlertItem[]; label: string; limit?: number; nudge?: boolean }) {
   const [all, setAll] = useState(false)
   const shown = limit && !all ? items.slice(0, limit) : items
   return (
@@ -199,6 +199,7 @@ export function AlertItems({ items, label, limit }: { items: AlertItem[]; label:
               <div className="alert-item-title">{it.title}</div>
               {it.detail && <div className="alert-item-meta">{it.detail}</div>}
             </div>
+            {nudge && <NudgeButton item={it} />}
           </li>
         ))}
       </ul>
@@ -208,6 +209,22 @@ export function AlertItems({ items, label, limit }: { items: AlertItem[]; label:
         </button>
       )}
     </>
+  )
+}
+
+/** "Nudge" on one blocked ticket (lib/actions.ts nudgeAsk): asks, exactly as if typed. */
+function NudgeButton({ item }: { item: AlertItem }) {
+  const ask = nudgeAsk(item)
+  if (!ask) return null
+  return (
+    <button
+      type="button"
+      className="alert-nudge"
+      title={`Asks: ${ask}`}
+      onClick={() => window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: ask }))}
+    >
+      Nudge
+    </button>
   )
 }
 

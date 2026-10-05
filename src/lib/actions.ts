@@ -48,7 +48,9 @@ export function primaryAction(i: ItemLike): Action | null {
         label: 'Recap & actions',
         ask:
           `Recap "${i.title}", the meeting that just ended, from its meeting notes: what was decided, ` +
-          `and the action items that are mine. Offer to add mine to my To Do list, and add them only if I say yes.`,
+          `the action items that are mine, and what others said they would do for me. Record each of ` +
+          `those in my promise ledger, with its due date if one was said, so they are tracked. Then offer ` +
+          `to add mine to my To Do list, and add them only if I say yes.`,
       }
     case 'brief':
       return { label: 'Brief me', ask: 'Brief me.' }
@@ -59,4 +61,22 @@ export function primaryAction(i: ItemLike): Action | null {
     default:
       return null
   }
+}
+
+/** A blocked ticket as an alert card lists it (bridge/alerts.mjs): key, title, "owner · status". */
+export type TicketLine = { key?: string; title: string; detail?: string }
+
+/**
+ * "Nudge" on a blocked ticket: a short message to whoever has it, drafted
+ * from the ticket itself rather than left for the model to work out from a
+ * bare name. Drafted and shown, never sent without his yes (the send tools
+ * are confirmed like any other). Null when there is no one to nudge.
+ */
+export function nudgeAsk(t: TicketLine): string | null {
+  const owner = (t.detail ?? '').split(' · ')[0].trim()
+  if (!t.key || !owner || /^unassigned$/i.test(owner)) return null
+  return (
+    `Draft a short, friendly Teams message to ${owner} about ${t.key} ("${t.title}"), which is blocked: ` +
+    `ask what they need to unblock it and whether I can help. Show me the draft; send it only if I say yes.`
+  )
 }
