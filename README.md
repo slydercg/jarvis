@@ -679,8 +679,20 @@ When Granola has nothing (you weren't on the call, or it wasn't running), an
 optional Protective **meeting notes** flow (`meeting_notes` in
 `pa_endpoints.json`) fills in: Copilot's meeting notes and action items, else
 the Teams transcript, else a Copilot recap emailed to your inbox (Teams: Recap
-→ Share → Email). Jarvis says which source it used. `npm run doctor:flows`
-shows whether the flow is set up. The card is never read out, and lapses at the end of the day. Turn it off
+→ Share → Email). Jarvis says which source it used.
+
+Copilot notes and transcripts come through Microsoft Graph, and need
+Protective IT to grant the flow's app `OnlineMeetings.Read`,
+`OnlineMeetingTranscript.Read.All` and `OnlineMeetingAIInsight.Read.All`.
+Until then every Graph call answers 403, which Jarvis treats as normal and
+falls back to the recap email. If the Graph connection expires ("401 Invalid
+token lifetime"), Jarvis says so once: Power Automate → Connections →
+Reconnect.
+
+To test the flow on one meeting, with counts only:
+`npm run doctor:flows -- --notes "<subject as on the calendar>" 2026-10-05T15:00:00-04:00`.
+
+The card is never read out, and lapses at the end of the day. Turn it off
 with `JARVIS_MEETING_RECAP=off`.
 
 ## Promises and action items

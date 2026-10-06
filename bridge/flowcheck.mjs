@@ -58,10 +58,33 @@ export async function checkFlows(api, now = () => Date.now()) {
   for (const key of Object.keys(FLOWS).filter((k) => !READS.includes(k))) {
     // The meeting-notes flow reads, but needs a meeting to read about; the
     // rest change things. Neither is called here.
-    const why = key === 'meeting_notes' ? 'set up (not called: it needs a meeting)' : 'set up (not called: it changes things)'
+    const why = key === 'meeting_notes' ? 'set up (not called: it needs a meeting; try --notes)' : 'set up (not called: it changes things)'
     rows.push({ key, name: FLOWS[key], status: has(key) ? 'ok' : 'info', detail: has(key) ? why : 'not set up' })
   }
   return rows
+}
+
+/**
+ * One meeting-notes answer (normaliseNotes), judged for `doctor:flows --notes`:
+ * which source answered, how much came back, and whether Copilot can be read.
+ * Counts only: notes and mail are his, and the doctor's output gets pasted.
+ */
+export function judgeNotes(r) {
+  const got = [
+    r.notes && `notes ${r.notes.length} chars`,
+    r.actionItems?.length && `${r.actionItems.length} action items`,
+    r.transcript && `transcript ${r.transcript.length} chars`,
+    r.email && 'a recap email',
+  ].filter(Boolean)
+  const detail = `source: ${r.source}${got.length ? `; ${got.join(', ')}` : ''}`
+  if (r.copilot.startsWith('reconnect')) {
+    return { status: 'fail', detail, fix: 'Power Automate → Connections → "HTTP with Microsoft Entra ID" → Reconnect.' }
+  }
+  const fix = [
+    r.copilot.startsWith('not granted') && 'Copilot notes and transcripts need Protective IT to grant the flow\'s app OnlineMeetings.Read, OnlineMeetingTranscript.Read.All and OnlineMeetingAIInsight.Read.All. Recap emails work meanwhile.',
+    r.errors?.length && `Unexpected: ${r.errors.map(noUrls).join(' | ')}`,
+  ].filter(Boolean).join(' ')
+  return { status: r.errors?.length ? 'warn' : r.source === 'none' && !r.copilot.startsWith('not granted') ? 'warn' : 'ok', detail, fix: fix || undefined }
 }
 
 const MISSING = {

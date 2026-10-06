@@ -8,7 +8,7 @@ process.env.JARVIS_HOME = mkdtempSync(join(tmpdir(), 'jarvis-notes-'))
 process.env.JARVIS_PA_ENDPOINTS = join(process.env.JARVIS_HOME, 'none.json')
 const { normaliseNotes } = await import('../bridge/protective.mjs')
 const { decideTool, readOnlyTool } = await import('../bridge/policy.mjs')
-const { checkFlows } = await import('../bridge/flowcheck.mjs')
+const { checkFlows, judgeNotes } = await import('../bridge/flowcheck.mjs')
 
 test("the meeting-notes flow's answer is bounded and says where it came from", () => {
   const r = normaliseNotes({
@@ -43,6 +43,47 @@ test('the doctor reports the meeting-notes flow without calling it', async () =>
     meetingNotes: async () => ((called = true), {}),
   })
   const row = rows.find((r) => r.key === 'meeting_notes')
-  assert.equal(row.detail, 'set up (not called: it needs a meeting)')
+  assert.equal(row.detail, 'set up (not called: it needs a meeting; try --notes)')
   assert.equal(called, false)
+})
+
+test("Copilot's notes, a WebVTT transcript and a stringified sender come out as plain text", () => {
+  const r = normaliseNotes({
+    source: 'copilot',
+    notes: JSON.stringify([{ title: 'Intake', text: 'Reviewed the epics', subpoints: [{ title: 'Ranking', text: 'Thomas confirms' }] }]),
+    actionItems: [{ title: 'Send the list', text: 'Send the ranked list', ownerDisplayName: 'Scott' }],
+    transcript:
+      'WEBVTT\n\n0f1e-22/14-0\n00:00:01.000 --> 00:00:02.000\n<v Scott>Morning all</v>\n\n' +
+      '0f1e-22/15-0\n00:00:02.000 --> 00:00:03.000\n<v Scott>let us start</v>\n\n00:00:03.000 --> 00:00:04.000\n<v Thomas>Ready</v>',
+    email: { subject: 'Recap', from: JSON.stringify({ emailAddress: { name: 'Scott P', address: 'scott@example.com' } }), body: 'x' },
+  })
+  assert.equal(r.notes, 'Intake: Reviewed the epics\n  - Ranking: Thomas confirms')
+  assert.deepEqual(r.actionItems, ['Send the ranked list (Scott)'])
+  assert.equal(r.transcript, 'Scott: Morning all let us start\nThomas: Ready')
+  assert.equal(r.email.from, 'Scott P <scott@example.com>')
+  // Plain strings pass through as they are.
+  assert.equal(normaliseNotes({ notes: 'just text' }).notes, 'just text')
+})
+
+test("Graph's expected refusals are not errors; an expired connection is named", () => {
+  const blocked = normaliseNotes({ source: 'none', errors: ['Get_online_meeting: 403 Insufficient permissions', 'Get_transcript_content: 404 Not found'] })
+  assert.match(blocked.copilot, /^not granted/)
+  assert.deepEqual(blocked.errors, [])
+  const expired = normaliseNotes({ source: 'none', errors: ['Find_meeting: 401 Invalid token lifetime.'] })
+  assert.match(expired.copilot, /^reconnect/)
+  assert.equal(normaliseNotes({ source: 'copilot', notes: 'n' }).copilot, 'available')
+  assert.deepEqual(normaliseNotes({ errors: ['Find_meeting: 500 Server error'] }).errors, ['Find_meeting: 500 Server error'])
+})
+
+test('the doctor judges one meeting-notes answer by counts, and names the fix', () => {
+  const blocked = judgeNotes(normaliseNotes({ source: 'email', email: { subject: 's', body: 'b' }, errors: ['Get_online_meeting: 403 Insufficient permissions'] }))
+  assert.equal(blocked.status, 'ok')
+  assert.equal(blocked.detail, 'source: email; a recap email')
+  assert.match(blocked.fix, /OnlineMeetings\.Read/)
+  const expired = judgeNotes(normaliseNotes({ source: 'none', errors: ['Find_meeting: 401 Invalid token lifetime.'] }))
+  assert.equal(expired.status, 'fail')
+  assert.match(expired.fix, /Reconnect/)
+  const odd = judgeNotes(normaliseNotes({ source: 'none', errors: ['Find_meeting: 500 see https://graph.microsoft.com/x?sig=SECRET'] }))
+  assert.equal(odd.status, 'warn')
+  assert.doesNotMatch(odd.fix, /SECRET/)
 })
