@@ -4,6 +4,7 @@ import { readFile, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { findTranscript } from './transcripts.mjs'
 
 /**
  * Reading a report that lives on this Mac, like a generated dashboard.
@@ -161,7 +162,12 @@ export async function readLocalPage({ location, focus, maxChars = 30_000 }) {
   }
 }
 
-export function localFilesServer() {
+/**
+ * `onNoTranscript(meeting)` is told when no downloaded transcript matches a
+ * meeting: the last place a recap can come from, so the meeting's card can
+ * say how to get one (server.mjs, noNotesYet).
+ */
+export function localFilesServer({ onNoTranscript } = {}) {
   return createSdkMcpServer({
     name: 'jarvis_files',
     version: '1.0.0',
@@ -181,6 +187,23 @@ export function localFilesServer() {
             return { content: [{ type: 'text', text: JSON.stringify(await readLocalPage({ location, focus })) }] }
           } catch (err) {
             return { content: [{ type: 'text', text: `Could not read it: ${err.message}.` }], isError: true }
+          }
+        },
+      ),
+      tool(
+        'find_meeting_transcript',
+        'A Teams meeting transcript he downloaded (Teams: the meeting → Transcript → Download, .vtt or ' +
+          '.docx), found by the meeting\'s name in Downloads, Desktop or Documents and read as ' +
+          '"Speaker: words" lines. For a recap when Granola and the meeting-notes flow have nothing. ' +
+          'Give the meeting\'s subject as on the calendar.',
+        { meeting: z.string().min(2).max(300) },
+        async ({ meeting }) => {
+          try {
+            const r = await findTranscript(meeting)
+            if (!r.found) onNoTranscript?.(meeting)
+            return { content: [{ type: 'text', text: JSON.stringify(r) }] }
+          } catch (err) {
+            return { content: [{ type: 'text', text: `Could not read the transcript: ${err.message}.` }], isError: true }
           }
         },
       ),

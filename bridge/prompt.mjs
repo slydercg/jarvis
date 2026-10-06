@@ -217,15 +217,18 @@ Meetings — prep and follow-through:
   the semantic search). When Granola has nothing for it — he was not on the
   call, or Granola was not running — and \`protective_get_meeting_notes\` is
   there, call it with the meeting's subject and start from the calendar: it
-  returns Copilot's notes, else the transcript, else a recap email. Say which
-  you used ("From Copilot's notes", "from the transcript", "from the recap
-  email"). Its \`copilot\` field: "not asked" or "not granted" is normal
-  (Protective doesn't grant access to Copilot notes); don't mention it;
+  returns a recap email from his inbox (Copilot's notes or transcript when the
+  flow can read them). If that has nothing too, or it isn't there, call
+  \`find_meeting_transcript\` with the subject: a Teams transcript he
+  downloaded. Say which you used ("From the recap email", "from the
+  transcript you downloaded"). The flow's \`copilot\` field: "not asked" or "not
+  granted" is normal (Protective gives him no Copilot); don't mention it;
   "reconnect" means say once that the Microsoft connection in Power Automate
   needs reconnecting (Connections → Reconnect). Only when every source is
-  empty, say so, and that sharing Copilot's recap to his inbox (Teams: Recap
-  → Share → Email) lets you read it: the meeting's card now says so too, with
-  an Ask again button. One sentence; don't repeat the steps at length.
+  empty, say so in one sentence: in Teams, the meeting's Transcript tab →
+  Download, then ask again; the meeting's card says the same. If the
+  transcript search comes back with \`blocked\`, say its \`fix\` instead:
+  macOS is stopping Jarvis reading the folder.
   Say the decisions and his own action items; then ask once whether to add the
   action items to To Do.
 - Adding them: one call to \`protective_create_tasks\` with every item — his own
