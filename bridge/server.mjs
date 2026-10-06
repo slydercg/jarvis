@@ -634,6 +634,24 @@ function offerRecaps() {
   }
 }
 
+/**
+ * Granola had nothing for a meeting, and nor did the meeting-notes flow (no
+ * Copilot access at Protective, no recap email yet). The meeting's card,
+ * same kind and title so it is the same item, turns into how to get one:
+ * share Copilot's recap to the inbox, then ask again. Without this the only
+ * trace is a sentence that has already been said.
+ */
+function noNotesYet(title) {
+  broadcastAlert({
+    kind: 'recap',
+    label: 'No notes yet',
+    title,
+    detail: 'In Teams: Recap → Share → Email, then ask again',
+    at: new Date().toISOString(),
+    quiet: true,
+  })
+}
+
 // On a call (bridge/calls.mjs): every page keeps quiet until it ends.
 let onCall = null
 watchCalls((app) => {
@@ -1152,7 +1170,7 @@ wss.on('connection', (socket) => {
         jarvis_stratum: stratumServer(),
         // The Protective mailbox, calendar and To Do, via Power Automate —
         // present only once its flows are set up.
-        ...(protectiveConfigured() ? { protective: protectiveServer() } : {}),
+        ...(protectiveConfigured() ? { protective: protectiveServer({ onNoNotes: noNotesYet }) } : {}),
       },
       // A plain system prompt, not the claude_code preset. The preset is
       // tuned for a coding agent — verbose, file-oriented, and a large chunk

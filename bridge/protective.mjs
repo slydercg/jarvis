@@ -302,7 +302,11 @@ export function normaliseNotes(r) {
   // The flow starts with an empty email object and fills it only when one is found.
   const email = r?.email && typeof r.email === 'object' && (r.email.subject || r.email.body) ? r.email : null
   const source = ['copilot', 'transcript', 'email', 'none'].includes(r?.source) ? r.source : 'none'
-  const { copilot, errors } = graphStatus(r?.errors)
+  const status = graphStatus(r?.errors)
+  const errors = status.errors
+  // No Graph errors and no Copilot or transcript: the flow didn't ask Graph
+  // (Protective doesn't grant it), which is not the same as "available".
+  const copilot = status.copilot === 'available' && source !== 'copilot' && source !== 'transcript' ? 'not asked' : status.copilot
   return {
     source,
     meeting: s(r?.meeting, 200),
@@ -418,9 +422,10 @@ const failed = (err) => ({ content: [{ type: 'text', text: `Protective is unavai
 /**
  * `readOnly` builds the reading tools only — what the background watcher and
  * the briefing get, so neither could draft, send or add anything even if
- * asked to.
+ * asked to. `onNoNotes(subject)` is told when the meeting-notes flow found
+ * nothing at all for a meeting.
  */
-export function protectiveServer({ readOnly = false } = {}) {
+export function protectiveServer({ readOnly = false, onNoNotes } = {}) {
   const tools = [
     tool(
       'protective_get_inbox',
@@ -491,7 +496,11 @@ export function protectiveServer({ readOnly = false } = {}) {
         },
         async ({ subject, start, end }) => {
           try {
-            return text(await protective.meetingNotes({ subject, start, end }))
+            const notes = await protective.meetingNotes({ subject, start, end })
+            // Nothing anywhere: the meeting's card says how to get a recap
+            // into the inbox (server.mjs), so the next try finds it.
+            if (notes.source === 'none') onNoNotes?.(subject)
+            return text(notes)
           } catch (err) {
             return failed(err)
           }

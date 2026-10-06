@@ -45,7 +45,9 @@ export function primaryAction(i: ItemLike): Action | null {
       // Adding to To Do goes through the usual confirmation: nothing is
       // added until he says yes.
       return {
-        label: 'Recap & actions',
+        // Nothing was found the first time (bridge/server.mjs noNotesYet):
+        // the same question, once the recap has been shared to the inbox.
+        label: i.label === 'No notes yet' ? 'Ask again' : 'Recap & actions',
         ask:
           `Recap "${i.title}", the meeting that just ended, from its meeting notes: what was decided, ` +
           `the action items that are mine, and what others said they would do for me. Record each of ` +
