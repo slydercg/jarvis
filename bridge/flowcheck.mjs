@@ -81,10 +81,13 @@ export function judgeNotes(r) {
     return { status: 'fail', detail, fix: 'Power Automate → Connections → "HTTP with Microsoft Entra ID" → Reconnect.' }
   }
   const fix = [
-    r.copilot.startsWith('not granted') && 'Copilot notes and transcripts need Protective IT to grant the flow\'s app OnlineMeetings.Read, OnlineMeetingTranscript.Read.All and OnlineMeetingAIInsight.Read.All. Recap emails work meanwhile.',
+    r.copilot.startsWith('not granted') &&
+      'The flow still asks Graph for Copilot notes, which Protective does not grant: remove its "Copilot and transcript" scope.',
+    r.source === 'none' && 'Nothing found: no recap email for that meeting in the inbox yet (Teams: Recap → Share → Email).',
     r.errors?.length && `Unexpected: ${r.errors.map(noUrls).join(' | ')}`,
   ].filter(Boolean).join(' ')
-  return { status: r.errors?.length ? 'warn' : r.source === 'none' && !r.copilot.startsWith('not granted') ? 'warn' : 'ok', detail, fix: fix || undefined }
+  // Nothing found for one meeting is an answer, not a broken flow.
+  return { status: r.errors?.length ? 'warn' : 'ok', detail, fix: fix || undefined }
 }
 
 const MISSING = {

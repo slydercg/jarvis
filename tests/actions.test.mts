@@ -48,3 +48,11 @@ test('Nudge on a blocked ticket drafts a message to whoever has it, never sends'
   assert.equal(nudgeAsk({ key: 'NI-1', title: 'x', detail: 'Unassigned · To Do' }), null)
   assert.equal(nudgeAsk({ title: 'no key', detail: 'Chris' }), null)
 })
+
+test("a meeting with no notes yet offers to ask again, the same question", () => {
+  const first = primaryAction({ kind: 'recap', label: 'Meeting ended', title: 'APD intake' })
+  const again = primaryAction({ kind: 'recap', label: 'No notes yet', title: 'APD intake' })
+  assert.equal(first?.label, 'Recap & actions')
+  assert.equal(again?.label, 'Ask again')
+  assert.equal(again?.ask, first?.ask)
+})
