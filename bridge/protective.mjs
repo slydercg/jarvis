@@ -1,5 +1,6 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
+import { vttText } from './transcripts.mjs'
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -348,23 +349,6 @@ function actionItem(i) {
   return what ? (who ? `${what} (${who})` : what) : i
 }
 
-/** WebVTT down to "Speaker: words" lines: cue numbers, timings and tags go. */
-function vttText(v) {
-  if (typeof v !== 'string' || !/^\uFEFF?WEBVTT/.test(v)) return v
-  const out = []
-  for (const raw of v.split(/\r?\n/)) {
-    const l = raw.trim()
-    if (!l || /^\uFEFF?WEBVTT/.test(l) || /-->/.test(l) || /^(NOTE|\d+$|[\w-]+\/\d+-\d+$)/i.test(l)) continue
-    const m = l.match(/^<v\s+([^>]+)>(.*?)(?:<\/v>)?$/)
-    const line = m ? `${m[1].trim()}: ${m[2]}` : l.replace(/<[^>]+>/g, '')
-    // Teams splits one speaker's sentence across cues; join them back up.
-    const who = m ? `${m[1].trim()}: ` : null
-    if (who && out.length && out[out.length - 1].startsWith(who)) out[out.length - 1] += ` ${m[2]}`
-    else out.push(line)
-  }
-  return out.join('\n')
-}
-
 /** "Name <address>" from a stringified Graph recipient, or the string as sent. */
 function sender(v) {
   const f = parsed(v)
@@ -422,10 +406,9 @@ const failed = (err) => ({ content: [{ type: 'text', text: `Protective is unavai
 /**
  * `readOnly` builds the reading tools only — what the background watcher and
  * the briefing get, so neither could draft, send or add anything even if
- * asked to. `onNoNotes(subject)` is told when the meeting-notes flow found
- * nothing at all for a meeting.
+ * asked to.
  */
-export function protectiveServer({ readOnly = false, onNoNotes } = {}) {
+export function protectiveServer({ readOnly = false } = {}) {
   const tools = [
     tool(
       'protective_get_inbox',
@@ -496,11 +479,7 @@ export function protectiveServer({ readOnly = false, onNoNotes } = {}) {
         },
         async ({ subject, start, end }) => {
           try {
-            const notes = await protective.meetingNotes({ subject, start, end })
-            // Nothing anywhere: the meeting's card says how to get a recap
-            // into the inbox (server.mjs), so the next try finds it.
-            if (notes.source === 'none') onNoNotes?.(subject)
-            return text(notes)
+            return text(await protective.meetingNotes({ subject, start, end }))
           } catch (err) {
             return failed(err)
           }

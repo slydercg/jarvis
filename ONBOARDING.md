@@ -62,6 +62,7 @@ Everything it remembers lives in `~/.jarvis`.
 | `memory.mjs` | Remembered facts (`~/.jarvis/memory.md`) and resuming the conversation |
 | `chrome.mjs` | Drives your own browser through the Claude extension |
 | `localfiles.mjs` | Reads `file://` reports and dashboards in the home folder |
+| `transcripts.mjs` | Finds and reads a Teams meeting transcript he downloaded, for a recap Granola missed |
 | `selfcheck.mjs` | The Friday review's line on how Jarvis did: reports, what the voice loop ignored and dropped, spend |
 | `reports.mjs` | Saves a "that was wrong" report: what the page heard and decided, the turns, the bridge's log. `npm run report` prints the latest |
 | `calls.mjs` | Notices a Zoom, Teams, Webex, FaceTime or browser call on the Mac, so the page keeps quiet (with `src/lib/oncall.ts`) |

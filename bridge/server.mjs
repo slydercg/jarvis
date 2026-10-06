@@ -635,10 +635,11 @@ function offerRecaps() {
 }
 
 /**
- * Granola had nothing for a meeting, and nor did the meeting-notes flow (no
- * Copilot access at Protective, no recap email yet). The meeting's card,
- * same kind and title so it is the same item, turns into how to get one:
- * share Copilot's recap to the inbox, then ask again. Without this the only
+ * Granola had nothing for a meeting, the meeting-notes flow found no recap
+ * email, and no downloaded transcript matches it. Protective gives him no
+ * Copilot recap, but every recorded meeting has a Transcript tab. The
+ * meeting's card, same kind and title so it is the same item, turns into how
+ * to get one: download the transcript, then ask again. Without this the only
  * trace is a sentence that has already been said.
  */
 function noNotesYet(title) {
@@ -646,7 +647,7 @@ function noNotesYet(title) {
     kind: 'recap',
     label: 'No notes yet',
     title,
-    detail: 'In Teams: Recap → Share → Email, then ask again',
+    detail: 'In Teams: the meeting → Transcript → Download, then ask again',
     at: new Date().toISOString(),
     quiet: true,
   })
@@ -1155,7 +1156,7 @@ wss.on('connection', (socket) => {
         // The day's ranked brief, built by a read-only session and cached.
         jarvis_brief: briefServer(briefDeps()),
         // Reports and dashboards saved on this Mac, file:// links included.
-        jarvis_files: localFilesServer(),
+        jarvis_files: localFilesServer({ onNoTranscript: noNotesYet }),
         // Who's who and what's what: people and projects he works with.
         jarvis_people: peopleServer(),
         // Closing the loop: the evening wrap, dossiers, the promise ledger.
@@ -1170,7 +1171,7 @@ wss.on('connection', (socket) => {
         jarvis_stratum: stratumServer(),
         // The Protective mailbox, calendar and To Do, via Power Automate —
         // present only once its flows are set up.
-        ...(protectiveConfigured() ? { protective: protectiveServer({ onNoNotes: noNotesYet }) } : {}),
+        ...(protectiveConfigured() ? { protective: protectiveServer() } : {}),
       },
       // A plain system prompt, not the claude_code preset. The preset is
       // tuned for a coding agent — verbose, file-oriented, and a large chunk

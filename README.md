@@ -675,12 +675,23 @@ actions**: what was decided and your action items, from the meeting notes
 (Granola), with an offer to add yours to To Do. Nothing is added until you say
 yes.
 
-When Granola has nothing (you weren't on the call, or it wasn't running), an
-optional Protective **meeting notes** flow (`meeting_notes` in
-`pa_endpoints.json`) looks for a recap email in your inbox: a Copilot recap
-shared to you (Teams: Recap → Share → Email), or one a colleague forwarded.
-Jarvis says which source it used. If there is nothing yet, the card turns into
-**No notes yet**, with that Teams step and an **Ask again** button.
+When Granola has nothing (you weren't on the call, or it wasn't running),
+Jarvis looks in two more places:
+
+- **A recap email in your inbox**, through the optional Protective **meeting
+  notes** flow (`meeting_notes` in `pa_endpoints.json`): a recap a colleague
+  sent or forwarded, or one you shared to yourself.
+- **A transcript you downloaded.** Any recorded meeting has a Transcript tab
+  in Teams, with no Copilot licence needed: **Transcript → Download** (.vtt
+  or .docx). Jarvis finds it by the meeting's name in Downloads, Desktop or
+  Documents (top level only, changed in the last week) and recaps from it.
+  The first time, macOS may ask whether node can read Downloads; allow it.
+  If it was refused, Jarvis says so: System Settings → Privacy & Security →
+  Files and Folders → node.
+
+Jarvis says which source it used. If there is nothing anywhere, the card
+turns into **No notes yet**: "In Teams: the meeting → Transcript → Download,
+then ask again", with an **Ask again** button.
 
 The flow can also return Copilot's notes and the Teams transcript through
 Microsoft Graph, but that needs permissions Protective doesn't grant, so it
