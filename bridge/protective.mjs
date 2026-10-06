@@ -289,8 +289,12 @@ export const protective = {
 }
 
 /**
- * The meeting-notes flow's answer, bounded: a transcript can run to a
- * hundred thousand characters, and all of it would go into the turn.
+ * The meeting-notes flow's answer, bounded and made readable: a transcript
+ * can run to a hundred thousand characters, and all of it would go into the
+ * turn. Copilot's notes arrive as Graph's meetingNotes serialised to a JSON
+ * string, the transcript as WebVTT, and the sender as a stringified Graph
+ * recipient; each is turned into plain text here so the model reads prose,
+ * not markup.
  */
 export function normaliseNotes(r) {
   const s = (v, n) => (typeof v === 'string' ? v : v == null ? '' : JSON.stringify(v)).slice(0, n)
@@ -298,15 +302,97 @@ export function normaliseNotes(r) {
   // The flow starts with an empty email object and fills it only when one is found.
   const email = r?.email && typeof r.email === 'object' && (r.email.subject || r.email.body) ? r.email : null
   const source = ['copilot', 'transcript', 'email', 'none'].includes(r?.source) ? r.source : 'none'
+  const { copilot, errors } = graphStatus(r?.errors)
   return {
     source,
     meeting: s(r?.meeting, 200),
-    notes: s(r?.notes, 20_000),
-    actionItems: items.map((i) => s(typeof i === 'string' ? i : i?.text ?? i?.title ?? i, 400)).filter(Boolean).slice(0, 30),
-    transcript: s(r?.transcript, 60_000),
-    email: email ? { subject: s(email.subject, 300), from: s(email.from, 200), received: s(email.received, 40), body: s(email.body, 20_000) } : null,
-    errors: (Array.isArray(r?.errors) ? r.errors : []).map((e) => s(e, 300)).slice(0, 5),
+    notes: s(copilotNotes(r?.notes), 20_000),
+    actionItems: items.map((i) => s(actionItem(i), 400)).filter(Boolean).slice(0, 30),
+    transcript: s(vttText(r?.transcript), 60_000),
+    email: email ? { subject: s(email.subject, 300), from: s(sender(email.from), 200), received: s(email.received, 40), body: s(email.body, 20_000) } : null,
+    copilot,
+    errors: errors.map((e) => s(e, 300)).slice(0, 5),
   }
+}
+
+const parsed = (v) => {
+  if (typeof v !== 'string' || !/^\s*[[{]/.test(v)) return v
+  try {
+    return JSON.parse(v)
+  } catch {
+    return v
+  }
+}
+
+/** Graph's meetingNotes ([{ title, text, subpoints: [{ title, text }] }]) as plain lines. */
+function copilotNotes(v) {
+  const notes = parsed(v)
+  if (typeof notes === 'string' || notes == null) return notes ?? ''
+  const list = Array.isArray(notes) ? notes : Array.isArray(notes?.value) ? notes.value : [notes]
+  const line = (n) => [n?.title, n?.text].filter(Boolean).join(': ')
+  return list
+    .map((n) => [line(n), ...(Array.isArray(n?.subpoints) ? n.subpoints.map((p) => `  - ${line(p)}`) : [])].filter((l) => l.trim() && l.trim() !== '-').join('\n'))
+    .filter(Boolean)
+    .join('\n')
+}
+
+/** A Copilot action item ({ title, text, ownerDisplayName }) or a plain string. */
+function actionItem(i) {
+  if (typeof i === 'string') return i
+  const what = i?.text ?? i?.title ?? ''
+  const who = i?.ownerDisplayName
+  return what ? (who ? `${what} (${who})` : what) : i
+}
+
+/** WebVTT down to "Speaker: words" lines: cue numbers, timings and tags go. */
+function vttText(v) {
+  if (typeof v !== 'string' || !/^\uFEFF?WEBVTT/.test(v)) return v
+  const out = []
+  for (const raw of v.split(/\r?\n/)) {
+    const l = raw.trim()
+    if (!l || /^\uFEFF?WEBVTT/.test(l) || /-->/.test(l) || /^(NOTE|\d+$|[\w-]+\/\d+-\d+$)/i.test(l)) continue
+    const m = l.match(/^<v\s+([^>]+)>(.*?)(?:<\/v>)?$/)
+    const line = m ? `${m[1].trim()}: ${m[2]}` : l.replace(/<[^>]+>/g, '')
+    // Teams splits one speaker's sentence across cues; join them back up.
+    const who = m ? `${m[1].trim()}: ` : null
+    if (who && out.length && out[out.length - 1].startsWith(who)) out[out.length - 1] += ` ${m[2]}`
+    else out.push(line)
+  }
+  return out.join('\n')
+}
+
+/** "Name <address>" from a stringified Graph recipient, or the string as sent. */
+function sender(v) {
+  const f = parsed(v)
+  const a = f?.emailAddress ?? f
+  if (a && typeof a === 'object') return [a.name, a.address && `<${a.address}>`].filter(Boolean).join(' ')
+  return f
+}
+
+/**
+ * What the flow's Graph errors mean. Until Protective grants the connector's
+ * app OnlineMeetings.Read and the transcript and AI-insight permissions,
+ * every call fails at Get_online_meeting with a 403: expected, not news, and
+ * the recap email still works. A 401 "Invalid token lifetime" means the
+ * connection has expired and he can fix it (Power Automate → Connections →
+ * Reconnect). A 404 for a missing transcript, or a v1.0 refusal when beta
+ * answered, is noise. Only what is left is passed on as `errors`.
+ */
+export function graphStatus(list) {
+  const all = (Array.isArray(list) ? list : []).map((e) => String(e ?? ''))
+  const reconnect = all.some((e) => /\b401\b/.test(e) && /token/i.test(e))
+  const blocked = all.some((e) => /\b403\b/.test(e) && /online_?meeting|insufficient|permission/i.test(e))
+  const noise = (e) =>
+    (/\b403\b/.test(e) && /online_?meeting|insufficient|permission/i.test(e)) ||
+    (/\b401\b/.test(e) && /token/i.test(e)) ||
+    (/transcript/i.test(e) && /\b404\b/.test(e)) ||
+    /insights?/i.test(e)
+  const copilot = reconnect
+    ? 'reconnect: the Microsoft Graph connection in Power Automate has expired; Power Automate → Connections → Reconnect'
+    : blocked
+      ? 'not granted: Protective has not given the flow access to Copilot notes or transcripts yet'
+      : 'available'
+  return { copilot, errors: all.filter((e) => e && !noise(e)) }
 }
 
 export const hasFlow = (key) => Boolean((cache ?? loadFlows()).flows[key])
@@ -395,7 +481,8 @@ export function protectiveServer({ readOnly = false } = {}) {
         'protective_get_meeting_notes',
         'What Microsoft has on one Protective meeting when Granola has nothing (he was not on the call, ' +
           'or Granola was not running): Copilot\'s meeting notes and action items, else the Teams ' +
-          'transcript, else a recap email in the inbox. `source` says which (none when there is nothing). ' +
+          'transcript, else a recap email in the inbox. `source` says which (none when there is nothing); ' +
+          '`copilot` says whether Copilot and transcripts can be read at all. ' +
           'Give the meeting\'s subject as on the calendar and its start (ISO 8601).',
         {
           subject: z.string().min(2).max(300),
