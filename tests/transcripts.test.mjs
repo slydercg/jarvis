@@ -4,7 +4,7 @@ import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, utimesSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { deflateRawSync } from 'node:zlib'
-import { docxText, findTranscript, nameMatch, unzipEntry, vttText } from '../bridge/transcripts.mjs'
+import { docxText, findTranscript, nameMatch, unzipEntry, vttText, watchForTranscripts } from '../bridge/transcripts.mjs'
 
 /** A minimal .zip holding one deflated file, as a .docx is built. */
 function zip(name, content) {
@@ -128,4 +128,27 @@ test('no transcript for a meeting tells the bridge, so its card can say how to g
   } finally {
     process.env.HOME = realHome
   }
+})
+
+test('a meeting waiting for its transcript is told once when it turns up, and forgotten after a day', async () => {
+  let t = 0
+  let there = false
+  const found = []
+  const watch = watchForTranscripts({
+    now: () => t,
+    find: async (title) => (there && title === 'Daily IT Leader Sync' ? { found: true, file: '~/Downloads/Daily IT Leader Sync.vtt' } : { found: false }),
+    onFound: (title, r) => found.push([title, r.file]),
+  })
+  watch.add('Daily IT Leader Sync')
+  watch.add('Weaver / Slyder Bi-Weekly Touchpoint')
+  await watch.tick()
+  assert.deepEqual(found, [])
+  there = true
+  await watch.tick()
+  await watch.tick()
+  assert.deepEqual(found, [['Daily IT Leader Sync', '~/Downloads/Daily IT Leader Sync.vtt']])
+  assert.equal(watch.size(), 1)
+  t = 25 * 3_600_000
+  await watch.tick()
+  assert.equal(watch.size(), 0)
 })

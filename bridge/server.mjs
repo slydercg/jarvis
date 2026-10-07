@@ -37,11 +37,12 @@ import {
   sessionOptions,
 } from './memory.mjs'
 import { displayServer } from './panels.mjs'
-import { protectiveConfigured, protectiveServer } from './protective.mjs'
+import { FLOWS, onFlowResult, protectiveConfigured, protectiveServer } from './protective.mjs'
 import { briefAction, briefHealth, briefServer, maybeOfferBrief, onBriefAction } from './briefing.mjs'
 import { holdingsEnabled, holdingsOnOpen } from './holdings.mjs'
 import { backgroundPaused, onCapReached, recordSpend, spendSummary } from './spend.mjs'
 import { localFilesServer } from './localfiles.mjs'
+import { watchForTranscripts } from './transcripts.mjs'
 import { loopServer, logMeetings, maybeOfferWrap } from './loop.mjs'
 import {
   closeCommitment,
@@ -643,6 +644,7 @@ function offerRecaps() {
  * trace is a sentence that has already been said.
  */
 function noNotesYet(title) {
+  transcriptWatch.add(title)
   broadcastAlert({
     kind: 'recap',
     label: 'No notes yet',
@@ -652,6 +654,24 @@ function noNotesYet(title) {
     quiet: true,
   })
 }
+
+/**
+ * Meetings whose card says "No notes yet", watched on the minute clock for
+ * their transcript turning up in Downloads (transcripts.mjs), so downloading
+ * it is the only step: the card turns into "Transcript found" and its button
+ * recaps.
+ */
+const transcriptWatch = watchForTranscripts({
+  onFound: (title, r) =>
+    broadcastAlert({
+      kind: 'recap',
+      label: 'Transcript found',
+      title,
+      detail: `Recap & actions from the transcript you downloaded (${r.file.replace(/^.*[\\/]/, '')})`,
+      at: new Date().toISOString(),
+      quiet: true,
+    }),
+})
 
 // On a call (bridge/calls.mjs): every page keeps quiet until it ends.
 let onCall = null
@@ -695,6 +715,37 @@ const jobHealth = createStreaks({
 })
 // A promise alert closes itself once the ledger has the promise kept.
 registerResolver('commitment', commitmentOpen)
+
+/**
+ * A Protective flow that keeps failing, said once. Power Automate connections
+ * expire (Teams and Entra both did in one week) and nothing says so: the
+ * brief just has no mail in it. Three failures in a row (the calendar flow
+ * alone is called every minute) give one card naming the flow and, when its
+ * error says so, the connection to reconnect. The card closes itself once the
+ * flow answers again.
+ */
+const flowHealth = createStreaks({
+  threshold: 3,
+  onStuck: (key, n, connection) => {
+    const flow = FLOWS[key] ?? key
+    console.warn(`[jarvis] the ${flow} flow has failed ${n} times running${connection ? ` (${connection} connection)` : ''}`)
+    broadcastAlert({
+      kind: 'reminder',
+      label: 'Flow failing',
+      ref: `flow:${key}`,
+      title: connection ? `Reconnect ${connection} in Power Automate` : `The Protective ${flow} flow is failing`,
+      detail: connection
+        ? `The ${flow} flow can't sign in. Power Automate → Connections → ${connection} → Reconnect.`
+        : `${n} calls in a row have failed. Open the flow in Power Automate and check its run history; a connection there may need reconnecting.`,
+      say: connection
+        ? `Sir, the ${connection} connection in Power Automate needs reconnecting. Until then I can't read your ${flow.toLowerCase()}.`
+        : `Sir, I can't reach your Protective ${flow.toLowerCase()} at the moment.`,
+      at: new Date().toISOString(),
+    })
+  },
+})
+onFlowResult(({ key, ok, connection }) => (ok ? flowHealth.ok(key) : flowHealth.fail(key, connection ?? '')))
+registerResolver('flow', (key) => flowHealth.count(key) > 0)
 onStratumChange((items) => {
   for (const deliver of pages) deliver({ type: 'stratum', items })
 })
@@ -813,6 +864,7 @@ setInterval(() => {
   if (!paused && inWindow(ALERT_HOURS, ALERT_DAYS)) void warmPulse(deps)
   // Costs nothing until clicked: a card, and the click asks the conversation.
   if (RECAP && inWindow(ALERT_HOURS, ALERT_DAYS)) offerRecaps()
+  if (transcriptWatch.size()) void transcriptWatch.tick()
   // How he writes, relearned weekly from his sent mail (voice.mjs).
   if (!paused && inWindow(ALERT_HOURS, ALERT_DAYS) && voiceDue()) {
     learnVoice(deps)

@@ -81,27 +81,26 @@ function oneDriveCandidates() {
 
 let cache = null
 
-/** { flows, source } — the flows available now. Re-read when the file changes. */
+/** { flows, source, path } — the flows available now, and the file they came from. */
+/** Where a flows file may be, in the order they are tried. */
+export const flowFileCandidates = () => [process.env.JARVIS_PA_ENDPOINTS, SAVED, ...oneDriveCandidates()].filter(Boolean)
+
 export function loadFlows() {
-  const candidates = [
-    process.env.JARVIS_PA_ENDPOINTS,
-    SAVED,
-    ...oneDriveCandidates(),
-  ].filter(Boolean)
-  for (const path of candidates) {
+  for (const path of flowFileCandidates()) {
     if (!existsSync(path)) continue
     try {
-      const flows = pickFlows(JSON.parse(readFileSync(path, 'utf8')))
+      // A byte-order mark (Windows editors write one) is not JSON; skip it.
+      const flows = pickFlows(JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, '')))
       if (Object.keys(flows).length) {
         const source = path.replace(homedir(), '~')
-        cache = { flows, source }
+        cache = { flows, source, path }
         return cache
       }
     } catch {
       // Unreadable or not JSON: try the next place.
     }
   }
-  cache = { flows: {}, source: null }
+  cache = { flows: {}, source: null, path: null }
   return cache
 }
 
@@ -134,6 +133,45 @@ export function forgetFlows() {
 // Calling a flow
 // ---------------------------------------------------------------------------
 
+/**
+ * Every flow call's outcome, for the bridge to notice a flow that keeps
+ * failing (server.mjs): { key, ok, status?, connection? }. `connection` is
+ * set when the answer looks like an expired or refused Power Automate
+ * connection, which he fixes himself (Connections → Reconnect); it names the
+ * connector when the error does.
+ */
+const flowListeners = new Set()
+export function onFlowResult(fn) {
+  flowListeners.add(fn)
+  return () => flowListeners.delete(fn)
+}
+const tell = (r) => {
+  for (const fn of flowListeners) {
+    try {
+      fn(r)
+    } catch {
+      // A listener's mistake is not the flow's.
+    }
+  }
+}
+
+/** Which connector a flow's error names, or which one the flow mostly uses. */
+const CONNECTORS = [
+  [/teams/i, 'Microsoft Teams'],
+  [/to-?do|todo/i, 'Microsoft To Do'],
+  [/office ?365|outlook|exchange/i, 'Office 365 Outlook'],
+  [/entra|azure ?ad|webcontents|httpwithazuread/i, 'HTTP with Microsoft Entra ID'],
+]
+export function connectionProblem(key, status, text) {
+  const t = String(text ?? '')
+  const looks =
+    status === 401 ||
+    /Unauthorized|InvalidAuthenticationToken|token lifetime|ConnectionAuthorizationFailed|reauthori|consent|connection[^"]{0,40}(expired|invalid|not (authorized|authenticated))/i.test(t)
+  if (!looks) return null
+  for (const [re, name] of CONNECTORS) if (re.test(t)) return name
+  return /^todo/.test(key) ? 'Microsoft To Do' : 'Office 365 Outlook'
+}
+
 async function callFlow(key, body = {}, timeoutMs = 60_000) {
   const url = (cache ?? loadFlows()).flows[key]
   if (!url) {
@@ -141,17 +179,25 @@ async function callFlow(key, body = {}, timeoutMs = 60_000) {
       `the ${FLOWS[key] ?? key} flow is not set up — add "${key}" to ~/.jarvis/power-automate.json`,
     )
   }
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
-  })
+  let res
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+  } catch (err) {
+    tell({ key, ok: false })
+    throw err
+  }
   const text = await res.text()
   if (!res.ok) {
+    tell({ key, ok: false, status: res.status, connection: connectionProblem(key, res.status, text) })
     // Never echo the URL: it is the credential.
     throw new Error(`the ${FLOWS[key] ?? key} flow answered ${res.status}`)
   }
+  tell({ key, ok: true })
   try {
     return text ? JSON.parse(text) : {}
   } catch {
