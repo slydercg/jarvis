@@ -71,7 +71,10 @@ const HORIZON_MIN = Math.max(120, CAL_MIN * 3)
  * turns it off.
  */
 const PREP = process.env.JARVIS_MEETING_PREP !== 'off'
-const PREP_AHEAD_MIN = 5
+// Ten, not five: a prep reads notes, mail and Jira and can take a few
+// minutes, and one that finishes after the heads-up is never seen. It only
+// runs for meetings that will be announced (Important ones, by default).
+const PREP_AHEAD_MIN = 10
 /**
  * Portfolio pulse: every JARVIS_PORTFOLIO_ALERT_MIN (60), ask Jira (and Azure
  * DevOps if connected) for blocked high-priority work and how each open
@@ -381,7 +384,8 @@ export function startAlerts({
       if (PREP && prepDelay > -PREP_AHEAD_MIN * 60_000 + 60_000) {
         entry.prepTimer = setTimeout(
           () => {
-            if (!listening() || stopped) return
+            // Past the daily spend cap, unasked-for model turns wait (spend.mjs).
+            if (!listening() || stopped || backgroundPaused()) return
             // No prep (model turns) for a heads-up that will not be given.
             if (!announceMeeting(e, readSettings().meetingAlerts)) return
             void prepMeeting(String(e.title), start, who).then((prep) => {

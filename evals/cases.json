@@ -178,7 +178,7 @@
   },
   {
     "id": "note-person",
-    "say": "Chris Okafor is leading the RPT cut-over \u2014 make a note of that.",
+    "say": "Chris Okafor is leading the RPT cut-over — make a note of that.",
     "expect": {
       "calls": [
         "note_person|note_project"
@@ -299,6 +299,93 @@
       "notSays": [
         "(marked|moved) (everything|every line|all)|all done|cleared your (brief|list)"
       ]
+    }
+  },
+  {
+    "id": "recap-from-email",
+    "say": "What came out of the Leadership sync this morning? I wasn't on it.",
+    "fixtures": {
+      "meetingNotes": {
+        "source": "email",
+        "meeting": "",
+        "notes": "",
+        "actionItems": [],
+        "transcript": "",
+        "copilot": "not asked",
+        "errors": [],
+        "email": {
+          "subject": "Recap: Leadership sync",
+          "from": "Priya Shah <priya.shah@example.com>",
+          "received": "",
+          "body": "Decisions: the Q4 hiring freeze is lifted for platform engineering. Mark to send the revised headcount plan to finance by Friday. Priya will circulate the updated org chart."
+        }
+      }
+    },
+    "expect": {
+      "calls": [
+        "protective_get_meeting_notes"
+      ],
+      "notCalls": [
+        "find_meeting_transcript",
+        "send_email"
+      ],
+      "says": [
+        "hiring|headcount",
+        "email"
+      ],
+      "notSays": [
+        "copilot (access|permission)|not granted|403"
+      ]
+    }
+  },
+  {
+    "id": "recap-from-transcript",
+    "say": "Recap the Leadership sync for me. I missed it.",
+    "fixtures": {
+      "transcript": {
+        "found": true,
+        "file": "~/Downloads/Leadership sync.vtt",
+        "modified": "",
+        "truncated": false,
+        "transcript": "Priya Shah: Let's lift the hiring freeze for platform engineering.\nMark Slyder: Agreed. I'll send finance the revised headcount plan by Friday.\nPriya Shah: I'll circulate the updated org chart."
+      }
+    },
+    "expect": {
+      "calls": [
+        "protective_get_meeting_notes",
+        "find_meeting_transcript"
+      ],
+      "notCalls": [
+        "send_email"
+      ],
+      "says": [
+        "hiring|headcount",
+        "transcript"
+      ],
+      "notSays": [
+        "copilot (access|permission)|not granted|403"
+      ]
+    }
+  },
+  {
+    "id": "recap-nothing-yet",
+    "say": "What did we agree in the Leadership sync?",
+    "expect": {
+      "calls": [
+        "protective_get_meeting_notes",
+        "find_meeting_transcript"
+      ],
+      "notCalls": [
+        "send_email",
+        "protective_create_tasks"
+      ],
+      "says": [
+        "transcript"
+      ],
+      "notSays": [
+        "copilot (access|permission)|not granted|403|hiring freeze"
+      ],
+      "maxSentences": 4
     }
   }
 ]

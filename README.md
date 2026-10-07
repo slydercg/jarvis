@@ -479,12 +479,15 @@ sent-mail flow).
 
 ## Meetings: prep and follow-through
 
-- **Before:** about five minutes before each meeting heads-up, the watcher
+- **Before:** about ten minutes before each meeting heads-up, the watcher
   gathers where things stand with those people. It uses the last Granola notes,
   the latest mail thread and open Jira items. The heads-up says it in a
-  sentence, and the alert card lists the points. `JARVIS_MEETING_PREP=off`
-  turns this off.
-- **On demand:** "prep me for my next meeting".
+  sentence, and the alert card lists the points. It runs only for meetings
+  that will be announced (Important ones, by default), and waits once the daily
+  spend cap is reached. `JARVIS_MEETING_PREP=off` turns this off.
+- **On demand:** "prep me for my next meeting". **Prep me** on a heads-up that
+  already has its points goes one level further from them, rather than
+  gathering the same notes and mail again.
 - **After:** "what did we agree?" reads the meeting from Granola. He then offers
   to add the action items to To Do: your own go to Daily Meeting Actions, and
   what others owe you goes to Waiting On Others.

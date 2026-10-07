@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const { score, sentences, summarise } = await import('../evals/score.mjs')
+const { fixtures } = await import('../evals/fake-protective.mjs')
 const cases = JSON.parse(readFileSync(new URL('../evals/cases.json', import.meta.url), 'utf8'))
 
 const failing = (checks) => checks.filter((c) => !c.ok).map((c) => c.check)
@@ -20,6 +21,13 @@ test('every case has an id, something said, and valid expectations', () => {
       const patterns = k === 'inputs' || k === 'notInputs' ? v.flatMap((x) => [x.call, x.has]) : v
       for (const p of patterns) assert.doesNotThrow(() => new RegExp(p, 'i'), `${c.id}: ${p}`)
     }
+  }
+})
+
+test("a case's own fixtures only replace data the fake account has", () => {
+  const known = Object.keys(fixtures())
+  for (const c of cases) {
+    for (const k of Object.keys(c.fixtures ?? {})) assert.ok(known.includes(k), `${c.id}: unknown fixture ${k}`)
   }
 })
 

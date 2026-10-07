@@ -56,3 +56,15 @@ test("a meeting with no notes yet offers to ask again, the same question", () =>
   assert.equal(again?.label, 'Ask again')
   assert.equal(again?.ask, first?.ask)
 })
+
+test('Prep me builds on the prep the heads-up already carries', () => {
+  const bare = primaryAction({ kind: 'meeting', title: 'Vendor review' })
+  assert.equal(bare?.ask, 'Prep me for Vendor review.')
+  const prepped = primaryAction({
+    kind: 'meeting',
+    title: 'Vendor review',
+    prep: { summary: 'Northwind wants a sign-off on the renewal.', points: ['You owe Dana: the redlines'] },
+  })
+  assert.equal(prepped?.label, 'Prep me')
+  assert.match(prepped?.ask ?? '', /^Prep me for Vendor review\. You already have: Northwind wants a sign-off on the renewal\. You owe Dana: the redlines Go one level deeper/)
+})

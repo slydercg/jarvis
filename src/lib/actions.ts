@@ -11,7 +11,13 @@
  */
 import type { AlertKind } from './bridge'
 
-export type ItemLike = { kind: AlertKind; label?: string; title: string; detail?: string }
+export type ItemLike = {
+  kind: AlertKind
+  label?: string
+  title: string
+  detail?: string
+  prep?: { summary: string; points: string[] }
+}
 export type Action = { label: string; ask?: string; op?: 'kept' }
 
 /** "Cathrene — send the provisioning doc" -> ["Cathrene", "send the provisioning doc"]. */
@@ -40,7 +46,15 @@ export function primaryAction(i: ItemLike): Action | null {
       }
       return { label: "What's blocked?", ask: "What's blocked across the portfolio?" }
     case 'meeting':
-      return { label: 'Prep me', ask: `Prep me for ${i.title}.` }
+      // The heads-up was prepared ahead (bridge/alerts.mjs): build on that
+      // rather than gather the same notes, mail and Jira again.
+      return {
+        label: 'Prep me',
+        ask: i.prep?.summary
+          ? `Prep me for ${i.title}. You already have: ${[i.prep.summary, ...i.prep.points].join(' ')} ` +
+            'Go one level deeper: what I should push for or decide, and anything that changed since.'
+          : `Prep me for ${i.title}.`,
+      }
     case 'recap':
       // Adding to To Do goes through the usual confirmation: nothing is
       // added until he says yes.
