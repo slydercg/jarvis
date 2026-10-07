@@ -33,7 +33,7 @@ const { memoryServer } = await import('../bridge/memory.mjs')
 const { peopleContext, peopleServer } = await import('../bridge/people.mjs')
 const { displayServer } = await import('../bridge/panels.mjs')
 const { briefFixture } = await import('./fake-brief.mjs')
-const { fakeProtective } = await import('./fake-protective.mjs')
+const { fakeFiles, fakeProtective, fixtures } = await import('./fake-protective.mjs')
 const { score, summarise } = await import('./score.mjs')
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -54,7 +54,9 @@ function localNow() {
 }
 
 async function runCase(c) {
-  const { server: protective } = fakeProtective()
+  // The made-up account, with anything this case changes ("fixtures").
+  const data = { ...fixtures(), ...(c.fixtures ?? {}) }
+  const { server: protective } = fakeProtective(data)
   // Today's brief, already built: written where the bridge keeps it, and read
   // by a fresh copy of the module so one case's "done" never leaks into the
   // next. No case pays for building a brief.
@@ -78,6 +80,7 @@ async function runCase(c) {
         jarvis_memory: memoryServer(),
         jarvis_people: peopleServer(),
         jarvis_brief: briefServer({}),
+        jarvis_files: fakeFiles(data),
       },
       model: MODEL,
       effort: EFFORT,

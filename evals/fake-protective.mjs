@@ -64,6 +64,11 @@ export function fixtures() {
     ],
     todo: [{ list: 'Tasks', title: 'Send Q4 roadmap to the board', importance: 'high', created: at(7), due: null }],
     flagged: [],
+    // What the meeting-notes flow finds, and the downloaded transcript: by
+    // default nothing, as for most meetings Granola missed. A case can give
+    // its own in "fixtures" (evals/cases.json).
+    meetingNotes: { source: 'none', meeting: '', notes: '', actionItems: [], transcript: '', email: null, copilot: 'not asked', errors: [] },
+    transcript: { found: false, looked: ['~/Downloads', '~/Desktop', '~/Documents'] },
   }
 }
 
@@ -92,7 +97,26 @@ export function fakeProtective(data = fixtures()) {
       tool('protective_create_tasks', 'Add tasks to Microsoft To Do: kind "me" for his own, "waiting" for what others owe him.',
         { tasks: z.array(z.object({ text: z.string().min(3), kind: z.enum(['me', 'waiting']), due: z.string().optional(), meeting: z.string().optional() })).min(1) },
         async (a) => reply('protective_create_tasks', a, { ok: true, added: a.tasks.length })),
+      tool('protective_get_meeting_notes', 'What Microsoft has on one Protective meeting when Granola has nothing: a recap email in the inbox. `source` says which (none when there is nothing).',
+        { subject: z.string().min(2), start: z.string().min(10), end: z.string().optional() },
+        async (a) => reply('protective_get_meeting_notes', a, { ...data.meetingNotes, meeting: a.subject })),
     ],
   })
   return { server, calls }
+}
+
+/**
+ * A stand-in for jarvis_files' transcript search: the real tool name, the
+ * case's answer, and never his real Downloads folder.
+ */
+export function fakeFiles(data = fixtures()) {
+  return createSdkMcpServer({
+    name: 'jarvis_files',
+    version: '1.0.0',
+    tools: [
+      tool('find_meeting_transcript', 'A Teams meeting transcript he downloaded, found by the meeting\'s name, read as "Speaker: words" lines.',
+        { meeting: z.string().min(2) },
+        async () => ({ content: [{ type: 'text', text: JSON.stringify(data.transcript) }] })),
+    ],
+  })
 }
