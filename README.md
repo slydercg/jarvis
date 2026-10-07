@@ -393,6 +393,33 @@ draft, send or add, and it never prints a flow URL. Add `-- --open-mail` or
 a brief line would. That's how to check, on your Mac, that the links land on
 the email or task itself.
 
+**The flows file is shared.** The briefing and the SCG Agent Office read the
+same `pa_endpoints.json`, including keys Jarvis doesn't use. The doctor's
+first line checks the file itself:
+- that it is valid JSON;
+- that no key has gone since the last check (names only, never values);
+- whether a backup next to it (`pa_endpoints.before-*.json`) has a key the
+  live file has lost.
+
+If a key went on purpose, `npm run doctor:flows -- --accept-keys` stops the
+warning.
+
+**Adding or restoring one flow.** Rather than rewriting the file, change one
+key and leave everything else as it was:
+
+```
+npm run flows:add -- sent_email                         # the flow URL on the clipboard
+npm run flows:add -- agent_mail --from <backup file>     # one key back from a backup
+```
+
+It never prints a URL, keeps the file's format, and clears the clipboard.
+
+**When a flow keeps failing.** Power Automate connections expire. After three
+failed calls in a row to one flow, Jarvis shows one card, and says it once.
+When the error names an expired connection the card says which one to
+reconnect, for example "Reconnect Office 365 Outlook in Power Automate". The
+card closes itself once the flow answers again.
+
 ## Your morning brief
 
 "Brief me" answers from a brief built ahead of time with the same rules as
@@ -691,7 +718,9 @@ Jarvis looks in two more places:
 
 Jarvis says which source it used. If there is nothing anywhere, the card
 turns into **No notes yet**: "In Teams: the meeting → Transcript → Download,
-then ask again", with an **Ask again** button.
+then ask again", with an **Ask again** button. You don't have to ask again:
+once the transcript lands in Downloads, the card turns into **Transcript
+found** within a minute, and its button recaps from it.
 
 The flow can also return Copilot's notes and the Teams transcript through
 Microsoft Graph, but that needs permissions Protective doesn't grant, so it

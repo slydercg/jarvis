@@ -20,6 +20,7 @@
     "setup": "node scripts/setup.mjs",
     "browser:doctor": "node scripts/browser-doctor.mjs",
     "doctor:flows": "node scripts/flows-doctor.mjs",
+    "flows:add": "node scripts/flows-add.mjs",
     "autostart:install": "node scripts/autostart.mjs install",
     "autostart:status": "node scripts/autostart.mjs status",
     "autostart:logs": "node scripts/autostart.mjs logs",

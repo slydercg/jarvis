@@ -173,3 +173,36 @@ export async function findTranscript(meeting, { home = homedir(), now = Date.now
     truncated: String(text).length > MAX_TEXT,
   }
 }
+
+/**
+ * Meetings waiting for their transcript: `add` when a recap found nothing,
+ * `tick` on the minute clock. When one turns up, `onFound(title, result)`
+ * once, and the meeting is dropped. A day at most. Kept in memory: a restart
+ * forgets them, and "Ask again" still works. A tick only lists three folders.
+ */
+export function watchForTranscripts({ onFound, find = findTranscript, now = () => Date.now(), keepMs = 24 * 3_600_000 }) {
+  const waiting = new Map()
+  let busy = false
+  return {
+    add: (title) => waiting.set(title, now()),
+    size: () => waiting.size,
+    async tick() {
+      if (busy) return
+      busy = true
+      try {
+        for (const [title, since] of [...waiting]) {
+          if (now() - since > keepMs) {
+            waiting.delete(title)
+            continue
+          }
+          const r = await find(title, { days: 2 }).catch(() => null)
+          if (!r?.found) continue
+          waiting.delete(title)
+          onFound(title, r)
+        }
+      } finally {
+        busy = false
+      }
+    },
+  }
+}
