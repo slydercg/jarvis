@@ -13,7 +13,7 @@ const { checkFlows, judgeNotes } = await import('../bridge/flowcheck.mjs')
 test("the meeting-notes flow's answer is bounded and says where it came from", () => {
   const r = normaliseNotes({
     source: 'copilot',
-    meeting: 'APD - Intake - Weekly Initiative/Epic Portfolio review',
+    meeting: 'Product - Intake - Weekly Initiative/Epic Portfolio review',
     notes: 'Scott explained the review…',
     actionItems: ['Add a value-stream check to the Friday checklist', { text: 'Thomas to confirm rankings' }],
     transcript: 'x'.repeat(100_000),

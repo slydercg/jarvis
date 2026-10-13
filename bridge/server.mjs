@@ -637,8 +637,8 @@ function offerRecaps() {
 
 /**
  * Granola had nothing for a meeting, the meeting-notes flow found no recap
- * email, and no downloaded transcript matches it. Protective gives him no
- * Copilot recap, but every recorded meeting has a Transcript tab. The
+ * email, and no downloaded transcript matches it. A Copilot recap is often
+ * not there to be had, but every recorded meeting has a Transcript tab. The
  * meeting's card, same kind and title so it is the same item, turns into how
  * to get one: download the transcript, then ask again. Without this the only
  * trace is a sentence that has already been said.

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 process.env.JARVIS_HOME = mkdtempSync(join(tmpdir(), 'jarvis-people-'))
-process.env.JARVIS_MY_EMAILS = 'mark.slyder@protective.com'
+process.env.JARVIS_MY_EMAILS = 'mark@example.com'
 const p = await import('../bridge/people.mjs')
 
 const past = '2026-09-01T09:00:00-07:00'
@@ -20,7 +20,7 @@ test('names come from addresses', () => {
 test('meetings teach who he meets: once per meeting, never himself, rooms or the future', () => {
   const book = { people: [], projects: [] }
   const events = [
-    { id: 'm1', title: 'Contract review', start: past, attendees: ['dana.whitfield@example.com', 'Mark.Slyder@protective.com', 'boardroom-4b@example.com'] },
+    { id: 'm1', title: 'Contract review', start: past, attendees: ['dana.whitfield@example.com', 'Mark@example.com', 'boardroom-4b@example.com'] },
     { id: 'm2', title: 'Arch review', start: past, attendees: ['dana.whitfield@example.com', 'chris.okafor@example.com'] },
     { id: 'm3', title: 'Later', start: future, attendees: ['future.person@example.com'] },
   ]

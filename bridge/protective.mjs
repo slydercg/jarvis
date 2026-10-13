@@ -40,6 +40,13 @@ export const FLOWS = {
 
 const SAVED = join(JARVIS_HOME, 'power-automate.json')
 
+/**
+ * His Protective address, for the model to know whose mailbox it is. From
+ * .env.local (JARVIS_WORK_EMAIL), never the repository: the code is public.
+ */
+export const WORK_EMAIL = (process.env.JARVIS_WORK_EMAIL ?? '').trim()
+const fromHim = WORK_EMAIL ? `, ${WORK_EMAIL}` : ''
+
 /** Power Automate and Logic Apps hosts only: a flow URL is never anywhere else. */
 export function validFlowUrl(u) {
   try {
@@ -352,7 +359,7 @@ export function normaliseNotes(r) {
   const status = graphStatus(r?.errors)
   const errors = status.errors
   // No Graph errors and no Copilot or transcript: the flow didn't ask Graph
-  // (Protective doesn't grant it), which is not the same as "available".
+  // (when the tenant doesn't grant it), which is not the same as "available".
   const copilot = status.copilot === 'available' && source !== 'copilot' && source !== 'transcript' ? 'not asked' : status.copilot
   return {
     source,
@@ -424,7 +431,7 @@ export function graphStatus(list) {
   const copilot = reconnect
     ? 'reconnect: the Microsoft Graph connection in Power Automate has expired; Power Automate → Connections → Reconnect'
     : blocked
-      ? 'not granted: Protective has not given the flow access to Copilot notes or transcripts yet'
+      ? 'not granted: the tenant has not given the flow access to Copilot notes or transcripts'
       : 'available'
   return { copilot, errors: all.filter((e) => e && !noise(e)) }
 }
@@ -458,7 +465,7 @@ export function protectiveServer({ readOnly = false } = {}) {
   const tools = [
     tool(
       'protective_get_inbox',
-      'The Protective (work) inbox, Mark.Slyder@protective.com: the latest messages, newest first, ' +
+      `The Protective (work) inbox${fromHim}: the latest messages, newest first, ` +
         'with sender, subject, a preview, importance and whether unread. This is the main work mailbox.',
       { limit: z.number().int().min(1).max(25).optional() },
       async ({ limit }) => {
@@ -554,7 +561,7 @@ export function protectiveServer({ readOnly = false } = {}) {
     tools.push(
       tool(
         'protective_create_draft',
-        'Save a draft email in the Protective Drafts folder, from Mark.Slyder@protective.com. It is NOT ' +
+        `Save a draft email in the Protective Drafts folder${fromHim ? `, from ${WORK_EMAIL}` : ''}. It is NOT ` +
           'sent. Use for replies he should review.',
         {
           to: z.string().min(3),
@@ -573,7 +580,7 @@ export function protectiveServer({ readOnly = false } = {}) {
       ),
       tool(
         'protective_send_email',
-        'Send an email from Mark.Slyder@protective.com. It goes immediately.',
+        `Send an email from his Protective mailbox${fromHim}. It goes immediately.`,
         {
           to: z.string().min(3),
           subject: z.string().min(1),

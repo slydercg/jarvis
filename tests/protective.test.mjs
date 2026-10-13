@@ -51,7 +51,7 @@ test('reading the inbox and calendar through the flows', async () => {
   const today = pa.dayOf('today')
   const noonUtc = new Date(`${today}T12:00:00`).toISOString().replace('Z', '0000') // local noon, as UTC wall clock
   const responses = {
-    inbox: { value: [{ id: '1', from: 'ceo@protective.com', subject: 'Budget', bodyPreview: 'Need your sign-off', importance: 'high', isRead: false, receivedDateTime: '2026-09-24T12:00:00Z' }] },
+    inbox: { value: [{ id: '1', from: 'ceo@example.com', subject: 'Budget', bodyPreview: 'Need your sign-off', importance: 'high', isRead: false, receivedDateTime: '2026-09-24T12:00:00Z' }] },
     calendar: { value: [
       { subject: 'Design review', start: noonUtc, end: noonUtc, requiredAttendees: 'a@x.com;b@x.com', body: 'x'.repeat(1000) },
       { subject: 'Cancelled thing', start: noonUtc, end: noonUtc, isCancelled: true },
@@ -65,7 +65,7 @@ test('reading the inbox and calendar through the flows', async () => {
   }
   try {
     const mail = await pa.protective.inbox()
-    assert.equal(mail[0].from, 'ceo@protective.com')
+    assert.equal(mail[0].from, 'ceo@example.com')
     assert.equal(mail[0].unread, true)
     const events = await pa.protective.calendar('today')
     assert.deepEqual(events.map((e) => e.title), ['Design review'])

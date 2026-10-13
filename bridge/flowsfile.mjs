@@ -5,7 +5,7 @@ import { JARVIS_HOME } from './memory.mjs'
 
 /**
  * The flows file is shared. The daily briefing's pa_endpoints.json in
- * OneDrive feeds Jarvis, the briefing and the SCG Agent Office, and each of
+ * OneDrive feeds Jarvis, the briefing and his other tools, and each of
  * them reads keys the others don't. Editing it by rewriting the whole file
  * (PowerShell's ConvertTo-Json, a hand edit) can drop a key one of them
  * needs, and nothing says so: the reader that lost it just stops working.

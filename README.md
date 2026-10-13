@@ -393,7 +393,7 @@ draft, send or add, and it never prints a flow URL. Add `-- --open-mail` or
 a brief line would. That's how to check, on your Mac, that the links land on
 the email or task itself.
 
-**The flows file is shared.** The briefing and the SCG Agent Office read the
+**The flows file is shared.** The briefing and other tools of yours read the
 same `pa_endpoints.json`, including keys Jarvis doesn't use. The doctor's
 first line checks the file itself:
 - that it is valid JSON;
@@ -557,7 +557,10 @@ November". Projects are kept by Jira key (NI, RPT) with their stakeholders.
   changing anyone's address needs your say-so on screen unless you said the
   address yourself.
 - `JARVIS_MY_EMAILS` lists your own addresses (comma separated), so you are
-  never added as someone you met. Default: your Protective address.
+  never added as someone you met. Default: `JARVIS_WORK_EMAIL`.
+- `JARVIS_WORK_EMAIL` is your Protective address. It tells Jarvis whose
+  mailbox the Protective tools read and send from. Set it in `.env.local`:
+  the repository is public, so no real address is written into the code.
 
 ## Now strip and day timeline
 
@@ -712,7 +715,7 @@ Jarvis looks in two more places:
   notes** flow (`meeting_notes` in `pa_endpoints.json`): a recap a colleague
   sent or forwarded, or one you shared to yourself.
 - **A transcript you downloaded.** Any recorded meeting has a Transcript tab
-  in Teams, with no Copilot licence needed: **Transcript → Download** (.vtt
+  in Teams, with or without a Copilot licence: **Transcript → Download** (.vtt
   or .docx). Jarvis finds it by the meeting's name in Downloads, Desktop or
   Documents (top level only, changed in the last week) and recaps from it.
   The first time, macOS may ask whether node can read Downloads; allow it.
@@ -726,7 +729,7 @@ once the transcript lands in Downloads, the card turns into **Transcript
 found** within a minute, and its button recaps from it.
 
 The flow can also return Copilot's notes and the Teams transcript through
-Microsoft Graph, but that needs permissions Protective doesn't grant, so it
+Microsoft Graph, but that needs permissions many tenants don't grant, so it
 is left out. If it is ever added back, Jarvis already reads what it returns.
 
 To test the flow on one meeting, with counts only:

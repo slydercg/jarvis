@@ -5,9 +5,8 @@ import { inflateRawSync } from 'node:zlib'
 
 /**
  * A Teams meeting transcript he has downloaded, for a recap when Granola has
- * nothing and no recap email came. Protective has no Copilot licence for him
- * and won't grant Graph access to transcripts, but the meeting's Transcript
- * tab is there without either: Transcript → Download saves a .vtt or .docx
+ * nothing and no recap email came. Without a Copilot licence, or Graph
+ * access to transcripts, the meeting's Transcript tab is still there: Transcript → Download saves a .vtt or .docx
  * to this Mac. This finds it by the meeting's name and turns it into
  * "Speaker: words" lines.
  *

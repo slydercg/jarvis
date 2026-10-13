@@ -82,7 +82,7 @@ export function judgeNotes(r) {
   }
   const fix = [
     r.copilot.startsWith('not granted') &&
-      'The flow still asks Graph for Copilot notes, which Protective does not grant: remove its "Copilot and transcript" scope.',
+      'The flow still asks Graph for Copilot notes, which the tenant does not grant: remove its "Copilot and transcript" scope.',
     r.source === 'none' && 'Nothing found: no recap email for that meeting in the inbox yet (Teams: Recap → Share → Email).',
     r.errors?.length && `Unexpected: ${r.errors.map(noUrls).join(' | ')}`,
   ].filter(Boolean).join(' ')

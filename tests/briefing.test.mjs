@@ -35,7 +35,7 @@ test('every item in the brief the conversation sees carries its line', () => {
 })
 
 test('a bare address reads as a name', () => {
-  assert.equal(sourceLine({ account: 'Protective', source: 'email', from: 'chris.patrick@protective.com' }, now), 'Protective mail · Chris Patrick')
-  assert.equal(sourceLine({ account: 'Protective', source: 'email', from: 'cfo@protective.com' }, now), 'Protective mail · CFO')
+  assert.equal(sourceLine({ account: 'Protective', source: 'email', from: 'chris.patel@example.com' }, now), 'Protective mail · Chris Patel')
+  assert.equal(sourceLine({ account: 'Protective', source: 'email', from: 'cfo@example.com' }, now), 'Protective mail · CFO')
   assert.equal(sourceLine({ account: 'SCG', source: 'email', from: 'Jane Doe <jane@x.com>' }, now), 'SCG mail · Jane Doe')
 })

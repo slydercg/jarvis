@@ -13,32 +13,32 @@ const t = await import('../bridge/tickets.mjs')
 const { isTicketLink } = await import('../src/lib/tickets.ts')
 
 test('only Jira Cloud and Azure DevOps sites are accepted', () => {
-  assert.equal(t.validSite('https://jira456.atlassian.net/jira/software', 'jira'), 'https://jira456.atlassian.net')
-  assert.equal(t.validSite('http://jira456.atlassian.net', 'jira'), null, 'https only')
+  assert.equal(t.validSite('https://example-co.atlassian.net/jira/software', 'jira'), 'https://example-co.atlassian.net')
+  assert.equal(t.validSite('http://example-co.atlassian.net', 'jira'), null, 'https only')
   assert.equal(t.validSite('https://atlassian.net.evil.example', 'jira'), null)
-  assert.equal(t.validSite('https://aulcorp.visualstudio.com/Claims', 'ado'), 'https://aulcorp.visualstudio.com')
-  assert.equal(t.validSite('https://dev.azure.com/aulcorp/Claims', 'ado'), 'https://dev.azure.com/aulcorp')
+  assert.equal(t.validSite('https://contoso.visualstudio.com/Claims', 'ado'), 'https://contoso.visualstudio.com')
+  assert.equal(t.validSite('https://dev.azure.com/contoso/Claims', 'ado'), 'https://dev.azure.com/contoso')
   assert.equal(t.validSite('https://example.com', 'ado'), null)
 })
 
 test('no link until a site is known; then links from keys of the right shape only', () => {
   assert.equal(t.ticketUrl({ key: 'RPT-3880' }), null)
-  t.learnSites({ jira: 'https://jira456.atlassian.net', ado: 'https://evil.example.com' })
-  assert.deepEqual(t.ticketSites(), { jira: 'https://jira456.atlassian.net', ado: null })
-  assert.equal(t.ticketUrl({ key: 'RPT-3880' }), 'https://jira456.atlassian.net/browse/RPT-3880')
-  assert.equal(t.ticketUrl({ key: 'rpt-3144' }), 'https://jira456.atlassian.net/browse/RPT-3144')
+  t.learnSites({ jira: 'https://example-co.atlassian.net', ado: 'https://evil.example.com' })
+  assert.deepEqual(t.ticketSites(), { jira: 'https://example-co.atlassian.net', ado: null })
+  assert.equal(t.ticketUrl({ key: 'RPT-3880' }), 'https://example-co.atlassian.net/browse/RPT-3880')
+  assert.equal(t.ticketUrl({ key: 'rpt-3144' }), 'https://example-co.atlassian.net/browse/RPT-3144')
   assert.equal(t.ticketUrl({ key: 'RPT-3880/../../x' }), null)
   assert.equal(t.ticketUrl({ key: 'https://evil.example.com/RPT-1' }), null)
   assert.equal(t.ticketUrl({ key: '4567', source: 'ado' }), null, 'no ADO site yet')
 })
 
 test('Azure DevOps ids link with or without a project; the setting wins over what was learned', () => {
-  process.env.JARVIS_ADO_URL = 'https://aulcorp.visualstudio.com'
+  process.env.JARVIS_ADO_URL = 'https://contoso.visualstudio.com'
   assert.equal(
-    t.ticketUrl({ key: 'ADO #4567', source: 'ado', project: 'AULCorp Claims' }),
-    'https://aulcorp.visualstudio.com/AULCorp%20Claims/_workitems/edit/4567',
+    t.ticketUrl({ key: 'ADO #4567', source: 'ado', project: 'Contoso Claims' }),
+    'https://contoso.visualstudio.com/Contoso%20Claims/_workitems/edit/4567',
   )
-  assert.equal(t.ticketUrl({ key: '#4567' }), 'https://aulcorp.visualstudio.com/_workitems/edit/4567')
+  assert.equal(t.ticketUrl({ key: '#4567' }), 'https://contoso.visualstudio.com/_workitems/edit/4567')
   process.env.JARVIS_JIRA_URL = 'https://other.atlassian.net'
   assert.equal(t.ticketUrl({ key: 'NI-812' }), 'https://other.atlassian.net/browse/NI-812')
   delete process.env.JARVIS_JIRA_URL
@@ -47,20 +47,20 @@ test('Azure DevOps ids link with or without a project; the setting wins over wha
 
 test('the page accepts every link the bridge builds, and nothing else', () => {
   for (const url of [
-    'https://jira456.atlassian.net/browse/RPT-3880',
-    'https://aulcorp.visualstudio.com/AULCorp%20Claims/_workitems/edit/4567',
-    'https://aulcorp.visualstudio.com/_workitems/edit/4567',
-    'https://dev.azure.com/aulcorp/Claims/_workitems/edit/12',
+    'https://example-co.atlassian.net/browse/RPT-3880',
+    'https://contoso.visualstudio.com/Contoso%20Claims/_workitems/edit/4567',
+    'https://contoso.visualstudio.com/_workitems/edit/4567',
+    'https://dev.azure.com/contoso/Claims/_workitems/edit/12',
   ]) {
     assert.equal(isTicketLink(url), true, url)
   }
   for (const url of [
-    'http://jira456.atlassian.net/browse/RPT-1',
-    'https://jira456.atlassian.net/browse/RPT-1?next=https://evil.example.com',
-    'https://jira456.atlassian.net.evil.example.com/browse/RPT-1',
+    'http://example-co.atlassian.net/browse/RPT-1',
+    'https://example-co.atlassian.net/browse/RPT-1?next=https://evil.example.com',
+    'https://example-co.atlassian.net.evil.example.com/browse/RPT-1',
     'https://evil.example.com/browse/RPT-1',
     'javascript:alert(1)',
-    'https://jira456.atlassian.net/secure/Dashboard.jspa',
+    'https://example-co.atlassian.net/secure/Dashboard.jspa',
     undefined,
   ]) {
     assert.equal(isTicketLink(url), false, String(url))
@@ -89,14 +89,14 @@ test('a To Do task link of the exact shape counts too, and nothing near it', asy
 
 test('bare ticket keys in a panel become links on the known sites, and nothing else does', async () => {
   const { linkTicketKeys } = await import('../src/lib/tickets.ts')
-  const sites = { jira: 'https://acme.atlassian.net', ado: 'https://dev.azure.com/aul' }
+  const sites = { jira: 'https://acme.atlassian.net', ado: 'https://dev.azure.com/contoso' }
   const pieces = linkTicketKeys('NI-12687 — Vander API, see RPT-3783 and ADO #4567; 2026-10-05 is a date', sites)
   assert.deepEqual(
     pieces.filter((p) => p.href).map((p) => [p.text, p.href]),
     [
       ['NI-12687', 'https://acme.atlassian.net/browse/NI-12687'],
       ['RPT-3783', 'https://acme.atlassian.net/browse/RPT-3783'],
-      ['ADO #4567', 'https://dev.azure.com/aul/_workitems/edit/4567'],
+      ['ADO #4567', 'https://dev.azure.com/contoso/_workitems/edit/4567'],
     ],
   )
   assert.equal(pieces.map((p) => p.text).join(''), 'NI-12687 — Vander API, see RPT-3783 and ADO #4567; 2026-10-05 is a date')
@@ -105,8 +105,8 @@ test('bare ticket keys in a panel become links on the known sites, and nothing e
 
 test('only real ticket sites are accepted from the bridge', async () => {
   const { setTicketSites, ticketSites } = await import('../src/lib/tickets.ts')
-  setTicketSites({ jira: 'https://evil.example.com', ado: 'https://dev.azure.com/aul' })
-  assert.deepEqual(ticketSites(), { jira: null, ado: 'https://dev.azure.com/aul' })
+  setTicketSites({ jira: 'https://evil.example.com', ado: 'https://dev.azure.com/contoso' })
+  assert.deepEqual(ticketSites(), { jira: null, ado: 'https://dev.azure.com/contoso' })
   setTicketSites(null)
 })
 

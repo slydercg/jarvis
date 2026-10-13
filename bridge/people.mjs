@@ -27,9 +27,9 @@ const FILE = 'people.json'
 const MAX_NOTES = 12
 const MAX_NOTE = 200
 
-/** His own addresses, never a "person he met". */
+/** His own addresses, never a "person he met". Set in .env.local, not here. */
 const ME = new Set(
-  (process.env.JARVIS_MY_EMAILS ?? 'Mark.Slyder@protective.com')
+  (process.env.JARVIS_MY_EMAILS ?? process.env.JARVIS_WORK_EMAIL ?? '')
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean),

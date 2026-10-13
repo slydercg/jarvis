@@ -19,7 +19,7 @@ const day = (offset) => days.localDay(new Date(Date.now() + offset * 86_400_000)
 test('the same promise found twice is one ledger item', () => {
   const first = c.addCommitments([
     { direction: 'mine', who: 'Chris', what: 'Send the revised roadmap', due: day(1) },
-    { direction: 'theirs', who: 'Cathrene', what: 'send the provisioning doc', due: day(-2) },
+    { direction: 'theirs', who: 'Jordan', what: 'send the provisioning doc', due: day(-2) },
     { direction: 'mine', who: '', what: 'no person attached' },
   ])
   assert.equal(first.length, 2)
@@ -32,7 +32,7 @@ test('the same promise found twice is one ledger item', () => {
 
 test('open items come soonest first, filtered by person and direction', () => {
   const open = c.openCommitments()
-  assert.equal(open[0].who, 'Cathrene')
+  assert.equal(open[0].who, 'Jordan')
   assert.equal(open[0].daysLeft, -2)
   assert.equal(c.openCommitments({ who: 'chris' }).length, 2)
   assert.equal(c.openCommitments({ direction: 'theirs' }).length, 1)
@@ -44,14 +44,14 @@ test('nudges: his own the day before, theirs once late, each said once', () => {
   const lines = nudges.map((n) => n.say)
   assert.equal(nudges.length, 2)
   assert.match(lines.find((l) => l.includes('Chris')), /you told Chris you would send the revised roadmap — that is due tomorrow/)
-  assert.match(lines.find((l) => l.includes('Cathrene')), /Cathrene was to send the provisioning doc — it is two days late\. Shall I draft a nudge\?/)
+  assert.match(lines.find((l) => l.includes('Jordan')), /Jordan was to send the provisioning doc — it is two days late\. Shall I draft a nudge\?/)
   assert.equal(c.dueNudges().length, 0, 'not said twice in a day')
 })
 
 test('closing a promise takes it off the open list', () => {
-  const [item] = c.openCommitments({ who: 'Cathrene' })
+  const [item] = c.openCommitments({ who: 'Jordan' })
   assert.equal(c.closeCommitment(item.id, 'done').status, 'done')
-  assert.equal(c.openCommitments({ who: 'Cathrene' }).length, 0)
+  assert.equal(c.openCommitments({ who: 'Jordan' }).length, 0)
   assert.equal(c.closeCommitment('nope'), null)
 })
 
