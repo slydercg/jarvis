@@ -74,7 +74,7 @@ test('snoozed items and reminders come back when their time comes, once', () => 
 test('things that resolve themselves close: a promise kept, a meeting long started', () => {
   let open = true
   s.registerResolver('commitment', () => open)
-  s.keepAlert({ kind: 'promise', label: 'Overdue', title: 'Cathrene — send the doc', ref: 'commitment:abc123', at: new Date().toISOString() })
+  s.keepAlert({ kind: 'promise', label: 'Overdue', title: 'Jordan — send the doc', ref: 'commitment:abc123', at: new Date().toISOString() })
   s.keepAlert({ kind: 'meeting', title: 'Architecture review', at: new Date(Date.now() - 45 * 60_000).toISOString() })
   const find = (k) => s.listStratum().find((i) => i.kind === k)
   assert.equal(find('meeting').state, 'done', 'started 45 minutes ago')

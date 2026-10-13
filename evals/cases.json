@@ -347,7 +347,7 @@
         "file": "~/Downloads/Leadership sync.vtt",
         "modified": "",
         "truncated": false,
-        "transcript": "Priya Shah: Let's lift the hiring freeze for platform engineering.\nMark Slyder: Agreed. I'll send finance the revised headcount plan by Friday.\nPriya Shah: I'll circulate the updated org chart."
+        "transcript": "Priya Shah: Let's lift the hiring freeze for platform engineering.\nMark: Agreed. I'll send finance the revised headcount plan by Friday.\nPriya Shah: I'll circulate the updated org chart."
       }
     },
     "expect": {

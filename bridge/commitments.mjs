@@ -10,7 +10,7 @@ import { localDay, spokenCount } from './days.mjs'
  *
  * At a CTO's volume the thing that slips is not the work in To Do — it is the
  * "I'll get you that by Friday" said in a meeting or written in a reply, and
- * the "Cathrene will send the provisioning doc" nobody wrote down. This keeps
+ * the "Jordan will send the provisioning doc" nobody wrote down. This keeps
  * a ledger of both in ~/.jarvis/commitments.json:
  *
  *   mine    something Mark said he would do, for someone, maybe by a date
@@ -215,7 +215,7 @@ Find commitments made in the window you are given:
   you the roadmap by Friday", "let me get back to you on headcount"). Look in
   Granola meeting notes (his own action items and things he agreed to) and in
   mail he SENT (SCG Sent Items; protective_get_sent if it exists).
-- "theirs": someone said they would do something for him ("Cathrene will send
+- "theirs": someone said they would do something for him ("Jordan will send
   the provisioning doc"). Look in Granola notes and in the To Do "Waiting On
   Others" list.
 - "theirs" with "asked": a direct question or request he SENT to a person that

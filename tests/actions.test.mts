@@ -12,8 +12,8 @@ test('mail offers a reply about its subject', () => {
 
 test('a late promise of theirs offers a nudge; one of his own can be marked kept', () => {
   assert.deepEqual(
-    primaryAction({ kind: 'promise', label: 'Overdue', title: 'Cathrene — send the provisioning doc', detail: '2 days late' }),
-    { label: 'Draft nudge', ask: 'Draft a short, friendly nudge to Cathrene about: send the provisioning doc.' },
+    primaryAction({ kind: 'promise', label: 'Overdue', title: 'Jordan — send the provisioning doc', detail: '2 days late' }),
+    { label: 'Draft nudge', ask: 'Draft a short, friendly nudge to Jordan about: send the provisioning doc.' },
   )
   assert.deepEqual(primaryAction({ kind: 'promise', label: 'Promise', title: 'Maysoon — send the questionnaire' }), {
     label: 'Kept it',
@@ -36,7 +36,7 @@ test('a reminder or a digest has no action of its own', () => {
 })
 
 test('a promise title splits on its dash, and survives not having one', () => {
-  assert.deepEqual(splitPromise('Cathrene — send the doc'), ['Cathrene', 'send the doc'])
+  assert.deepEqual(splitPromise('Jordan — send the doc'), ['Jordan', 'send the doc'])
   assert.deepEqual(splitPromise('Just a note'), ['Just a note', ''])
 })
 

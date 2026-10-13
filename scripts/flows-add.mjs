@@ -8,7 +8,7 @@
  *                                                   one Jarvis reads
  *
  * The flows file (the daily briefing's pa_endpoints.json in OneDrive) is
- * shared with the briefing and the SCG Agent Office, which read keys Jarvis
+ * shared with the briefing and his other tools, which read keys Jarvis
  * doesn't. Rewriting it whole can drop one of theirs; this sets one key and
  * keeps the rest of the file as it was (bridge/flowsfile.mjs). Values are
  * never printed: they are credentials. The clipboard is cleared after.

@@ -49,7 +49,7 @@ Ranking — tell him what to DO, not what arrived. Judge each message by its con
   (source "email+task"). Flagged Emails and Daily Meeting Actions outrank general
   tasks. Waiting On Others is not his work — leave it out of the items.
 - Every action is a specific verb phrase: "Approve the Q4 vendor renewal for Chris",
-  "Reply to Cathrene with the provisioning steps". Never "review email from X",
+  "Reply to Jordan with the provisioning steps". Never "review email from X",
   never a restated subject.
 - At most 8 items. Tiers: "now" (today), "soon" (this week), "fyi".
 
@@ -78,8 +78,8 @@ export function sourceLine(item, now = new Date()) {
 }
 
 /**
- * A bare address reads as a name: "chris.patrick@protective.com" -> "Chris
- * Patrick". Mail flows often carry only the address, and a line full of
+ * A bare address reads as a name: "chris.patel@example.com" -> "Chris
+ * Patel". Mail flows often carry only the address, and a line full of
  * addresses is hard to scan. A role address ("cfo@…") stays as it is, upper-cased.
  */
 function readableName(from) {

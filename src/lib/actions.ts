@@ -20,7 +20,7 @@ export type ItemLike = {
 }
 export type Action = { label: string; ask?: string; op?: 'kept' }
 
-/** "Cathrene — send the provisioning doc" -> ["Cathrene", "send the provisioning doc"]. */
+/** "Jordan — send the provisioning doc" -> ["Jordan", "send the provisioning doc"]. */
 export function splitPromise(title: string): [string, string] {
   const at = title.indexOf(' — ')
   return at < 0 ? [title, ''] : [title.slice(0, at), title.slice(at + 3)]

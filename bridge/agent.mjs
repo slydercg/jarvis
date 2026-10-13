@@ -1,5 +1,5 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import { protectiveServer, protectiveConfigured } from './protective.mjs'
+import { WORK_EMAIL, protectiveServer, protectiveConfigured } from './protective.mjs'
 import { allowWith, connectorDenylist } from './connectors.mjs'
 import { BACKGROUND_DISALLOWED } from './policy.mjs'
 import { protectiveBlock } from './snapshot.mjs'
@@ -132,7 +132,7 @@ export function parseJson(text) {
 
 /** The sources paragraph every gathering job shares. */
 export const SOURCES = `Sources — read every one you have, in parallel where you can:
-- PROTECTIVE (his main work account, Mark.Slyder@protective.com): protective_get_inbox,
+- PROTECTIVE (his main work account${WORK_EMAIL ? `, ${WORK_EMAIL}` : ''}): protective_get_inbox,
   protective_get_calendar, protective_get_todo, protective_get_flagged, and
   protective_get_sent when it exists.
 - SCG (Slyder Consulting Group): the Microsoft 365 / Outlook tools.

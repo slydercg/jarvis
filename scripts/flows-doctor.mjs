@@ -27,8 +27,8 @@ import { mailLink, todoLink } from '../bridge/maillinks.mjs'
 
 const mark = { ok: '✓', warn: '!', fail: '✗', info: '·' }
 const { flows, source, path } = loadFlows()
-// The file itself first: it is shared with the briefing and the SCG Agent
-// Office, and a rewrite that drops their keys passes every check below.
+// The file itself first: it is shared with the briefing and his other
+// tools, and a rewrite that drops their keys passes every check below.
 const filePath = path ?? flowFileCandidates().find((p) => existsSync(p))
 let file = null
 if (filePath) {

@@ -205,7 +205,7 @@ export function loopServer(deps) {
         'get_dossier',
         'Who he is meeting: for each person, their role, the last three interactions (Granola meetings, ' +
           'mail in any account), what he owes them, what they owe him, and open topics. Use before a ' +
-          'meeting, or for "tell me about Chris", "what\'s open with Cathrene".',
+          'meeting, or for "tell me about Chris", "what\'s open with Jordan".',
         {
           people: z.array(z.string().min(1)).min(1).max(8).describe('Names or addresses.'),
           meeting: z.string().optional().describe('The meeting title, when there is one.'),

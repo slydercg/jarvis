@@ -33,39 +33,39 @@ function zip(name, content) {
 
 const para = (t) => `<w:p><w:r><w:t xml:space="preserve">${t}</w:t></w:r></w:p>`
 const TEAMS_DOCX = `<w:document><w:body>${[
-  'Daily IT Leader Sync-20261006_163000-Meeting Recording',
-  'Ginsberg, Corey   0:03',
+  'Morning Ops Sync-20261006_163000-Meeting Recording',
+  'Rivera, Alex   0:03',
   'Morning. Let&apos;s start with the repo migration.',
-  'Ginsberg, Corey   0:09',
-  'Dan has the APD repos.',
-  'Slyder, Mark   0:15',
+  'Rivera, Alex   0:09',
+  'Kim has the billing repos.',
+  'Lee, Sam   0:15',
   'I&apos;ll send the triage list by Friday.',
 ].map(para).join('')}</w:body></w:document>`
 
 const VTT =
-  'WEBVTT\n\n0f1e-22/14-0\n00:00:01.000 --> 00:00:02.000\n<v Ginsberg, Corey>Morning.</v>\n\n' +
-  '0f1e-22/15-0\n00:00:02.000 --> 00:00:03.000\n<v Ginsberg, Corey>Repo migration first.</v>\n\n' +
-  '00:00:03.000 --> 00:00:04.000\n<v Slyder, Mark>Triage list by Friday.</v>'
+  'WEBVTT\n\n0f1e-22/14-0\n00:00:01.000 --> 00:00:02.000\n<v Rivera, Alex>Morning.</v>\n\n' +
+  '0f1e-22/15-0\n00:00:02.000 --> 00:00:03.000\n<v Rivera, Alex>Repo migration first.</v>\n\n' +
+  '00:00:03.000 --> 00:00:04.000\n<v Lee, Sam>Triage list by Friday.</v>'
 
 test('a Teams .docx transcript reads as "Speaker: words", one line per turn', () => {
   const xml = unzipEntry(zip('word/document.xml', TEAMS_DOCX), 'word/document.xml').toString('utf8')
   assert.equal(
     docxText(xml),
-    "Daily IT Leader Sync-20261006_163000-Meeting Recording\n" +
-      "Ginsberg, Corey: Morning. Let's start with the repo migration. Dan has the APD repos.\n" +
-      "Slyder, Mark: I'll send the triage list by Friday.",
+    "Morning Ops Sync-20261006_163000-Meeting Recording\n" +
+      "Rivera, Alex: Morning. Let's start with the repo migration. Kim has the billing repos.\n" +
+      "Lee, Sam: I'll send the triage list by Friday.",
   )
 })
 
 test('a .vtt transcript reads the same way', () => {
-  assert.equal(vttText(VTT), 'Ginsberg, Corey: Morning. Repo migration first.\nSlyder, Mark: Triage list by Friday.')
+  assert.equal(vttText(VTT), 'Rivera, Alex: Morning. Repo migration first.\nLee, Sam: Triage list by Friday.')
 })
 
 test("a file is the meeting's only when its name carries most of the meeting's name", () => {
-  assert.equal(nameMatch('Daily IT Leader Sync', 'Daily IT Leader Sync.vtt'), 1)
-  assert.equal(nameMatch('Daily IT Leader Sync', 'Daily IT Leader Sync-20261006_163000-Meeting Recording.docx'), 1)
-  assert.ok(nameMatch('Daily IT Leader Sync', 'Weaver Slyder Bi-Weekly Touchpoint.vtt') < 0.6)
-  assert.ok(nameMatch('APD - Intake - Weekly Initiative/Epic Portfolio review', 'APD - Intake - Weekly Strategic Opportunity Intake Triage.vtt') < 0.6)
+  assert.equal(nameMatch('Morning Ops Sync', 'Morning Ops Sync.vtt'), 1)
+  assert.equal(nameMatch('Morning Ops Sync', 'Morning Ops Sync-20261006_163000-Meeting Recording.docx'), 1)
+  assert.ok(nameMatch('Morning Ops Sync', 'Vendor Bi-Weekly Touchpoint.vtt') < 0.6)
+  assert.ok(nameMatch('Product - Intake - Weekly Initiative/Epic Portfolio review', 'Product - Intake - Weekly Strategic Opportunity Intake Triage.vtt') < 0.6)
 })
 
 test('finds the newest matching transcript in Downloads, and nothing else', async () => {
@@ -76,23 +76,23 @@ test('finds the newest matching transcript in Downloads, and nothing else', asyn
   const now = Date.now()
   const at = (file, ms) => utimesSync(file, new Date(ms), new Date(ms))
   // The right meeting, as a .docx, and an older .vtt of the same meeting.
-  writeFileSync(join(downloads, 'Daily IT Leader Sync.docx'), zip('word/document.xml', TEAMS_DOCX))
-  writeFileSync(join(downloads, 'Daily IT Leader Sync.vtt'), VTT)
-  at(join(downloads, 'Daily IT Leader Sync.vtt'), now - 3 * 86_400_000)
+  writeFileSync(join(downloads, 'Morning Ops Sync.docx'), zip('word/document.xml', TEAMS_DOCX))
+  writeFileSync(join(downloads, 'Morning Ops Sync.vtt'), VTT)
+  at(join(downloads, 'Morning Ops Sync.vtt'), now - 3 * 86_400_000)
   // Other meetings, other types, too old, and a link out of the folder: never read.
-  writeFileSync(join(downloads, 'Weaver Slyder Touchpoint.vtt'), VTT)
-  writeFileSync(join(downloads, 'Daily IT Leader Sync notes.txt'), 'not a transcript')
-  writeFileSync(join(home, 'Documents', 'Daily IT Leader Sync old.vtt'), VTT)
-  at(join(home, 'Documents', 'Daily IT Leader Sync old.vtt'), now - 30 * 86_400_000)
+  writeFileSync(join(downloads, 'Vendor Touchpoint.vtt'), VTT)
+  writeFileSync(join(downloads, 'Morning Ops Sync notes.txt'), 'not a transcript')
+  writeFileSync(join(home, 'Documents', 'Morning Ops Sync old.vtt'), VTT)
+  at(join(home, 'Documents', 'Morning Ops Sync old.vtt'), now - 30 * 86_400_000)
   const outside = join(mkdtempSync(join(tmpdir(), 'jarvis-outside-')), 'secret.vtt')
   writeFileSync(outside, VTT)
-  symlinkSync(outside, join(downloads, 'Daily IT Leader Sync link.vtt'))
+  symlinkSync(outside, join(downloads, 'Morning Ops Sync link.vtt'))
 
-  const r = await findTranscript('Daily IT Leader Sync', { home, now })
+  const r = await findTranscript('Morning Ops Sync', { home, now })
   assert.equal(r.found, true)
-  assert.match(r.file, /Downloads.Daily IT Leader Sync\.docx$/)
-  assert.match(r.transcript, /^Daily IT Leader Sync/)
-  assert.match(r.transcript, /Slyder, Mark: I'll send the triage list by Friday\./)
+  assert.match(r.file, /Downloads.Morning Ops Sync\.docx$/)
+  assert.match(r.transcript, /^Morning Ops Sync/)
+  assert.match(r.transcript, /Lee, Sam: I'll send the triage list by Friday\./)
 
   const none = await findTranscript('Quarterly Budget Review', { home, now })
   assert.deepEqual(none, { found: false, looked: ['~/Downloads', '~/Desktop', '~/Documents'] })
@@ -102,7 +102,7 @@ test('a folder macOS will not let Jarvis read is named, not taken for "no transc
   const home = mkdtempSync(join(tmpdir(), 'jarvis-home-'))
   mkdirSync(join(home, 'Downloads'), { mode: 0o000 })
   try {
-    const r = await findTranscript('Daily IT Leader Sync', { home })
+    const r = await findTranscript('Morning Ops Sync', { home })
     assert.deepEqual(r.blocked, ['~/Downloads'])
     assert.match(r.fix, /Privacy & Security/)
   } finally {
@@ -113,18 +113,18 @@ test('a folder macOS will not let Jarvis read is named, not taken for "no transc
 test('no transcript for a meeting tells the bridge, so its card can say how to get one', async () => {
   const home = mkdtempSync(join(tmpdir(), 'jarvis-home-'))
   mkdirSync(join(home, 'Downloads'))
-  writeFileSync(join(home, 'Downloads', 'Daily IT Leader Sync.vtt'), VTT)
+  writeFileSync(join(home, 'Downloads', 'Morning Ops Sync.vtt'), VTT)
   const realHome = process.env.HOME
   process.env.HOME = home
   try {
     const { localFilesServer } = await import('../bridge/localfiles.mjs')
     const told = []
     const { handler } = localFilesServer({ onNoTranscript: (m) => told.push(m) }).instance._registeredTools.find_meeting_transcript
-    const hit = JSON.parse((await handler({ meeting: 'Daily IT Leader Sync' })).content[0].text)
+    const hit = JSON.parse((await handler({ meeting: 'Morning Ops Sync' })).content[0].text)
     assert.equal(hit.found, true)
     assert.deepEqual(told, [])
-    await handler({ meeting: 'Weaver / Slyder Bi-Weekly Touchpoint' })
-    assert.deepEqual(told, ['Weaver / Slyder Bi-Weekly Touchpoint'])
+    await handler({ meeting: 'Vendor Bi-Weekly Touchpoint' })
+    assert.deepEqual(told, ['Vendor Bi-Weekly Touchpoint'])
   } finally {
     process.env.HOME = realHome
   }
@@ -136,17 +136,17 @@ test('a meeting waiting for its transcript is told once when it turns up, and fo
   const found = []
   const watch = watchForTranscripts({
     now: () => t,
-    find: async (title) => (there && title === 'Daily IT Leader Sync' ? { found: true, file: '~/Downloads/Daily IT Leader Sync.vtt' } : { found: false }),
+    find: async (title) => (there && title === 'Morning Ops Sync' ? { found: true, file: '~/Downloads/Morning Ops Sync.vtt' } : { found: false }),
     onFound: (title, r) => found.push([title, r.file]),
   })
-  watch.add('Daily IT Leader Sync')
-  watch.add('Weaver / Slyder Bi-Weekly Touchpoint')
+  watch.add('Morning Ops Sync')
+  watch.add('Vendor Bi-Weekly Touchpoint')
   await watch.tick()
   assert.deepEqual(found, [])
   there = true
   await watch.tick()
   await watch.tick()
-  assert.deepEqual(found, [['Daily IT Leader Sync', '~/Downloads/Daily IT Leader Sync.vtt']])
+  assert.deepEqual(found, [['Morning Ops Sync', '~/Downloads/Morning Ops Sync.vtt']])
   assert.equal(watch.size(), 1)
   t = 25 * 3_600_000
   await watch.tick()

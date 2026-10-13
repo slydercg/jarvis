@@ -56,13 +56,13 @@ test('serving the brief links, ticks off, and reports how it went', async () => 
   const brief = {
     focus: 'Renewal first.',
     items: [
-      { account: 'Protective', source: 'email', subject: 'Q4 renewal', from: 'chris@protective.com', received: '2026-09-23T15:00:00Z' },
+      { account: 'Protective', source: 'email', subject: 'Q4 renewal', from: 'chris@example.com', received: '2026-09-23T15:00:00Z' },
       { account: 'Protective', source: 'task', subject: 'Chase the VAS invoice' },
       { account: 'SCG', source: 'email', subject: 'Scope', messageId: 'not-an-id' },
     ],
   }
   const sources = {
-    mail: async () => [{ id: MAIL_ID, from: 'chris@protective.com', subject: 'Q4 renewal' }],
+    mail: async () => [{ id: MAIL_ID, from: 'chris@example.com', subject: 'Q4 renewal' }],
     tasks: async () => [{ title: 'Chase the VAS invoice', list: 'Tasks' }],
     sent: async () => { throw new Error('flow timed out') },
   }
