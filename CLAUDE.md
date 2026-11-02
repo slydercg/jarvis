@@ -70,7 +70,7 @@ J.A.R.V.I.S.: a voice assistant in the browser. There are two processes: the pag
 | `src/lib/` | Voice loop (`voice.ts`, `vad.ts`, `echo.ts`, `wakeword.ts` + `oww*`), TTS (`tts.ts`, `kokoro.ts`), bridge client (`bridge.ts`, `brain.ts`), hands/camera; pure and tested: `actions.ts` (each item's one-click next step), `quiet.ts` (quiet hours, checked in `App.tsx` before an alert is shown or said), `history.ts`, `alertFit.ts` (how many alert cards fit above the conversation), `repeat.ts` (a question asked again while it is still being answered), `oncall.ts` (whether to keep quiet for a call or meeting, and `callDigest`, the one line said when it ends), `trail.ts` (what a report shows), `decide.ts` (what a sound, a sentence or his name does: `onsetAction`, `utteranceIsHis`, `wakeAction`, replayed against the real incidents in `tests/voice-scenarios.test.mts`) |
 | `src/scene/` | Reactor (R3F + GLSL shaders) |
 | `src/ui/` | HUD overlays: panels, blades, confirm card, settings, diagnostics, the ? keys sheet (`KeysHelp.tsx`; keep it in step with the key handlers in `App.tsx`, `Blades.tsx`, `Stratum.tsx`, `Diagnostics.tsx`) |
-| `scripts/` | `start`, `setup`, `browser-doctor`, `autostart` (LaunchAgents), `update` (self-updater), `report` (prints the latest "that was wrong" report) |
+| `scripts/` | `start`, `setup`, `browser-doctor`, `autostart` (LaunchAgents), `update` (self-updater), `report` (prints the latest "that was wrong" report), `move` (`move:export` / `move:import` / `move:check`: everything that isn't in git, in one passphrase-locked file, put back on another Mac with a checklist of what must be signed into again; never saved inside the repo, never prints a value) |
 
 ## Conventions
 

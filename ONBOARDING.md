@@ -121,6 +121,7 @@ On the Mac:
 npm run autostart:logs           # the running bridge's log
 npm run autostart:restart        # after changing .env.local or ~/.jarvis files
 npm run browser:doctor           # the Claude extension's helper, per browser
+npm run move:export              # everything not in git, locked, for a new Mac (move:import there)
 ```
 
 - CI (`.github/workflows/ci.yml`) runs lint, build and tests on every pull

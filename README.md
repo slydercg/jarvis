@@ -145,6 +145,54 @@ that is needed.
 With auto-start on, typing `npm start` as well just says he is already running,
 instead of fighting the other copy for the port.
 
+### Moving him to another Mac
+
+The code comes from GitHub, but everything that makes him yours lives only on
+the Mac he runs on: `.env.local` (settings and keys), `~/.jarvis` (memory,
+people, promises, the review list, history, spend), the Power Automate flows
+file, the local MCP servers he reads from `~/.claude.json`, any wake-word file
+you added to `public/`, and how auto-start was installed. Two commands carry
+all of it across.
+
+On the old Mac:
+
+```bash
+npm run move:export        # asks for a passphrase; saves ~/Desktop/jarvis-move-<date>.jarvismove
+```
+
+The file is locked with your passphrase (AES-256-GCM, key from scrypt) and
+holds credentials, so carry it by AirDrop or a USB stick, not email or chat.
+It is never saved inside this folder, which is a public repository, and
+`*.jarvismove` is gitignored besides. Logs and the open conversation stay
+behind; his notes and history come along.
+
+On the new Mac, install Node 20+ and Claude Code, run `claude` and log in with
+the **same account** (the claude.ai connectors, Gmail, Calendar, Microsoft
+365, Granola, Atlassian and Robinhood, come with the account), then:
+
+```bash
+git clone https://github.com/slydercg/jarvis.git "$HOME/Claude Code Applications/jarvis"
+cd "$HOME/Claude Code Applications/jarvis" && npm ci
+npm run move:import -- ~/Downloads/jarvis-move-<date>.jarvismove
+```
+
+Import puts each thing back and never writes over what is already there
+without asking: a `~/.jarvis` from a first run is kept beside it, a different
+`.env.local` is left alone (`--replace-env` swaps it), and MCP servers are
+added next to the ones this Mac has. Paths with the old home folder in them
+are moved to the new one. The flows file is shared with the daily briefing,
+so import expects OneDrive to bring it and checks that every key arrived;
+`--flows-here` keeps the old Mac's copy in `~/.jarvis` instead. `--dry-run`
+shows what would happen and writes nothing.
+
+It ends with what no file can carry, checked where it can be:
+`npm run autostart:install` with the old Mac's options, `npm run
+browser:doctor` for the Chrome extension, `npm run doctor:flows`, OneDrive,
+and the microphone and Files and Folders permissions. `npm run move:check`
+shows the list again. Once he runs on the new Mac, run `npm run
+autostart:uninstall` on the old one: two of him would both alert, both build
+the brief, and keep promise lists that drift apart.
+
 ---
 
 ## How it works
