@@ -566,7 +566,7 @@ async function exportCommand(args) {
   writeFileSync(out, buf, { mode: 0o600 })
   chmodSync(out, 0o600)
 
-  // A remote URL can carry a token (https://user:token@github.com/...); never print one.
+  // A remote URL can carry a token before its host (user:token then an at sign); never print one.
   const remote =
     spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: ROOT, encoding: 'utf8' }).stdout?.trim().replace(/\/\/[^/@\s]*@/, '//') || '<this repository>'
   const folder = ROOT.startsWith(home) ? `~${ROOT.slice(home.length)}` : ROOT
