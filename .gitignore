@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+# A Jarvis move file (npm run move:export) holds his keys; never commit one.
+*.jarvismove
 
 # Editor directories and files
 .vscode/*
