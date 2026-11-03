@@ -185,13 +185,22 @@ so import expects OneDrive to bring it and checks that every key arrived;
 `--flows-here` keeps the old Mac's copy in `~/.jarvis` instead. `--dry-run`
 shows what would happen and writes nothing.
 
-It ends with what no file can carry, checked where it can be:
+It ends with what no file can carry, checked where it can be: Node, git,
+Claude Code and its login, the apps he works through (a Chromium browser,
+OneDrive, Granola, and Teams for transcripts), each MCP server's command,
 `npm run autostart:install` with the old Mac's options, `npm run
-browser:doctor` for the Chrome extension, `npm run doctor:flows`, OneDrive,
-and the microphone and Files and Folders permissions. `npm run move:check`
-shows the list again. Once he runs on the new Mac, run `npm run
-autostart:uninstall` on the old one: two of him would both alert, both build
-the brief, and keep promise lists that drift apart.
+browser:doctor` for the Chrome extension, `npm run doctor:flows`, and the
+microphone and Files and Folders permissions. `npm run move:check` shows the
+list again.
+
+Once he answers on the new Mac, run `npm run move:retire` on the old one. Two
+of him would both alert, both build the brief and spend, and keep promise
+lists that drift apart. It removes autostart and the updater, stops anything
+still serving from that folder, and renames `.env.local` and `~/.jarvis`
+(nothing is deleted) so a stray `npm start` there comes up with no keys and
+no memory. It leaves Claude Code, the Chrome extension, your connectors and
+the OneDrive flows file alone: the new Mac and your other tools use them. It
+prints the two `mv`s that undo it.
 
 ---
 

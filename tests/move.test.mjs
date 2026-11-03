@@ -14,7 +14,7 @@ process.env.HOME = newHome
 process.env.JARVIS_HOME = join(newHome, '.jarvis')
 delete process.env.JARVIS_PA_ENDPOINTS
 mkdirSync(newHome, { recursive: true })
-const { collect, describe, installCommand, moveEnvText, restore, seal, unseal } = await import('../scripts/move.mjs')
+const { appInstalled, collect, describe, installCommand, moveEnvText, restore, retire, seal, unseal } = await import('../scripts/move.mjs')
 
 const URL = (id) => `https://prod-01.westus.logic.azure.com/workflows/${id}/triggers/manual/paths/invoke?api-version=1&sig=SECRET${id}`
 const KEY = 'sk_elevenlabs_SECRETKEY'
@@ -169,4 +169,49 @@ test('export refuses to save inside the repository, before reading anything', ()
     (err) => /public repository/.test(err.stderr),
   )
   assert.ok(!existsSync('here.jarvismove'))
+})
+
+test('retiring the old Mac stops him and takes away what he would start with, keeping it all', () => {
+  const home = join(root, 'retire')
+  const repo = join(home, 'jarvis')
+  const jh = join(home, '.jarvis')
+  mkdirSync(repo, { recursive: true })
+  mkdirSync(jh, { recursive: true })
+  writeFileSync(join(repo, '.env.local'), `ELEVENLABS_API_KEY=${KEY}\n`, { mode: 0o600 })
+  writeFileSync(join(jh, 'memory.md'), '- likes tea\n')
+  const killed = []
+  const now = new Date('2026-11-03T09:00:00Z')
+  const lines = retire({
+    repo,
+    home,
+    jarvisHome: jh,
+    now,
+    uninstall: () => ({ ok: true, text: 'Autostart and the updater removed' }),
+    listening: (port) =>
+      port === 8787 ? [{ pid: 101, command: `node ${repo}/bridge/server.mjs` }] : [{ pid: 202, command: 'node /elsewhere/vite' }],
+    kill: (pid) => killed.push(pid),
+  })
+  assert.deepEqual(killed, [101], 'only what this folder started is stopped')
+  assert.ok(!existsSync(join(repo, '.env.local')) && !existsSync(jh))
+  assert.match(readFileSync(join(repo, '.env.retired-2026-11-03.local'), 'utf8'), /ELEVENLABS/)
+  assert.equal(readFileSync(join(`${jh}.retired-2026-11-03`, 'memory.md'), 'utf8'), '- likes tea\n')
+  const text = JSON.stringify(lines)
+  assert.match(text, /port 5173 \(process 202, not from this folder\); left alone/)
+  assert.match(text, /flows file in OneDrive/)
+  assert.doesNotMatch(text, /SECRET/)
+
+  // Retired again the same day, after an undo: the first copies are never written over.
+  writeFileSync(join(repo, '.env.local'), 'JARVIS_NAME=Again\n')
+  mkdirSync(jh)
+  retire({ repo, home, jarvisHome: jh, now, uninstall: () => ({ ok: true, text: '' }), listening: () => [] })
+  assert.match(readFileSync(join(repo, '.env.retired-2026-11-03.local'), 'utf8'), /ELEVENLABS/)
+  assert.equal(readFileSync(join(repo, `.env.retired-2026-11-03-${now.getTime()}.local`), 'utf8'), 'JARVIS_NAME=Again\n')
+})
+
+test('an app counts as installed in /Applications or ~/Applications, under any of its names', () => {
+  const home = join(root, 'apps')
+  mkdirSync(join(home, 'Applications', 'Microsoft Teams (work or school).app'), { recursive: true })
+  const dirs = ['/nonexistent', join(home, 'Applications')]
+  assert.equal(appInstalled(['Microsoft Teams', 'Microsoft Teams (work or school)'], home, dirs), 'Microsoft Teams (work or school)')
+  assert.equal(appInstalled(['Granola'], home, dirs), null)
 })

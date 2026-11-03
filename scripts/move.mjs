@@ -5,6 +5,8 @@
  *   npm run move:import -- <file> [--dry-run]       on the new one
  *                       [--replace-env] [--flows-here]
  *   npm run move:check                              what is still to do
+ *   npm run move:retire                             on the old Mac, once the new
+ *                                                   one works: turn him off there
  *
  * The code comes from GitHub; everything else that makes him his lives only
  * on the old Mac: .env.local (settings and keys), ~/.jarvis (memory, people,
@@ -423,6 +425,24 @@ export function restore(payload, { repo, home, jarvisHome, dryRun = false, repla
 // What is left to do
 // ---------------------------------------------------------------------------
 
+/**
+ * The Mac apps he works through. `need` is how a missing one is shown: false
+ * is a to-do, null a note, for one he works without (Teams only matters for
+ * downloading transcripts). Any Chromium browser the extension runs in will do.
+ */
+const APPS = [
+  { names: ['Google Chrome', 'Microsoft Edge', 'Brave Browser', 'Arc', 'Chromium'], need: false, why: 'the page, the microphone and browser control' },
+  { names: ['OneDrive'], need: false, why: 'it syncs the flows file shared with the daily briefing' },
+  { names: ['Granola'], need: false, why: 'it records the meeting notes recaps and promises are read from' },
+  { names: ['Microsoft Teams', 'Microsoft Teams (work or school)', 'Microsoft Teams classic'], need: null, why: 'Transcript → Download, for a recap Granola missed' },
+]
+
+/** The first of these apps found in /Applications or ~/Applications, or null. */
+export function appInstalled(names, home = homedir(), dirs = ['/Applications', join(home, 'Applications')]) {
+  for (const name of names) for (const d of dirs) if (existsSync(join(d, `${name}.app`))) return name
+  return null
+}
+
 /** The live checks, and the steps no file can carry. */
 export function checks({ repo, home, jarvisHome, autostart }) {
   const lines = []
@@ -454,13 +474,100 @@ export function checks({ repo, home, jarvisHome, autostart }) {
       ? `Browser helper registered for ${helper.join(', ')}. Check it: npm run browser:doctor`
       : 'Browser control: install the Claude extension in Chrome and sign in, run `claude --chrome` once, then npm run browser:doctor',
   )
+  const git = findCommand('git')
+  line(Boolean(git), git ? 'git is installed (the updater pulls with it)' : 'Install git: xcode-select --install')
+  for (const a of APPS) {
+    const found = appInstalled(a.names, home)
+    line(found ? true : a.need, found ? `${found} is installed: ${a.why}` : `Install ${a.names[0]}: ${a.why}`)
+  }
+  const servers = claudeServers(home)
+  for (const [n, s] of Object.entries({ ...servers?.mcpServers, ...servers?.homeServers })) {
+    if (typeof s?.command !== 'string') continue
+    const found = findCommand(s.command)
+    line(Boolean(found), found ? `MCP server ${n}: \`${s.command}\` found` : `MCP server ${n}: install \`${s.command}\`, which it runs`)
+  }
   const agent = existsSync(join(home, 'Library', 'LaunchAgents', 'local.jarvis.assistant.plist'))
   line(agent, agent ? 'Starts at login (autostart is installed)' : `Start at login, as the old Mac did: ${installCommand(autostart)}`)
   line(null, 'OneDrive: sign in on this Mac. The flows file is shared with the daily briefing and your other tools')
   line(null, 'Microphone: open Jarvis in Chrome, click INITIALISE and allow the microphone')
   line(null, 'Transcripts in Downloads: macOS asks once whether node may read Downloads. If you missed it: System Settings → Privacy & Security → Files and Folders → node')
-  line(null, 'On the old Mac, run npm run autostart:uninstall. Two Jarvises would both alert, both build the brief and spend, and their promise lists would drift apart')
+  line(null, 'Once he answers here, run npm run move:retire on the old Mac. Two Jarvises would both alert, both build the brief and spend, and their promise lists would drift apart')
   line(null, 'Then delete the move file from both Macs and whatever carried it')
+  return lines
+}
+
+// ---------------------------------------------------------------------------
+// Retiring the old Mac
+// ---------------------------------------------------------------------------
+
+/** What is listening on a port: [{ pid, command }]. macOS and Linux both have lsof. */
+function listeners(port) {
+  const r = spawnSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], { encoding: 'utf8' })
+  return (r.stdout ?? '')
+    .split('\n')
+    .filter(Boolean)
+    .map((pid) => ({ pid: Number(pid), command: spawnSync('ps', ['-o', 'command=', '-p', pid], { encoding: 'utf8' }).stdout?.trim() ?? '' }))
+}
+
+/**
+ * Turn Jarvis off on this Mac once he runs on the new one. A second copy
+ * would send the same alerts, build the same brief, spend twice and keep a
+ * promise list that drifts from the real one — so this does more than stop
+ * him: it takes away what he would start with.
+ *
+ *  1. both LaunchAgents go (autostart and the updater), which stops him;
+ *  2. any bridge or page from this folder still running (npm start in a
+ *     Terminal) is stopped; anything else on those ports is only named;
+ *  3. .env.local and ~/.jarvis are renamed, not deleted, so a stray
+ *     `npm start` comes up blank and keyless, and undoing it is two `mv`s.
+ *
+ * Left alone on purpose: Claude Code and its login, the Chrome extension and
+ * its helper (Claude Code uses them too), the claude.ai connectors (they
+ * belong to the account, which the new Mac uses), and the flows file in
+ * OneDrive (the daily briefing and his other tools read it).
+ */
+export function retire({ repo, home, jarvisHome, now = new Date(), uninstall, ports = [8787, 5173], listening = listeners, kill = (pid) => process.kill(pid, 'SIGTERM') }) {
+  const lines = []
+  const done = (text) => lines.push({ ok: true, text })
+  const todo = (text) => lines.push({ ok: false, text })
+  const note = (text) => lines.push({ ok: null, text })
+  const short = (p) => p.replace(home, '~')
+  const day = now.toISOString().slice(0, 10)
+  // Retired twice in a day (after an undo): never rename onto the first one.
+  const free = (p) => (existsSync(p) ? p.replace(day, `${day}-${now.getTime()}`) : p)
+
+  const u = uninstall()
+  if (u.ok) done(u.text)
+  else todo(u.text)
+
+  for (const port of ports) {
+    for (const l of listening(port)) {
+      if (l.command.includes(repo)) {
+        try {
+          kill(l.pid)
+          done(`Stopped what was still serving port ${port} from this folder (process ${l.pid})`)
+        } catch {
+          todo(`Could not stop process ${l.pid} on port ${port}: quit the Terminal running npm start`)
+        }
+      } else {
+        note(`Something else is on port ${port} (process ${l.pid}, not from this folder); left alone`)
+      }
+    }
+  }
+
+  const env = join(repo, '.env.local')
+  if (existsSync(env)) {
+    // *.local is gitignored, so the renamed file can't be committed either.
+    const to = free(join(repo, `.env.retired-${day}.local`))
+    renameSync(env, to)
+    done(`.env.local → ${short(to)}: no keys here for a stray npm start`)
+  }
+  if (existsSync(jarvisHome)) {
+    const to = free(`${jarvisHome}.retired-${day}`)
+    renameSync(jarvisHome, to)
+    done(`${short(jarvisHome)} → ${short(to)}: his memory and lists are kept, not used`)
+  }
+  note('Left alone: Claude Code, the Chrome extension, your claude.ai connectors and the flows file in OneDrive. The new Mac and your other tools use them')
   return lines
 }
 
@@ -580,7 +687,7 @@ async function exportCommand(args) {
   say(`    2. git clone ${remote} "${folder}"`)
   say(`       cd "${folder}" && npm ci`)
   say(`    3. npm run move:import -- ~/Downloads/${out.split(sep).pop()}`)
-  say('    4. Once it runs there: npm run autostart:uninstall here, so only one Jarvis runs.\n')
+  say('    4. Once he answers there: npm run move:retire here, so only one Jarvis runs.\n')
 }
 
 async function importCommand(args) {
@@ -636,6 +743,41 @@ async function importCommand(args) {
   say()
 }
 
+async function retireCommand(args) {
+  const home = homedir()
+  say('\n  Turning Jarvis off on this Mac for good: autostart and the updater go, anything')
+  say('  still running stops, and .env.local and ~/.jarvis are renamed so nothing can start')
+  say('  him here again. Do this only once he answers on the new Mac.\n')
+  if (!args.includes('--yes')) {
+    if (!process.stdin.isTTY) fail('Add --yes to run this without a prompt.')
+    process.stdout.write('  Type retire to go ahead: ')
+    const answer = await new Promise((r) => process.stdin.once('data', (d) => r(String(d).trim())))
+    process.stdin.pause()
+    if (answer !== 'retire') fail('Nothing was changed.')
+  }
+  const lines = retire({
+    repo: ROOT,
+    home,
+    jarvisHome: JARVIS_HOME,
+    uninstall: () => {
+      const agents = join(home, 'Library', 'LaunchAgents')
+      const had = ['local.jarvis.assistant', 'local.jarvis.updater'].filter((l) => existsSync(join(agents, `${l}.plist`)))
+      if (!had.length) return { ok: true, text: 'Autostart and the updater were not installed' }
+      const r = spawnSync(process.execPath, [join(ROOT, 'scripts', 'autostart.mjs'), 'uninstall'], { encoding: 'utf8' })
+      const left = had.filter((l) => existsSync(join(agents, `${l}.plist`)))
+      return left.length
+        ? { ok: false, text: `Could not remove ${left.join(', ')}: run npm run autostart:uninstall and read what it says (${(r.stderr || r.stdout).trim().split('\n').pop()})` }
+        : { ok: true, text: 'Autostart and the updater removed: he no longer starts at login or updates himself' }
+    },
+  })
+  say()
+  show(lines)
+  const day = new Date().toISOString().slice(0, 10)
+  say('\n  To undo, in this folder:')
+  say(`    mv .env.retired-${day}.local .env.local && mv ${short(JARVIS_HOME)}.retired-${day} ${short(JARVIS_HOME)} && npm run autostart:install`)
+  say('  Once the new Mac has run well for a couple of weeks, delete the renamed two and this folder.\n')
+}
+
 function checkCommand() {
   say('\n  Jarvis on this Mac:\n')
   show(checks({ repo: ROOT, home: homedir(), jarvisHome: JARVIS_HOME, autostart: autostartOptions(homedir()) }))
@@ -644,7 +786,7 @@ function checkCommand() {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [command, ...args] = process.argv.slice(2)
-  const run = { export: exportCommand, import: importCommand, check: checkCommand }[command]
-  if (!run) fail('Use npm run move:export, npm run move:import -- <file>, or npm run move:check.')
+  const run = { export: exportCommand, import: importCommand, check: checkCommand, retire: retireCommand }[command]
+  if (!run) fail('Use npm run move:export, npm run move:import -- <file>, npm run move:check or npm run move:retire.')
   await run(args)
 }
